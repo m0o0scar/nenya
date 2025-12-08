@@ -267,7 +267,7 @@
     }
 
     chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== 'sync') {
+      if (area !== 'local') {
         return;
       }
 
@@ -278,6 +278,25 @@
       void loadRules().then(() => {
         applyBlockingCss();
       });
+    });
+  }
+
+  /**
+   * Listen for messages from the background script
+   * @returns {void}
+   */
+  function setupMessageListener() {
+    if (!chrome?.runtime?.onMessage) {
+      return;
+    }
+
+    chrome.runtime.onMessage.addListener((message) => {
+      if (message && message.type === 'blockElement:reapplyRules') {
+        // A rule was just added, re-apply rules immediately
+        void loadRules().then(() => {
+          applyBlockingCss();
+        });
+      }
     });
   }
 
@@ -296,6 +315,7 @@
     setupUrlChangeListeners();
     setupMutationObserver();
     setupStorageListener();
+    setupMessageListener();
   }
 
   // Run initialization when DOM is ready
