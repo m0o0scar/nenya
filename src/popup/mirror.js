@@ -261,6 +261,19 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
       return;
     }
 
+    if (tabs.length === 1 && tabs[0]) {
+      const tab = tabs[0];
+      const originalTitle = typeof tab.title === 'string' ? tab.title : '';
+      const userTitle = window.prompt(
+        'Enter an optional title to save to unsorted collection',
+        originalTitle,
+      );
+
+      if (userTitle !== null) {
+        tab.title = userTitle.trim() || originalTitle;
+      }
+    }
+
     const entries = buildSaveEntriesFromTabs(tabs);
     if (entries.length === 0) {
       concludeStatus('No valid tab URLs to save.', 'info', 3000, statusMessage);
