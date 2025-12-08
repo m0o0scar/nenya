@@ -14,6 +14,39 @@
   const AUTO_LOGIN_INITIATED_KEY = 'autoGoogleLoginInitiated';
   const DEBOUNCE_DELAY = 2000; // ms - debounce for DOM mutations
   const MIN_CHECK_INTERVAL = 3000; // ms - minimum time between checks
+  const CONTINUE_KEYWORDS = [
+    'continue',
+    'allow',
+    'accept',
+    'yes',
+    'ok',
+    'okay',
+    'proceed',
+    'next',
+    'agree',
+    'confirm',
+    '繼續',
+    '继续',
+    '允許',
+    '允许',
+    '同意',
+    '前往',
+  ];
+  const CANCEL_KEYWORDS = [
+    'cancel',
+    'deny',
+    'close',
+    'back',
+    'no',
+    '拒絕',
+    '拒绝',
+    '取消',
+    '不允許',
+    '不允许',
+    '關閉',
+    '关闭',
+    '返回',
+  ];
 
   /**
    * @typedef {Object} AutoGoogleLoginRule
@@ -329,58 +362,137 @@
    * @returns {boolean} True if button was clicked
    */
   function tryClickContinueButton() {
-    // Strategy 1: Find button by text content "Continue"
-    const buttons = document.querySelectorAll('button');
-    for (const button of buttons) {
-      const htmlButton = /** @type {HTMLButtonElement} */ (button);
-      const text = (htmlButton.textContent || '').trim().toLowerCase();
+    /**
+     * @param {HTMLButtonElement} button
+     * @returns {string[]}
+     */
+    const getButtonTextHints = (button) => {
+      const texts = [];
+      const textContent = (button.textContent || '').trim().toLowerCase();
+      const ariaLabel = (button.getAttribute('aria-label') || '')
+        .trim()
+        .toLowerCase();
+      const title = (button.getAttribute('title') || '').trim().toLowerCase();
+      const value = (button.getAttribute('value') || '').trim().toLowerCase();
+      const dataAction = (button.getAttribute('data-mdc-dialog-action') || '')
+        .trim()
+        .toLowerCase();
+
+      if (textContent) {
+        texts.push(textContent);
+      }
+      if (ariaLabel) {
+        texts.push(ariaLabel);
+      }
+      if (title) {
+        texts.push(title);
+      }
+      if (value) {
+        texts.push(value);
+      }
+      if (dataAction) {
+        texts.push(dataAction);
+      }
+      return texts;
+    };
+
+    /**
+     * @param {string[]} haystacks
+     * @param {string[]} needles
+     * @returns {boolean}
+     */
+    const containsKeyword = (haystacks, needles) =>
+      needles.some((needle) =>
+        haystacks.some((text) => text.includes(needle)),
+      );
+
+    /**
+     * @param {HTMLButtonElement} button
+     * @returns {boolean}
+     */
+    const isVisibleEnabledButton = (button) =>
+      button.offsetParent !== null && !button.disabled;
+
+    /**
+     * @param {HTMLButtonElement} button
+     * @returns {number}
+     */
+    const scoreContinueCandidate = (button) => {
+      if (!isVisibleEnabledButton(button)) {
+        return -Infinity;
+      }
+      const texts = getButtonTextHints(button);
+      let score = 0;
+
+      if (containsKeyword(texts, CONTINUE_KEYWORDS)) {
+        score += 5;
+      }
+
+      if (containsKeyword(texts, CANCEL_KEYWORDS)) {
+        score -= 6;
+      }
+
+      const dataAction = (button.getAttribute('data-mdc-dialog-action') || '')
+        .trim()
+        .toLowerCase();
       if (
-        text === 'continue' &&
-        htmlButton.offsetParent !== null &&
-        !htmlButton.disabled
+        ['accept', 'confirm', 'yes', 'submit', 'ok', 'continue', 'allow'].includes(
+          dataAction,
+        )
       ) {
-        return clickElement(htmlButton);
+        score += 3;
       }
+      if (['cancel', 'close', 'back', 'deny'].includes(dataAction)) {
+        score -= 4;
+      }
+
+      const jsname = (button.getAttribute('jsname') || '')
+        .trim()
+        .toLowerCase();
+      if (jsname === 'lgbsse') {
+        score += 1;
+      }
+
+      return score;
+    };
+
+    const visibleButtons = Array.from(
+      document.querySelectorAll('button'),
+    ).filter((button) => button instanceof HTMLButtonElement);
+
+    const scored = visibleButtons
+      .map((button) => ({
+        button: /** @type {HTMLButtonElement} */ (button),
+        score: scoreContinueCandidate(
+          /** @type {HTMLButtonElement} */ (button),
+        ),
+      }))
+      .filter((entry) => Number.isFinite(entry.score) && entry.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 0) {
+      return clickElement(scored[0].button);
     }
 
-    // Strategy 2: Find button by jsname="LgbsSe" (Google's Continue button)
-    const continueButton = document.querySelector('button[jsname="LgbsSe"]');
-    if (continueButton) {
-      const htmlButton = /** @type {HTMLButtonElement} */ (continueButton);
-      if (htmlButton.offsetParent !== null && !htmlButton.disabled) {
-        return clickElement(htmlButton);
-      }
-    }
+    // Fallback: prefer the last Google-styled button that is not clearly a cancel/deny control
+    const lgbsButtons = Array.from(
+      document.querySelectorAll('button[jsname="LgbsSe"]'),
+    )
+      .filter(
+        (button) =>
+          button instanceof HTMLButtonElement && isVisibleEnabledButton(button),
+      )
+      .reverse();
 
-    // Strategy 3: Find button with Continue in aria-label
-    const ariaButtons = document.querySelectorAll('button[aria-label]');
-    for (const button of ariaButtons) {
-      const htmlButton = /** @type {HTMLButtonElement} */ (button);
-      const ariaLabel = (
-        htmlButton.getAttribute('aria-label') || ''
-      ).toLowerCase();
-      if (
-        ariaLabel.includes('continue') &&
-        htmlButton.offsetParent !== null &&
-        !htmlButton.disabled
-      ) {
-        return clickElement(htmlButton);
-      }
-    }
+    const fallback = lgbsButtons.find((button) => {
+      const texts = getButtonTextHints(
+        /** @type {HTMLButtonElement} */ (button),
+      );
+      return !containsKeyword(texts, CANCEL_KEYWORDS);
+    });
 
-    // Strategy 4: Find button with Continue in span inside
-    const buttonsWithSpans = document.querySelectorAll('button span');
-    for (const span of buttonsWithSpans) {
-      const text = (span.textContent || '').trim().toLowerCase();
-      if (text === 'continue') {
-        const button = span.closest('button');
-        if (button) {
-          const htmlButton = /** @type {HTMLButtonElement} */ (button);
-          if (htmlButton.offsetParent !== null && !htmlButton.disabled) {
-            return clickElement(htmlButton);
-          }
-        }
-      }
+    if (fallback) {
+      return clickElement(/** @type {HTMLButtonElement} */ (fallback));
     }
 
     return false;
