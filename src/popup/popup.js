@@ -7,9 +7,10 @@ import {
   isUserLoggedIn,
   toggleMirrorSection,
   showLoginMessage,
-  initializeMirror,
   getTokenValidationStatus,
   handleEncryptAndSaveActive,
+  handleSaveToUnsorted,
+  handlePull,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
 import { initializeProjects } from './projects.js';
@@ -27,12 +28,20 @@ const SHORTCUT_CONFIG = {
   pull: {
     emoji: '🌧️',
     tooltip: 'Pull from raindrop',
-    handler: () => {},
+    handler: () => {
+      if (pullButton && statusMessage) {
+        void handlePull(pullButton, statusMessage);
+      }
+    },
   },
   saveUnsorted: {
     emoji: '📤',
     tooltip: 'Save to unsorted',
-    handler: () => {},
+    handler: () => {
+      if (saveUnsortedButton && statusMessage) {
+        void handleSaveToUnsorted(saveUnsortedButton, statusMessage);
+      }
+    },
   },
   encryptSave: {
     emoji: '🔐',
@@ -423,11 +432,6 @@ async function loadAndRenderShortcuts() {
     optionsTooltipDiv.appendChild(optionsButton);
     shortcutsContainer.appendChild(optionsTooltipDiv);
     openOptionsButton = optionsButton;
-
-    // Initialize mirror functionality after buttons are rendered
-    if (pullButton && saveUnsortedButton && statusMessage) {
-      initializeMirror(pullButton, saveUnsortedButton, statusMessage);
-    }
 
     // Setup import custom code file input handler
     if (importCustomCodeButton && importCustomCodeFileInput) {

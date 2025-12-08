@@ -170,6 +170,15 @@ chrome.commands.onCommand.addListener((command) => {
         if (!tabs || tabs.length === 0) {
           tabs = await chrome.tabs.query({ currentWindow: true, active: true });
         }
+
+        if (tabs.length === 1 && tabs[0]) {
+          const tab = tabs[0];
+          const originalTitle =
+            typeof tab.title === 'string' ? tab.title : '';
+          const userTitle = await promptForTitle(tab.id, originalTitle);
+          tab.title = userTitle;
+        }
+
         const seen = new Set();
         /** @type {{ url: string, title?: string }[]} */
         const entries = [];
@@ -565,6 +574,45 @@ chrome.commands.onCommand.addListener((command) => {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Prompt the user for a title in the provided tab.
+ * @param {number | null} tabId
+ * @param {string} prefillTitle
+ * @returns {Promise<string>}
+ */
+async function promptForTitle(tabId, prefillTitle) {
+  if (!chrome.scripting || typeof tabId !== 'number') {
+    return prefillTitle;
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (originalTitle) => {
+        const userTitle = window.prompt(
+          'Enter an optional title to save to unsorted collection',
+          originalTitle,
+        );
+        return userTitle;
+      },
+      args: [prefillTitle],
+      world: 'MAIN',
+    });
+
+    const value =
+      Array.isArray(results) && results[0] ? results[0].result : null;
+
+    if (value === null) {
+      return prefillTitle;
+    }
+
+    return value.trim() || prefillTitle;
+  } catch (error) {
+    console.warn('[promptForTitle] Unable to prompt for title:', error);
+    return prefillTitle;
+  }
+}
 
 const FRIENDLY_TITLE_WORDS = [
   'hidden',
@@ -3255,7 +3303,8 @@ if (chrome.contextMenus) {
         return;
       }
       const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const title = typeof tab?.title === 'string' ? tab.title : '';
+      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
+      const title = await promptForTitle(tab?.id, originalTitle);
       void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
         console.error('[contextMenu] Failed to save page:', error);
       });
@@ -3276,8 +3325,9 @@ if (chrome.contextMenus) {
       const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
       const selection =
         typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
-      const title =
+      const originalTitle =
         selection || (typeof tab?.title === 'string' ? tab.title : '');
+      const title = await promptForTitle(tab?.id, originalTitle);
       void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
         console.error('[contextMenu] Failed to save link:', error);
       });

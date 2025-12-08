@@ -1059,9 +1059,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
   };
 
   try {
-    const shouldPleaseParse = options.pleaseParse !== false;
     const shouldProcessUrl = options.skipUrlProcessing !== true;
-    const keepEntryTitle = options.keepEntryTitle === true;
 
     if (!Array.isArray(entries)) {
       summary.error = 'No URLs provided.';
@@ -1155,12 +1153,13 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
 
     for (const entry of dedupeResult.entries) {
       try {
+        const pleaseParse = !entry.title;
         const payload = {
           link: entry.url,
           collectionId: -1,
-          ...(shouldPleaseParse ? { pleaseParse: {} } : {}),
+          ...(pleaseParse ? { pleaseParse: {} } : {}),
           ...(entry.cover ? { cover: entry.cover } : {}),
-          ...(keepEntryTitle && entry.title ? { title: entry.title } : {}),
+          ...(entry.title ? { title: entry.title } : {}),
         };
 
         const response = await raindropRequest('/raindrop', tokens, {
@@ -1178,11 +1177,11 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         }
 
         const itemTitle =
-          keepEntryTitle || typeof response.item.title !== 'string'
-            ? ''
-            : response.item.title;
+          typeof response.item.title === 'string'
+            ? response.item.title
+            : '';
         const bookmarkTitle = normalizeBookmarkTitle(
-          itemTitle || entry.title,
+          entry.title || itemTitle,
           entry.url,
         );
 
