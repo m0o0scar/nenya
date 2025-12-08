@@ -480,48 +480,61 @@ function handleSaveResponse(response, statusMessage) {
 }
 
 /**
+ * Handle the pull from Raindrop action.
+ * @param {HTMLElement} pullButton
+ * @param {HTMLElement} statusMessage
+ * @returns {Promise<void>}
+ */
+export async function handlePull(pullButton, statusMessage) {
+  if (!pullButton) {
+    console.error('[popup] Sync button not found.');
+    concludeStatus(
+      'Unable to locate sync controls.',
+      'error',
+      3000,
+      statusMessage,
+    );
+    return;
+  }
+
+  /** @type {HTMLButtonElement} */ (pullButton).disabled = true;
+  setStatus('Syncing bookmarks...', 'info', statusMessage);
+
+  try {
+    const response = await sendRuntimeMessage({ type: 'mirror:pull' });
+    if (response && response.ok) {
+      const summary = formatStats(response.stats);
+      concludeStatus(
+        'Sync complete. ' + summary,
+        'success',
+        3000,
+        statusMessage,
+      );
+    } else {
+      const message =
+        response && typeof response.error === 'string'
+          ? response.error
+          : 'Sync failed. Please try again.';
+      concludeStatus(message, 'error', 3000, statusMessage);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    concludeStatus(message, 'error', 3000, statusMessage);
+  } finally {
+    /** @type {HTMLButtonElement} */ (pullButton).disabled = false;
+  }
+}
+
+/**
  * Initialize mirror functionality with event listeners.
  * @param {HTMLElement} pullButton
- * @param {HTMLElement} saveUnsortedButton
  * @param {HTMLElement} statusMessage
  * @returns {void}
  */
-export function initializeMirror(
-  pullButton,
-  saveUnsortedButton,
-  statusMessage,
-) {
+export function initializeMirror(pullButton, statusMessage) {
   if (pullButton) {
     pullButton.addEventListener('click', () => {
-      /** @type {HTMLButtonElement} */ (pullButton).disabled = true;
-      setStatus('Syncing bookmarks...', 'info', statusMessage);
-
-      sendRuntimeMessage({ type: 'mirror:pull' })
-        .then((response) => {
-          if (response && response.ok) {
-            const summary = formatStats(response.stats);
-            concludeStatus(
-              'Sync complete. ' + summary,
-              'success',
-              3000,
-              statusMessage,
-            );
-          } else {
-            const message =
-              response && typeof response.error === 'string'
-                ? response.error
-                : 'Sync failed. Please try again.';
-            concludeStatus(message, 'error', 3000, statusMessage);
-          }
-        })
-        .catch((error) => {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          concludeStatus(message, 'error', 3000, statusMessage);
-        })
-        .finally(() => {
-          /** @type {HTMLButtonElement} */ (pullButton).disabled = false;
-        });
+      void handlePull(pullButton, statusMessage);
     });
   } else {
     console.error('[popup] Sync button not found.');
@@ -531,13 +544,5 @@ export function initializeMirror(
       3000,
       statusMessage,
     );
-  }
-
-  if (saveUnsortedButton) {
-    saveUnsortedButton.addEventListener('click', () => {
-      void handleSaveToUnsorted(saveUnsortedButton, statusMessage);
-    });
-  } else {
-    console.error('[popup] Save button not found.');
   }
 }
