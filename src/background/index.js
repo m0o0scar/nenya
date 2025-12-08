@@ -2385,6 +2385,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           [STORAGE_KEY]: rules,
         });
 
+        // Notify active tab to re-apply blocking rules immediately
+        if (sender.tab && sender.tab.id) {
+          void chrome.tabs.sendMessage(sender.tab.id, {
+            type: 'blockElement:reapplyRules',
+          });
+        }
+
         sendResponse({ success: true, rule });
       } catch (error) {
         console.error('[background] Failed to save blocking rule:', error);
