@@ -17,10 +17,37 @@
     };
   }
 
+  // ============================================================================
+  // Types
+  // ============================================================================
+
+  /**
+   * @typedef {Object} HighlightEntry
+   * @property {string} id - Unique identifier within the rule
+   * @property {'whole-phrase' | 'comma-separated' | 'regex'} type
+   * @property {string} value
+   * @property {string} textColor
+   * @property {string} backgroundColor
+   * @property {boolean} bold
+   * @property {boolean} italic
+   * @property {boolean} underline
+   * @property {boolean} ignoreCase
+   */
+
   /**
    * @typedef {Object} HighlightTextRuleSettings
    * @property {string} id
-   * @property {string} pattern
+   * @property {string[]} patterns - One or more URL patterns
+   * @property {HighlightEntry[]} highlights - One or more highlight definitions
+   * @property {boolean} [disabled]
+   * @property {string} [createdAt]
+   * @property {string} [updatedAt]
+   */
+
+  /**
+   * @typedef {Object} LegacyHighlightTextRule
+   * @property {string} id
+   * @property {string} pattern - Single URL pattern (legacy)
    * @property {'whole-phrase' | 'comma-separated' | 'regex'} type
    * @property {string} value
    * @property {string} textColor
@@ -34,6 +61,105 @@
    * @property {string} [updatedAt]
    */
 
+  // ============================================================================
+  // Migration Utilities
+  // ============================================================================
+
+  /**
+   * Generate a unique identifier for highlight entries.
+   * @returns {string}
+   */
+  function generateHighlightId() {
+    if (typeof crypto?.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+    const random = Math.random().toString(36).slice(2);
+    return 'hl-' + Date.now().toString(36) + '-' + random;
+  }
+
+  /**
+   * Check if a rule is in legacy format (single pattern instead of patterns array).
+   * @param {Object} rule
+   * @returns {boolean}
+   */
+  function isLegacyRule(rule) {
+    if (!rule || typeof rule !== 'object') {
+      return false;
+    }
+    return typeof rule.pattern === 'string' && !Array.isArray(rule.patterns);
+  }
+
+  /**
+   * Migrate a single legacy rule to the new structure.
+   * @param {LegacyHighlightTextRule | HighlightTextRuleSettings} rule
+   * @returns {HighlightTextRuleSettings}
+   */
+  function migrateHighlightRule(rule) {
+    if (!isLegacyRule(rule)) {
+      return /** @type {HighlightTextRuleSettings} */ (rule);
+    }
+
+    const legacyRule = /** @type {LegacyHighlightTextRule} */ (rule);
+
+    /** @type {HighlightEntry} */
+    const highlightEntry = {
+      id: generateHighlightId(),
+      type: legacyRule.type || 'whole-phrase',
+      value: legacyRule.value || '',
+      textColor: legacyRule.textColor || '#000000',
+      backgroundColor: legacyRule.backgroundColor || '#ffff00',
+      bold: typeof legacyRule.bold === 'boolean' ? legacyRule.bold : false,
+      italic: typeof legacyRule.italic === 'boolean' ? legacyRule.italic : false,
+      underline: typeof legacyRule.underline === 'boolean' ? legacyRule.underline : false,
+      ignoreCase: typeof legacyRule.ignoreCase === 'boolean' ? legacyRule.ignoreCase : false,
+    };
+
+    /** @type {HighlightTextRuleSettings} */
+    const migratedRule = {
+      id: legacyRule.id,
+      patterns: [legacyRule.pattern],
+      highlights: [highlightEntry],
+    };
+
+    if (typeof legacyRule.disabled === 'boolean') {
+      migratedRule.disabled = legacyRule.disabled;
+    }
+    if (legacyRule.createdAt) {
+      migratedRule.createdAt = legacyRule.createdAt;
+    }
+    if (legacyRule.updatedAt) {
+      migratedRule.updatedAt = legacyRule.updatedAt;
+    }
+
+    return migratedRule;
+  }
+
+  /**
+   * Migrate an array of rules.
+   * @param {Array<LegacyHighlightTextRule | HighlightTextRuleSettings>} rules
+   * @returns {{ rules: HighlightTextRuleSettings[], migrated: boolean }}
+   */
+  function migrateHighlightRules(rules) {
+    if (!Array.isArray(rules)) {
+      return { rules: [], migrated: false };
+    }
+
+    let migrated = false;
+    const migratedRules = rules.map((rule) => {
+      if (isLegacyRule(rule)) {
+        migrated = true;
+        return migrateHighlightRule(rule);
+      }
+      return /** @type {HighlightTextRuleSettings} */ (rule);
+    });
+
+    return { rules: migratedRules, migrated };
+  }
+
+  // ============================================================================
+  // Constants and State
+  // ============================================================================
+
   const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
   const HIGHLIGHT_CLASS_PREFIX = 'nenya-highlight-';
 
@@ -42,13 +168,17 @@
   /** @type {Map<string, HTMLElement[]>} */
   let highlightedElements = new Map();
 
+  // ============================================================================
+  // URL Pattern Matching
+  // ============================================================================
+
   /**
-   * Check if a URL matches a pattern.
+   * Check if a URL matches a single pattern.
    * @param {string} url
    * @param {string} pattern
    * @returns {boolean}
    */
-  function matchesUrlPattern(url, pattern) {
+  function matchesSinglePattern(url, pattern) {
     try {
       const urlPattern = new URLPattern(pattern);
       return urlPattern.test(url);
@@ -66,69 +196,44 @@
   }
 
   /**
-   * Check if text matches a rule.
-   * @param {string} text
-   * @param {HighlightTextRuleSettings} rule
+   * Check if a URL matches any pattern in the patterns array.
+   * @param {string} url
+   * @param {string[]} patterns
    * @returns {boolean}
    */
-  function matchesText(text, rule) {
-    const haystack = rule.ignoreCase ? text.toLowerCase() : text;
-
-    switch (rule.type) {
-      case 'whole-phrase':
-        if (!rule.value) return false;
-        return haystack.includes(
-          rule.ignoreCase ? rule.value.toLowerCase() : rule.value,
-        );
-      case 'comma-separated': {
-        const words = rule.value
-          .split(',')
-          .map((word) => word.trim())
-          .filter((word) => word.length > 0);
-        return words.some((word) =>
-          haystack.includes(rule.ignoreCase ? word.toLowerCase() : word),
-        );
-      }
-      case 'regex':
-        try {
-          const flags = rule.ignoreCase ? 'gi' : 'g';
-          const regex = new RegExp(rule.value, flags);
-          return regex.test(text);
-        } catch (error) {
-          console.warn(
-            '[highlight-text] Invalid regex pattern:',
-            rule.value,
-            error,
-          );
-          return false;
-        }
-      default:
-        return false;
+  function matchesUrlPatterns(url, patterns) {
+    if (!Array.isArray(patterns) || patterns.length === 0) {
+      return false;
     }
+    return patterns.some((pattern) => matchesSinglePattern(url, pattern));
   }
+
+  // ============================================================================
+  // Highlighting Logic
+  // ============================================================================
 
   /**
    * Create a highlight element.
    * @param {string} text
-   * @param {HighlightTextRuleSettings} rule
+   * @param {string} ruleId
+   * @param {HighlightEntry} highlight
    * @returns {HTMLElement}
    */
-  function createHighlightElement(text, rule) {
+  function createHighlightElement(text, ruleId, highlight) {
     const span = document.createElement('span');
-    span.className = HIGHLIGHT_CLASS_PREFIX + rule.id;
-    span.style.color = rule.textColor;
-    span.style.backgroundColor = rule.backgroundColor;
+    span.className = HIGHLIGHT_CLASS_PREFIX + ruleId + '-' + highlight.id;
+    span.style.color = highlight.textColor;
+    span.style.backgroundColor = highlight.backgroundColor;
     span.style.padding = '1px 2px';
     span.style.borderRadius = '2px';
 
-    // Apply text styling
-    if (rule.bold) {
+    if (highlight.bold) {
       span.style.fontWeight = 'bold';
     }
-    if (rule.italic) {
+    if (highlight.italic) {
       span.style.fontStyle = 'italic';
     }
-    if (rule.underline) {
+    if (highlight.underline) {
       span.style.textDecoration = 'underline';
     }
 
@@ -137,12 +242,13 @@
   }
 
   /**
-   * Highlight text in a text node.
+   * Highlight text in a text node using a specific highlight entry.
    * @param {Text} textNode
-   * @param {HighlightTextRuleSettings} rule
+   * @param {string} ruleId
+   * @param {HighlightEntry} highlight
    * @returns {boolean} Whether any highlighting was applied
    */
-  function highlightTextNode(textNode, rule) {
+  function highlightTextNode(textNode, ruleId, highlight) {
     const text = textNode.textContent;
     if (!text || text.trim().length === 0) {
       return false;
@@ -152,26 +258,26 @@
     const parent = textNode.parentNode;
     if (!parent) return false;
 
-    switch (rule.type) {
+    switch (highlight.type) {
       case 'whole-phrase': {
-        const searchText = rule.ignoreCase ? text.toLowerCase() : text;
-        const searchValue = rule.ignoreCase
-          ? rule.value.toLowerCase()
-          : rule.value;
+        const searchText = highlight.ignoreCase ? text.toLowerCase() : text;
+        const searchValue = highlight.ignoreCase
+          ? highlight.value.toLowerCase()
+          : highlight.value;
         if (!searchValue) {
           break;
         }
         const index = searchText.indexOf(searchValue);
         if (index !== -1) {
           const beforeText = text.substring(0, index);
-          const matchText = text.substring(index, index + rule.value.length);
-          const afterText = text.substring(index + rule.value.length);
+          const matchText = text.substring(index, index + highlight.value.length);
+          const afterText = text.substring(index + highlight.value.length);
 
           const fragment = document.createDocumentFragment();
           if (beforeText) {
             fragment.appendChild(document.createTextNode(beforeText));
           }
-          fragment.appendChild(createHighlightElement(matchText, rule));
+          fragment.appendChild(createHighlightElement(matchText, ruleId, highlight));
           if (afterText) {
             fragment.appendChild(document.createTextNode(afterText));
           }
@@ -182,14 +288,14 @@
         break;
       }
       case 'comma-separated': {
-        const words = rule.value
+        const words = highlight.value
           .split(',')
           .map((w) => w.trim())
           .filter((w) => w.length > 0);
-        const searchText = rule.ignoreCase ? text.toLowerCase() : text;
+        const searchText = highlight.ignoreCase ? text.toLowerCase() : text;
 
         for (const word of words) {
-          const searchWord = rule.ignoreCase ? word.toLowerCase() : word;
+          const searchWord = highlight.ignoreCase ? word.toLowerCase() : word;
           if (!searchWord) continue;
           const index = searchText.indexOf(searchWord);
           if (index !== -1) {
@@ -201,7 +307,7 @@
             if (beforeText) {
               fragment.appendChild(document.createTextNode(beforeText));
             }
-            fragment.appendChild(createHighlightElement(matchText, rule));
+            fragment.appendChild(createHighlightElement(matchText, ruleId, highlight));
             if (afterText) {
               fragment.appendChild(document.createTextNode(afterText));
             }
@@ -215,8 +321,8 @@
       }
       case 'regex': {
         try {
-          const flags = rule.ignoreCase ? 'gi' : 'g';
-          const regex = new RegExp(rule.value, flags);
+          const flags = highlight.ignoreCase ? 'gi' : 'g';
+          const regex = new RegExp(highlight.value, flags);
           const matches = [...text.matchAll(regex)];
           if (matches.length > 0) {
             let lastIndex = 0;
@@ -224,7 +330,6 @@
 
             for (const match of matches) {
               if (match.index !== undefined) {
-                // Add text before match
                 if (match.index > lastIndex) {
                   fragment.appendChild(
                     document.createTextNode(
@@ -232,13 +337,11 @@
                     ),
                   );
                 }
-                // Add highlighted match
-                fragment.appendChild(createHighlightElement(match[0], rule));
+                fragment.appendChild(createHighlightElement(match[0], ruleId, highlight));
                 lastIndex = match.index + match[0].length;
               }
             }
 
-            // Add remaining text
             if (lastIndex < text.length) {
               fragment.appendChild(
                 document.createTextNode(text.substring(lastIndex)),
@@ -251,7 +354,7 @@
         } catch (error) {
           console.warn(
             '[highlight-text] Invalid regex pattern:',
-            rule.value,
+            highlight.value,
             error,
           );
         }
@@ -263,76 +366,10 @@
   }
 
   /**
-   * Process a node for highlighting.
-   * @param {Node} node
-   * @returns {void}
-   */
-  function processNode(node) {
-    if (node.nodeType === Node.TEXT_NODE) {
-      // Process text nodes
-      for (const rule of rules) {
-        if (highlightTextNode(/** @type {Text} */ (node), rule)) {
-          // If highlighting was applied, the text node was replaced
-          // so we need to stop processing this node
-          break;
-        }
-      }
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      const element = /** @type {HTMLElement} */ (node);
-
-      // Skip certain elements that shouldn't be highlighted
-      const tagName = element.tagName.toLowerCase();
-      if (
-        ['script', 'style', 'code', 'pre', 'textarea', 'input'].includes(
-          tagName,
-        )
-      ) {
-        return;
-      }
-
-      // Skip if already highlighted
-      if (element.classList.toString().includes(HIGHLIGHT_CLASS_PREFIX)) {
-        return;
-      }
-
-      // Process child nodes
-      const childNodes = Array.from(element.childNodes);
-      for (const childNode of childNodes) {
-        processNode(childNode);
-      }
-    }
-  }
-
-  /**
-   * Remove existing highlights for a rule.
-   * @param {string} ruleId
-   * @returns {void}
-   */
-  function removeHighlights(ruleId) {
-    const className = HIGHLIGHT_CLASS_PREFIX + ruleId;
-    const elements = document.querySelectorAll('.' + className);
-
-    for (const element of elements) {
-      const parent = element.parentNode;
-      if (parent) {
-        // Replace highlighted element with just its text content
-        parent.replaceChild(
-          document.createTextNode(element.textContent),
-          element,
-        );
-        // Normalize adjacent text nodes
-        parent.normalize();
-      }
-    }
-  }
-
-  /**
    * Remove all existing highlights regardless of rule.
-   * Ensures stale highlights are cleared when URL changes or rules no longer match.
    * @returns {void}
    */
   function removeAllHighlights() {
-    // Select any element that has a class token starting with our highlight prefix
     const selector =
       '[class^="' +
       HIGHLIGHT_CLASS_PREFIX +
@@ -357,22 +394,19 @@
    * @returns {void}
    */
   function applyHighlighting() {
-    // Always clear any existing highlights first. This prevents leftover
-    // highlights from a previous URL or ruleset from appearing on the wrong page.
     removeAllHighlights();
     highlightedElements.clear();
 
-    // Check if current URL matches any rules
     const currentUrl = window.location.href;
     const applicableRules = rules.filter(
-      (rule) => !rule.disabled && matchesUrlPattern(currentUrl, rule.pattern),
+      (rule) => !rule.disabled && matchesUrlPatterns(currentUrl, rule.patterns),
     );
 
     if (applicableRules.length === 0) {
+      updateMinimap();
       return;
     }
 
-    // Process the document body
     const walker = document.createTreeWalker(
       document.body,
       NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
@@ -384,7 +418,6 @@
           if (node.nodeType === Node.ELEMENT_NODE) {
             const element = /** @type {HTMLElement} */ (node);
             const tagName = element.tagName.toLowerCase();
-            // Skip certain elements
             if (
               ['script', 'style', 'code', 'pre', 'textarea', 'input'].includes(
                 tagName,
@@ -392,7 +425,6 @@
             ) {
               return NodeFilter.FILTER_REJECT;
             }
-            // Skip if already highlighted
             if (element.classList.toString().includes(HIGHLIGHT_CLASS_PREFIX)) {
               return NodeFilter.FILTER_REJECT;
             }
@@ -410,24 +442,27 @@
     }
 
     // Process text nodes for highlighting
+    // For each text node, apply all highlights from all applicable rules
     for (const node of nodesToProcess) {
       if (node.nodeType === Node.TEXT_NODE) {
+        let nodeProcessed = false;
         for (const rule of applicableRules) {
-          if (highlightTextNode(/** @type {Text} */ (node), rule)) {
-            // If highlighting was applied, the text node was replaced
-            // so we need to stop processing this node
-            break;
+          if (nodeProcessed) break;
+          for (const highlight of rule.highlights) {
+            if (highlightTextNode(/** @type {Text} */ (node), rule.id, highlight)) {
+              nodeProcessed = true;
+              break;
+            }
           }
         }
       }
     }
 
-    // After applying highlights, update the minimap
     updateMinimap();
   }
 
   /**
-   * Load rules from storage.
+   * Load rules from storage, migrating legacy rules if needed.
    * @returns {Promise<void>}
    */
   async function loadRules() {
@@ -440,36 +475,56 @@
         return;
       }
 
+      // Migrate legacy rules
+      const { rules: migratedRules, migrated } = migrateHighlightRules(storedRules);
+
+      // Save back if migration occurred
+      if (migrated) {
+        await chrome.storage.local.set({
+          [HIGHLIGHT_TEXT_RULES_KEY]: migratedRules,
+        });
+      }
+
       // Validate and normalize rules
-      rules = storedRules
+      rules = migratedRules
         .filter((rule) => {
           return (
             rule &&
             typeof rule === 'object' &&
             typeof rule.id === 'string' &&
-            typeof rule.pattern === 'string' &&
-            typeof rule.type === 'string' &&
-            typeof rule.value === 'string' &&
-            typeof rule.textColor === 'string' &&
-            typeof rule.backgroundColor === 'string' &&
-            ['whole-phrase', 'comma-separated', 'regex'].includes(rule.type)
+            Array.isArray(rule.patterns) &&
+            rule.patterns.length > 0 &&
+            Array.isArray(rule.highlights) &&
+            rule.highlights.length > 0
           );
         })
         .map((rule) => ({
           ...rule,
-          bold: typeof rule.bold === 'boolean' ? rule.bold : false,
-          italic: typeof rule.italic === 'boolean' ? rule.italic : false,
-          underline:
-            typeof rule.underline === 'boolean' ? rule.underline : false,
-          ignoreCase:
-            typeof rule.ignoreCase === 'boolean' ? rule.ignoreCase : false,
           disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
+          highlights: rule.highlights.map((h) => ({
+            ...h,
+            bold: typeof h.bold === 'boolean' ? h.bold : false,
+            italic: typeof h.italic === 'boolean' ? h.italic : false,
+            underline: typeof h.underline === 'boolean' ? h.underline : false,
+            ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+          })),
         }));
     } catch (error) {
       console.warn('[highlight-text] Failed to load rules:', error);
       rules = [];
     }
   }
+
+  // ============================================================================
+  // Minimap
+  // ============================================================================
+
+  /** @type {HTMLElement} */
+  let minimapContainer;
+  /** @type {HTMLElement} */
+  let minimapViewport;
+  /** @type {HTMLElement} */
+  let minimapHighlights;
 
   /**
    * Update the minimap with highlight markers.
@@ -480,7 +535,6 @@
       return;
     }
 
-    // Clear existing markers
     minimapHighlights.innerHTML = '';
 
     const highlightedElements = document.querySelectorAll(
@@ -502,7 +556,6 @@
 
     minimapContainer.style.opacity = '1';
 
-    // Create a fragment to reduce reflows
     const fragment = document.createDocumentFragment();
 
     for (const element of highlightedElements) {
@@ -520,7 +573,6 @@
       marker.style.backgroundColor =
         window.getComputedStyle(element).backgroundColor;
 
-      // Store a reference to the highlighted element for click handling
       marker._highlightElement = element;
 
       fragment.appendChild(marker);
@@ -553,13 +605,6 @@
     minimapViewport.style.top = viewportTop + '%';
   }
 
-  /** @type {HTMLElement} */
-  let minimapContainer;
-  /** @type {HTMLElement} */
-  let minimapViewport;
-  /** @type {HTMLElement} */
-  let minimapHighlights;
-
   /**
    * Handles click events on the minimap.
    * @param {MouseEvent} event
@@ -568,7 +613,6 @@
     const target = /** @type {HTMLElement} */ (event.target);
 
     if (target.classList.contains('nenya-minimap-marker')) {
-      // It's a marker, scroll to the corresponding highlight
       if (target._highlightElement) {
         target._highlightElement.scrollIntoView({
           behavior: 'smooth',
@@ -576,7 +620,6 @@
         });
       }
     } else if (event.currentTarget === minimapContainer) {
-      // It's the minimap container itself, scroll proportionally
       const documentHeight = Math.max(
         document.body.scrollHeight,
         document.documentElement.scrollHeight,
@@ -587,7 +630,7 @@
       const scrollToY = proportionalY * documentHeight;
 
       window.scrollTo({
-        top: scrollToY - window.innerHeight / 2, // Center the view
+        top: scrollToY - window.innerHeight / 2,
         behavior: 'smooth',
       });
     }
@@ -667,6 +710,10 @@
     document.body.appendChild(minimapContainer);
   }
 
+  // ============================================================================
+  // Initialization
+  // ============================================================================
+
   /**
    * Initialize the highlight text functionality.
    * @returns {Promise<void>}
@@ -680,7 +727,7 @@
 
     // Listen for storage changes
     chrome.storage.onChanged.addListener((changes, areaName) => {
-      if (areaName === 'sync' && changes[HIGHLIGHT_TEXT_RULES_KEY]) {
+      if (areaName === 'local' && changes[HIGHLIGHT_TEXT_RULES_KEY]) {
         loadRules().then(() => {
           applyHighlighting();
         });
@@ -696,16 +743,13 @@
     const observer = new MutationObserver((mutations) => {
       let shouldReapply = false;
 
-      // Check if URL changed (for single-page applications)
       if (window.location.href !== currentUrl) {
         currentUrl = window.location.href;
         shouldReapply = true;
       }
 
-      // Check for new content
       for (const mutation of mutations) {
         if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          // Check if any added nodes contain text
           for (const node of mutation.addedNodes) {
             if (
               node.nodeType === Node.TEXT_NODE ||
@@ -728,12 +772,10 @@
       subtree: true,
     });
 
-    // Also listen for popstate events (back/forward navigation)
     window.addEventListener('popstate', () => {
       debouncedApplyHighlighting();
     });
 
-    // Update minimap on scroll and resize
     const debouncedUpdateMinimapViewport = debounce(updateMinimapViewport, 50);
     window.addEventListener('scroll', debouncedUpdateMinimapViewport);
     window.addEventListener('resize', () => {
@@ -741,7 +783,6 @@
       updateMinimapViewport();
     });
 
-    // Handle clicks on the minimap
     if (minimapContainer) {
       minimapContainer.addEventListener('click', handleMinimapClick);
     }

@@ -1,10 +1,4 @@
-# Highlight Text Specification
-
-## Purpose
-
-The highlight text feature allows users to define rules that automatically highlight specific text patterns on matching web pages. Rules support multiple URL patterns and multiple highlight definitions per rule, with backward compatibility for legacy single-pattern rules.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: The options page SHALL load and sanitize highlight rules from sync storage
 
@@ -71,7 +65,7 @@ The popup MUST allow users to quickly jump to the highlight text options section
 - **GIVEN** the user clicks the 🟨 shortcut in `src/popup/popup.js`,
 - **WHEN** `handleHighlightText()` resolves the active tab,
 - **THEN** it MUST require a valid `tab.url`, store `{ highlightTextPrefillUrl: url }` in `chrome.storage.local`, call `chrome.runtime.openOptionsPage()`, close the popup on success, and surface a status error if no tab/URL is found,
-- **AND** once the options page loads, `checkForPrefillUrl()` MUST fetch and delete that local key, wait (retrying up to ~2.5 s) for `window.navigationManager`, navigate to `#highlight-text-heading`, reveal that section, focus the pattern input, and add the stored URL as the first pattern chip so the user can immediately add more patterns or highlights.
+- **AND** once the options page loads, `checkForPrefillUrl()` MUST fetch and delete that local key, wait (retrying up to ~2.5 s) for `window.navigationManager`, navigate to `#highlight-text-heading`, reveal that section, focus the pattern input, and add the stored URL as the first pattern chip so the user can immediately add more patterns or highlights.
 
 ### Requirement: The highlight text content script SHALL apply stored rules to matching pages
 
@@ -96,8 +90,8 @@ The content script MUST re-apply highlights when DOM content changes, URL change
 
 #### Scenario: Reapply highlights when the DOM or URL changes
 - **GIVEN** the page mutates after the initial pass,
-- **THEN** the MutationObserver MUST watch `document.body` for added nodes, detect when `window.location.href` changes in SPA navigations, and debounce `applyHighlighting()` (100 ms) whenever new text content appears or the URL differs from the last pass,
-- **AND** `popstate` events, window `resize`, and scroll listeners MUST either trigger a debounced reapply (resize) or refresh the minimap viewport box so the overlay tracks the current view.
+- **THEN** the MutationObserver MUST watch `document.body` for added nodes, detect when `window.location.href` changes in SPA navigations, and debounce `applyHighlighting()` whenever new text content appears or the URL differs from the last pass,
+- **AND** `popstate` events, window `resize`, and scroll listeners MUST trigger appropriate updates.
 
 #### Scenario: Respond to storage edits
 - **GIVEN** the user edits highlight rules elsewhere,
@@ -110,14 +104,15 @@ The minimap MUST display markers for all highlighted elements on the page, color
 
 #### Scenario: Render markers and viewport indicator
 - **GIVEN** `applyHighlighting()` finishes,
-- **THEN** `updateMinimap()` MUST query all elements whose class name starts with `nenya-highlight-`, hide the minimap (`opacity: 0`) when none exist, or otherwise create 3 px-tall markers positioned by the match’s top offset divided by total document height,
-- **AND** markers MUST inherit the highlight’s computed background color so groups of matches are visually tied to their rule styling,
-- **AND** `updateMinimapViewport()` MUST set the viewport overlay height/position proportional to `window.innerHeight / documentHeight` and `scrollY / documentHeight`, updating on scroll/resize via debounced listeners.
+- **THEN** `updateMinimap()` MUST query all elements whose class name starts with `nenya-highlight-`, hide the minimap when none exist, or create 3 px-tall markers positioned proportionally by document height,
+- **AND** markers MUST inherit the highlight's computed background color from the corresponding highlight entry.
 
 #### Scenario: Allow users to jump via the minimap
 - **GIVEN** the minimap is visible,
 - **WHEN** the user clicks a marker,
 - **THEN** the handler MUST scroll the associated highlight element into centered view with smooth behavior.
+
+## ADDED Requirements
 
 ### Requirement: Backward compatibility migration SHALL convert legacy rules to the new structure
 
@@ -139,4 +134,3 @@ The migration utility MUST detect legacy single-pattern highlight rules and conv
 - **GIVEN** the user imports settings or restores a backup containing legacy highlight rules,
 - **WHEN** the import/restore flow processes `highlightTextRules`,
 - **THEN** it MUST call `migrateHighlightRules()` before merging or applying the rules to storage.
-

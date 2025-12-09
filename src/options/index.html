@@ -960,84 +960,32 @@
 
             <div class="options-card mb-6">
               <form id="highlightTextRuleForm" class="space-y-4" novalidate>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label class="form-label">URL Pattern</label>
-                    <input id="highlightTextPatternInput" class="nenya-input font-mono text-sm" type="text"
-                      autocomplete="off" placeholder="https://example.com/*" required>
-                  </div>
-                  <div>
-                    <label class="form-label">Type</label>
-                    <select id="highlightTextTypeSelect" class="nenya-input" required>
-                      <option value="whole-phrase">Whole phrase matches</option>
-                      <option value="comma-separated">Comma separated words</option>
-                      <option value="regex">Regular expression</option>
-                    </select>
-                  </div>
-                </div>
+                <!-- URL Patterns Section -->
                 <div>
-                  <label class="form-label">Value</label>
-                  <textarea id="highlightTextValueInput" class="nenya-input font-mono text-sm resize-none"
-                    placeholder="Enter text to highlight or regex pattern" rows="3" required></textarea>
-                </div>
-                <label class="flex items-center gap-3 p-3 bg-base-200 rounded-xl cursor-pointer">
-                  <input id="highlightTextIgnoreCaseInput" class="checkbox checkbox-sm checkbox-primary"
-                    type="checkbox">
-                  <span class="text-sm">Ignore case when matching</span>
-                </label>
-                <div class="space-y-3">
-                  <span class="form-label">Appearance</span>
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <label class="text-xs text-base-content/50 mb-2 block">Text color</label>
-                      <div class="flex items-center gap-3">
-                        <input id="highlightTextColorInput"
-                          class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer" type="color"
-                          value="#000000">
-                        <div class="flex-1 flex items-center gap-2">
-                          <input id="highlightTextColorAlphaInput" class="range range-xs range-primary flex-1"
-                            type="range" min="0" max="100" value="100">
-                          <span id="highlightTextColorAlphaLabel"
-                            class="text-xs text-base-content/50 w-10 text-right">100%</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label class="text-xs text-base-content/50 mb-2 block">Background color</label>
-                      <div class="flex items-center gap-3">
-                        <input id="highlightTextBackgroundInput"
-                          class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer" type="color"
-                          value="#ffff00">
-                        <div class="flex-1 flex items-center gap-2">
-                          <input id="highlightTextBackgroundAlphaInput" class="range range-xs range-primary flex-1"
-                            type="range" min="0" max="100" value="100">
-                          <span id="highlightTextBackgroundAlphaLabel"
-                            class="text-xs text-base-content/50 w-10 text-right">100%</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label class="text-xs text-base-content/50 mb-2 block">Text styling</label>
-                      <div class="flex gap-3 mt-2">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                          <input id="highlightTextBoldInput" class="checkbox checkbox-sm checkbox-primary"
-                            type="checkbox">
-                          <span class="text-sm font-bold">B</span>
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer">
-                          <input id="highlightTextItalicInput" class="checkbox checkbox-sm checkbox-primary"
-                            type="checkbox">
-                          <span class="text-sm italic">I</span>
-                        </label>
-                        <label class="flex items-center gap-2 cursor-pointer">
-                          <input id="highlightTextUnderlineInput" class="checkbox checkbox-sm checkbox-primary"
-                            type="checkbox">
-                          <span class="text-sm underline">U</span>
-                        </label>
-                      </div>
-                    </div>
+                  <label class="form-label">URL Patterns</label>
+                  <div id="highlightTextPatternsChips" class="flex flex-wrap gap-2 mb-2"></div>
+                  <div class="flex items-center gap-2">
+                    <input id="highlightTextPatternInput" class="nenya-input font-mono text-sm flex-1" type="text"
+                      autocomplete="off" placeholder="https://example.com/*">
+                    <button id="highlightTextAddPatternBtn" type="button" class="btn btn-sm btn-outline">Add</button>
                   </div>
+                  <p id="highlightTextPatternError" class="text-xs text-error mt-1" hidden></p>
                 </div>
+
+                <!-- Highlights Accordion Section -->
+                <div>
+                  <div class="flex items-center justify-between mb-2">
+                    <label class="form-label mb-0">Highlights</label>
+                    <button id="highlightTextAddHighlightBtn" type="button" class="btn btn-xs btn-ghost gap-1">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
+                      </svg>
+                      Add highlight
+                    </button>
+                  </div>
+                  <div id="highlightTextHighlightsAccordion" class="space-y-2"></div>
+                </div>
+
                 <p id="highlightTextFormError" class="text-sm text-error" hidden></p>
                 <div class="flex gap-3">
                   <button id="highlightTextSaveButton" class="nenya-btn nenya-btn-vibrant" type="submit">Add
@@ -1057,31 +1005,15 @@
               <div id="highlightTextRuleDetails" class="mt-6 pt-6 border-t border-base-300" hidden>
                 <div class="flex items-center justify-between mb-4">
                   <h3 class="text-lg font-semibold">Rule Details</h3>
-                  <div class="flex gap-2 items-center">
-                    <span id="highlightTextRuleTypeSummary" class="nenya-badge nenya-badge-blue"></span>
-                    <div class="flex gap-1">
-                      <div id="highlightTextRuleColorPreview" class="w-5 h-5 rounded border border-base-300"></div>
-                      <div id="highlightTextRuleBackgroundPreview" class="w-5 h-5 rounded border border-base-300"></div>
-                    </div>
-                    <div id="highlightTextRuleStylePreview" class="flex gap-1 text-xs">
-                      <span id="highlightTextRuleBoldPreview" class="hidden font-bold">B</span>
-                      <span id="highlightTextRuleItalicPreview" class="hidden italic">I</span>
-                      <span id="highlightTextRuleUnderlinePreview" class="hidden underline">U</span>
-                    </div>
-                  </div>
                 </div>
                 <dl class="space-y-3 text-sm">
                   <div>
-                    <dt class="form-label">Pattern</dt>
-                    <dd id="highlightTextRulePatternDetail" class="font-mono"></dd>
+                    <dt class="form-label">Patterns</dt>
+                    <dd id="highlightTextRulePatternsDetail" class="font-mono"></dd>
                   </div>
                   <div>
-                    <dt class="form-label">Value</dt>
-                    <dd id="highlightTextRuleValueDetail" class="font-mono"></dd>
-                  </div>
-                  <div>
-                    <dt class="form-label">Ignore Case</dt>
-                    <dd id="highlightTextRuleIgnoreCaseDetail"></dd>
+                    <dt class="form-label">Highlights</dt>
+                    <dd id="highlightTextRuleHighlightsDetail"></dd>
                   </div>
                   <div class="grid grid-cols-2 gap-4">
                     <div>
@@ -1611,10 +1543,14 @@
       Manual backup keeps your settings safe in Raindrop. Connect your account to enable backup and restore.
     </div>
     <div class="options-floating-actions">
-      <button id="optionsFloatingBackupButton" class="nenya-btn nenya-btn-secondary floating-btn" type="button">📤 Backup</button>
-      <button id="optionsFloatingRestoreButton" class="nenya-btn nenya-btn-secondary floating-btn" type="button">📥 Restore</button>
-      <button id="optionsFloatingExportButton" class="nenya-btn nenya-btn-ghost floating-btn" type="button">📦 Export</button>
-      <button id="optionsFloatingImportButton" class="nenya-btn nenya-btn-ghost floating-btn" type="button">📁 Import</button>
+      <button id="optionsFloatingBackupButton" class="nenya-btn nenya-btn-secondary floating-btn" type="button">📤
+        Backup</button>
+      <button id="optionsFloatingRestoreButton" class="nenya-btn nenya-btn-secondary floating-btn" type="button">📥
+        Restore</button>
+      <button id="optionsFloatingExportButton" class="nenya-btn nenya-btn-ghost floating-btn" type="button">📦
+        Export</button>
+      <button id="optionsFloatingImportButton" class="nenya-btn nenya-btn-ghost floating-btn" type="button">📁
+        Import</button>
       <input id="optionsFloatingImportFileInput" type="file" accept="application/json" class="hidden" />
     </div>
   </div>
