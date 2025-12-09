@@ -109,9 +109,16 @@
       textColor: legacyRule.textColor || '#000000',
       backgroundColor: legacyRule.backgroundColor || '#ffff00',
       bold: typeof legacyRule.bold === 'boolean' ? legacyRule.bold : false,
-      italic: typeof legacyRule.italic === 'boolean' ? legacyRule.italic : false,
-      underline: typeof legacyRule.underline === 'boolean' ? legacyRule.underline : false,
-      ignoreCase: typeof legacyRule.ignoreCase === 'boolean' ? legacyRule.ignoreCase : false,
+      italic:
+        typeof legacyRule.italic === 'boolean' ? legacyRule.italic : false,
+      underline:
+        typeof legacyRule.underline === 'boolean'
+          ? legacyRule.underline
+          : false,
+      ignoreCase:
+        typeof legacyRule.ignoreCase === 'boolean'
+          ? legacyRule.ignoreCase
+          : false,
     };
 
     /** @type {HighlightTextRuleSettings} */
@@ -167,6 +174,8 @@
   let rules = [];
   /** @type {Map<string, HTMLElement[]>} */
   let highlightedElements = new Map();
+  /** @type {MutationObserver|null} */
+  let domObserver = null;
 
   // ============================================================================
   // URL Pattern Matching
@@ -270,14 +279,19 @@
         const index = searchText.indexOf(searchValue);
         if (index !== -1) {
           const beforeText = text.substring(0, index);
-          const matchText = text.substring(index, index + highlight.value.length);
+          const matchText = text.substring(
+            index,
+            index + highlight.value.length,
+          );
           const afterText = text.substring(index + highlight.value.length);
 
           const fragment = document.createDocumentFragment();
           if (beforeText) {
             fragment.appendChild(document.createTextNode(beforeText));
           }
-          fragment.appendChild(createHighlightElement(matchText, ruleId, highlight));
+          fragment.appendChild(
+            createHighlightElement(matchText, ruleId, highlight),
+          );
           if (afterText) {
             fragment.appendChild(document.createTextNode(afterText));
           }
@@ -307,7 +321,9 @@
             if (beforeText) {
               fragment.appendChild(document.createTextNode(beforeText));
             }
-            fragment.appendChild(createHighlightElement(matchText, ruleId, highlight));
+            fragment.appendChild(
+              createHighlightElement(matchText, ruleId, highlight),
+            );
             if (afterText) {
               fragment.appendChild(document.createTextNode(afterText));
             }
@@ -337,7 +353,9 @@
                     ),
                   );
                 }
-                fragment.appendChild(createHighlightElement(match[0], ruleId, highlight));
+                fragment.appendChild(
+                  createHighlightElement(match[0], ruleId, highlight),
+                );
                 lastIndex = match.index + match[0].length;
               }
             }
@@ -394,71 +412,100 @@
    * @returns {void}
    */
   function applyHighlighting() {
-    removeAllHighlights();
-    highlightedElements.clear();
-
-    const currentUrl = window.location.href;
-    const applicableRules = rules.filter(
-      (rule) => !rule.disabled && matchesUrlPatterns(currentUrl, rule.patterns),
-    );
-
-    if (applicableRules.length === 0) {
-      updateMinimap();
-      return;
+    // Disconnect observer to prevent feedback loop from our own DOM changes
+    if (domObserver) {
+      domObserver.disconnect();
     }
 
-    const walker = document.createTreeWalker(
-      document.body,
-      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-      {
-        acceptNode: (node) => {
-          if (node.nodeType === Node.TEXT_NODE) {
-            return NodeFilter.FILTER_ACCEPT;
-          }
-          if (node.nodeType === Node.ELEMENT_NODE) {
-            const element = /** @type {HTMLElement} */ (node);
-            const tagName = element.tagName.toLowerCase();
-            if (
-              ['script', 'style', 'code', 'pre', 'textarea', 'input'].includes(
-                tagName,
-              )
-            ) {
-              return NodeFilter.FILTER_REJECT;
+    try {
+      removeAllHighlights();
+      highlightedElements.clear();
+
+      const currentUrl = window.location.href;
+      const applicableRules = rules.filter(
+        (rule) =>
+          !rule.disabled && matchesUrlPatterns(currentUrl, rule.patterns),
+      );
+
+      if (applicableRules.length === 0) {
+        updateMinimap();
+        return;
+      }
+
+      const walker = document.createTreeWalker(
+        document.body,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              return NodeFilter.FILTER_ACCEPT;
             }
-            if (element.classList.toString().includes(HIGHLIGHT_CLASS_PREFIX)) {
-              return NodeFilter.FILTER_REJECT;
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = /** @type {HTMLElement} */ (node);
+              const tagName = element.tagName.toLowerCase();
+              if (
+                [
+                  'script',
+                  'style',
+                  'code',
+                  'pre',
+                  'textarea',
+                  'input',
+                ].includes(tagName)
+              ) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              if (
+                element.classList.toString().includes(HIGHLIGHT_CLASS_PREFIX)
+              ) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              return NodeFilter.FILTER_ACCEPT;
             }
-            return NodeFilter.FILTER_ACCEPT;
-          }
-          return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_REJECT;
+          },
         },
-      },
-    );
+      );
 
-    const nodesToProcess = [];
-    let node;
-    while ((node = walker.nextNode())) {
-      nodesToProcess.push(node);
-    }
+      const nodesToProcess = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        nodesToProcess.push(node);
+      }
 
-    // Process text nodes for highlighting
-    // For each text node, apply all highlights from all applicable rules
-    for (const node of nodesToProcess) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        let nodeProcessed = false;
-        for (const rule of applicableRules) {
-          if (nodeProcessed) break;
-          for (const highlight of rule.highlights) {
-            if (highlightTextNode(/** @type {Text} */ (node), rule.id, highlight)) {
-              nodeProcessed = true;
-              break;
+      // Process text nodes for highlighting
+      // For each text node, apply all highlights from all applicable rules
+      for (const node of nodesToProcess) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          let nodeProcessed = false;
+          for (const rule of applicableRules) {
+            if (nodeProcessed) break;
+            for (const highlight of rule.highlights) {
+              if (
+                highlightTextNode(
+                  /** @type {Text} */ (node),
+                  rule.id,
+                  highlight,
+                )
+              ) {
+                nodeProcessed = true;
+                break;
+              }
             }
           }
         }
       }
-    }
 
-    updateMinimap();
+      updateMinimap();
+    } finally {
+      // Reconnect observer after DOM changes are complete
+      if (domObserver && document.body) {
+        domObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+      }
+    }
   }
 
   /**
@@ -476,7 +523,8 @@
       }
 
       // Migrate legacy rules
-      const { rules: migratedRules, migrated } = migrateHighlightRules(storedRules);
+      const { rules: migratedRules, migrated } =
+        migrateHighlightRules(storedRules);
 
       // Save back if migration occurred
       if (migrated) {
@@ -506,7 +554,8 @@
             bold: typeof h.bold === 'boolean' ? h.bold : false,
             italic: typeof h.italic === 'boolean' ? h.italic : false,
             underline: typeof h.underline === 'boolean' ? h.underline : false,
-            ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+            ignoreCase:
+              typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
           })),
         }));
     } catch (error) {
@@ -738,9 +787,45 @@
     let currentUrl = window.location.href;
 
     // Re-apply highlighting when DOM changes (for dynamic content)
-    const debouncedApplyHighlighting = debounce(applyHighlighting, 100);
+    const debouncedApplyHighlighting = debounce(applyHighlighting, 500);
 
-    const observer = new MutationObserver((mutations) => {
+    /**
+     * Check if a node is part of our highlight/minimap system.
+     * @param {Node} node
+     * @returns {boolean}
+     */
+    function isOwnNode(node) {
+      if (!node) return false;
+
+      // Check if it's one of our elements
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        const element = /** @type {HTMLElement} */ (node);
+        const className = element.className || '';
+        const id = element.id || '';
+        if (
+          className.includes(HIGHLIGHT_CLASS_PREFIX) ||
+          className.includes('nenya-minimap') ||
+          id.includes('nenya-minimap')
+        ) {
+          return true;
+        }
+      }
+
+      // Check if node is inside our elements
+      if (node.parentElement) {
+        const parent = node.parentElement;
+        if (
+          parent.closest('#nenya-minimap-container') ||
+          parent.closest('[class*="' + HIGHLIGHT_CLASS_PREFIX + '"]')
+        ) {
+          return true;
+        }
+      }
+
+      return false;
+    }
+
+    domObserver = new MutationObserver((mutations) => {
       let shouldReapply = false;
 
       if (window.location.href !== currentUrl) {
@@ -748,17 +833,60 @@
         shouldReapply = true;
       }
 
-      for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-          for (const node of mutation.addedNodes) {
-            if (
-              node.nodeType === Node.TEXT_NODE ||
-              (node.nodeType === Node.ELEMENT_NODE && node.textContent)
-            ) {
-              shouldReapply = true;
-              break;
+      if (!shouldReapply) {
+        for (const mutation of mutations) {
+          // Skip mutations inside our own elements
+          if (mutation.target && isOwnNode(mutation.target)) {
+            continue;
+          }
+
+          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+            for (const node of mutation.addedNodes) {
+              // Skip nodes that are part of our highlight system
+              if (isOwnNode(node)) {
+                continue;
+              }
+
+              // Only trigger for meaningful content additions
+              if (node.nodeType === Node.ELEMENT_NODE) {
+                const element = /** @type {HTMLElement} */ (node);
+                // Skip empty elements and certain tag types
+                const tagName = element.tagName.toLowerCase();
+                if (
+                  [
+                    'script',
+                    'style',
+                    'link',
+                    'meta',
+                    'br',
+                    'hr',
+                    'img',
+                    'svg',
+                    'canvas',
+                    'video',
+                    'audio',
+                    'iframe',
+                  ].includes(tagName)
+                ) {
+                  continue;
+                }
+                // Only trigger if there's actual text content
+                const text = element.textContent || '';
+                if (text.trim().length > 0) {
+                  shouldReapply = true;
+                  break;
+                }
+              } else if (node.nodeType === Node.TEXT_NODE) {
+                const text = node.textContent || '';
+                if (text.trim().length > 0) {
+                  shouldReapply = true;
+                  break;
+                }
+              }
             }
           }
+
+          if (shouldReapply) break;
         }
       }
 
@@ -767,7 +895,7 @@
       }
     });
 
-    observer.observe(document.body, {
+    domObserver.observe(document.body, {
       childList: true,
       subtree: true,
     });
