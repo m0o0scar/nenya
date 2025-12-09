@@ -20,7 +20,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 - **Cross-Browser Sync:** Seamlessly move your projects and data between different browsers
 - **Raindrop.io Integration:** Full two-way sync with Raindrop.io bookmarks
   - Pull collections from Raindrop
-  - Save current tabs to Raindrop Unsorted
+  - Save current tabs to Raindrop Unsorted (with optional custom title prompt)
   - Encrypt & Save to Raindrop Unsorted via password-protected links
   - Mirror Raindrop collections as browser bookmarks
   - Automatic background synchronization
@@ -56,9 +56,13 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 - **Video Controller:** Enhanced video playback controls with keyboard shortcuts and per-site auto fullscreen rules
 - **Picture-in-Picture:** Quick PiP mode for any video on the page
-- **Text Highlighting:** Persistent text highlights on web pages
+- **Text Highlighting:** Persistent text highlights on web pages with powerful rule management
+  - Multiple patterns per rule to target similar content across different pages
+  - Multiple highlight styles per rule with individual color settings
+  - Pattern chip UI for easy pattern management
+  - Collapsible accordion UI for highlight configuration
 - **Bright Mode:** Force light/bright mode on any website (override dark themes)
-- **Element Blocker:** Visual element picker to permanently hide distracting page elements
+- **Element Blocker:** Visual element picker to permanently hide distracting page elements (instant apply—no refresh needed)
 - **Custom JavaScript:** Inject custom JS code into specific websites
 - **Custom CSS:** Inject custom CSS styles into specific websites
 - **YouTube Enhancements:** Special optimizations and fixes for YouTube
@@ -66,7 +70,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 ### 🔐 Auto Features
 
-- **Auto Google Login:** Automatically log in with your preferred Google account on specified sites
+- **Auto Google Login:** Automatically log in with your preferred Google account on specified sites (enhanced button recognition for continue/cancel flows)
 
 ### 🔧 URL Processing
 
