@@ -10,6 +10,7 @@ import {
   isValidUrlPattern,
 } from './brightMode.js';
 import { loadRules as loadHighlightTextRules } from './highlightText.js';
+import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 import { loadRules as loadVideoEnhancementRules } from './videoEnhancements.js';
 import { loadLLMPrompts } from './llmPrompts.js';
 import { loadRules as loadUrlProcessRules } from './urlProcessRules.js';
@@ -85,19 +86,8 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 /**
- * @typedef {Object} HighlightTextRuleSettings
- * @property {string} id
- * @property {string} pattern
- * @property {'whole-phrase' | 'comma-separated' | 'regex'} type
- * @property {string} value
- * @property {string} textColor
- * @property {string} backgroundColor
- * @property {boolean} bold
- * @property {boolean} italic
- * @property {boolean} underline
- * @property {boolean} ignoreCase
- * @property {string} [createdAt]
- * @property {string} [updatedAt]
+ * @typedef {import('../shared/highlightTextMigration.js').HighlightEntry} HighlightEntry
+ * @typedef {import('../shared/highlightTextMigration.js').HighlightTextRuleSettings} HighlightTextRuleSettings
  */
 
 /**
@@ -457,6 +447,7 @@ function normalizeBrightModePatterns(value) {
 
 /**
  * Normalize highlight text rules from storage or input.
+ * Handles both legacy single-pattern format and new multi-pattern/highlight format.
  * @param {unknown} value
  * @returns {HighlightTextRuleSettings[]}
  */
@@ -465,99 +456,112 @@ function normalizeHighlightTextRules(value) {
     return [];
   }
 
+  // First, migrate any legacy rules to the new format
+  const { rules: migratedRules } = migrateHighlightRules(value);
+
   /** @type {HighlightTextRuleSettings[]} */
   const sanitized = [];
 
-  value.forEach((entry) => {
+  migratedRules.forEach((entry) => {
     if (!entry || typeof entry !== 'object') {
       return;
     }
-    const raw =
-      /** @type {{ id?: unknown, pattern?: unknown, type?: unknown, value?: unknown, textColor?: unknown, backgroundColor?: unknown, bold?: unknown, italic?: unknown, underline?: unknown, ignoreCase?: unknown, createdAt?: unknown, updatedAt?: unknown }} */ (
-        entry
-      );
-    const pattern = typeof raw.pattern === 'string' ? raw.pattern.trim() : '';
-    if (!pattern) {
+
+    // Validate required fields for new format
+    if (!Array.isArray(entry.patterns) || entry.patterns.length === 0) {
+      return;
+    }
+    if (!Array.isArray(entry.highlights) || entry.highlights.length === 0) {
       return;
     }
 
-    if (!isValidUrlPattern(pattern)) {
-      console.warn(
-        '[importExport:highlightText] Ignoring invalid pattern:',
-        pattern,
-      );
-      return;
-    }
-
-    const type = raw.type;
-    if (
-      typeof type !== 'string' ||
-      !['whole-phrase', 'comma-separated', 'regex'].includes(type)
-    ) {
-      console.warn('[importExport:highlightText] Ignoring invalid type:', type);
-      return;
-    }
-
-    const valueText = typeof raw.value === 'string' ? raw.value.trim() : '';
-    if (!valueText) {
-      return;
-    }
-
-    if (type === 'regex') {
-      try {
-        // eslint-disable-next-line no-new
-        new RegExp(valueText);
-      } catch (error) {
-        console.warn(
-          '[importExport:highlightText] Ignoring invalid regex:',
-          valueText,
-          error,
-        );
-        return;
+    // Validate all patterns
+    const validPatterns = entry.patterns.filter((p) => {
+      if (typeof p !== 'string' || !p.trim()) {
+        return false;
       }
+      if (!isValidUrlPattern(p)) {
+        console.warn(
+          '[importExport:highlightText] Ignoring invalid pattern:',
+          p,
+        );
+        return false;
+      }
+      return true;
+    });
+
+    if (validPatterns.length === 0) {
+      return;
     }
 
-    const textColor =
-      typeof raw.textColor === 'string' ? raw.textColor : '#000000';
-    const backgroundColor =
-      typeof raw.backgroundColor === 'string' ? raw.backgroundColor : '#ffff00';
-    const bold = typeof raw.bold === 'boolean' ? raw.bold : false;
-    const italic = typeof raw.italic === 'boolean' ? raw.italic : false;
-    const underline =
-      typeof raw.underline === 'boolean' ? raw.underline : false;
-    const ignoreCase =
-      typeof raw.ignoreCase === 'boolean' ? raw.ignoreCase : false;
+    // Validate all highlights
+    const validHighlights = entry.highlights.filter((h) => {
+      if (!h || typeof h !== 'object') {
+        return false;
+      }
+      if (typeof h.value !== 'string' || !h.value.trim()) {
+        return false;
+      }
+      const validTypes = ['whole-phrase', 'comma-separated', 'regex'];
+      if (!validTypes.includes(h.type)) {
+        console.warn('[importExport:highlightText] Ignoring invalid type:', h.type);
+        return false;
+      }
+      if (h.type === 'regex') {
+        try {
+          new RegExp(h.value);
+        } catch (error) {
+          console.warn(
+            '[importExport:highlightText] Ignoring invalid regex:',
+            h.value,
+            error,
+          );
+          return false;
+        }
+      }
+      return true;
+    }).map((h) => ({
+      id: typeof h.id === 'string' && h.id.trim() ? h.id.trim() : generateRuleId(),
+      type: /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (h.type),
+      value: h.value.trim(),
+      textColor: typeof h.textColor === 'string' ? h.textColor : '#000000',
+      backgroundColor: typeof h.backgroundColor === 'string' ? h.backgroundColor : '#ffff00',
+      bold: typeof h.bold === 'boolean' ? h.bold : false,
+      italic: typeof h.italic === 'boolean' ? h.italic : false,
+      underline: typeof h.underline === 'boolean' ? h.underline : false,
+      ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+    }));
+
+    if (validHighlights.length === 0) {
+      return;
+    }
 
     const id =
-      typeof raw.id === 'string' && raw.id.trim()
-        ? raw.id.trim()
+      typeof entry.id === 'string' && entry.id.trim()
+        ? entry.id.trim()
         : generateRuleId();
 
     /** @type {HighlightTextRuleSettings} */
     const normalized = {
       id,
-      pattern,
-      type: /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (type),
-      value: valueText,
-      textColor,
-      backgroundColor,
-      bold,
-      italic,
-      underline,
-      ignoreCase,
+      patterns: validPatterns,
+      highlights: validHighlights,
     };
 
-    if (typeof raw.createdAt === 'string') {
-      normalized.createdAt = raw.createdAt;
+    if (typeof entry.disabled === 'boolean') {
+      normalized.disabled = entry.disabled;
     }
-    if (typeof raw.updatedAt === 'string') {
-      normalized.updatedAt = raw.updatedAt;
+    if (typeof entry.createdAt === 'string') {
+      normalized.createdAt = entry.createdAt;
+    }
+    if (typeof entry.updatedAt === 'string') {
+      normalized.updatedAt = entry.updatedAt;
     }
 
     sanitized.push(normalized);
   });
 
-  return sanitized.sort((a, b) => a.pattern.localeCompare(b.pattern));
+  return sanitized.sort((a, b) => a.patterns[0].localeCompare(b.patterns[0]));
 }
 
 /**

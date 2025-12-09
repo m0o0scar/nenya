@@ -11,6 +11,7 @@ import {
   ensureBookmarkFolderPath,
 } from '../shared/bookmarkFolders.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
+import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / options backup';
@@ -311,6 +312,11 @@ async function applyBackupPayload(payload) {
       : {};
   map[PROVIDER_ID] = { parentFolderId, rootFolderName };
 
+  // Migrate legacy highlight text rules to new format
+  const { rules: migratedHighlightRules } = migrateHighlightRules(
+    payload.highlightTextRules || [],
+  );
+
   /** @type {Record<string, any>} */
   const updates = {
     [ROOT_FOLDER_SETTINGS_KEY]: map,
@@ -319,7 +325,7 @@ async function applyBackupPayload(payload) {
     [AUTO_RELOAD_RULES_KEY]: payload.autoReloadRules || [],
     [DARK_MODE_RULES_KEY]: payload.darkModeRules || [],
     [BRIGHT_MODE_WHITELIST_KEY]: payload.brightModeWhitelist || [],
-    [HIGHLIGHT_TEXT_RULES_KEY]: payload.highlightTextRules || [],
+    [HIGHLIGHT_TEXT_RULES_KEY]: migratedHighlightRules,
     [VIDEO_ENHANCEMENT_RULES_KEY]: payload.videoEnhancementRules || [],
     [BLOCK_ELEMENT_RULES_KEY]: payload.blockElementRules || [],
     [CUSTOM_CODE_RULES_KEY]: payload.customCodeRules || [],

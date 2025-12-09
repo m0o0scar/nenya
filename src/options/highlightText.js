@@ -1,25 +1,22 @@
 /* global chrome, URLPattern */
 
+import {
+  generateHighlightId,
+  migrateHighlightRules,
+} from '../shared/highlightTextMigration.js';
+
 /**
- * @typedef {Object} HighlightTextRuleSettings
- * @property {string} id
- * @property {string} pattern
- * @property {'whole-phrase' | 'comma-separated' | 'regex'} type
- * @property {string} value
- * @property {string} textColor
- * @property {string} backgroundColor
- * @property {boolean} bold
- * @property {boolean} italic
- * @property {boolean} underline
- * @property {boolean} ignoreCase
- * @property {boolean} [disabled]
- * @property {string} [createdAt]
- * @property {string} [updatedAt]
+ * @typedef {import('../shared/highlightTextMigration.js').HighlightEntry} HighlightEntry
+ * @typedef {import('../shared/highlightTextMigration.js').HighlightTextRuleSettings} HighlightTextRuleSettings
  */
 
 const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
 const DEFAULT_TEXT_COLOR = '#000000';
 const DEFAULT_BACKGROUND_COLOR = '#ffff00';
+
+// ============================================================================
+// DOM Elements
+// ============================================================================
 
 const form = /** @type {HTMLFormElement | null} */ (
   document.getElementById('highlightTextRuleForm')
@@ -27,41 +24,20 @@ const form = /** @type {HTMLFormElement | null} */ (
 const patternInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('highlightTextPatternInput')
 );
-const typeSelect = /** @type {HTMLSelectElement | null} */ (
-  document.getElementById('highlightTextTypeSelect')
+const patternsChipsContainer = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('highlightTextPatternsChips')
 );
-const valueInput = /** @type {HTMLTextAreaElement | null} */ (
-  document.getElementById('highlightTextValueInput')
+const addPatternBtn = /** @type {HTMLButtonElement | null} */ (
+  document.getElementById('highlightTextAddPatternBtn')
 );
-const textColorInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextColorInput')
+const patternError = /** @type {HTMLParagraphElement | null} */ (
+  document.getElementById('highlightTextPatternError')
 );
-const textColorAlphaInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextColorAlphaInput')
+const highlightsAccordion = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('highlightTextHighlightsAccordion')
 );
-const textColorAlphaLabel = /** @type {HTMLSpanElement | null} */ (
-  document.getElementById('highlightTextColorAlphaLabel')
-);
-const backgroundColorInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextBackgroundInput')
-);
-const backgroundColorAlphaInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextBackgroundAlphaInput')
-);
-const backgroundColorAlphaLabel = /** @type {HTMLSpanElement | null} */ (
-  document.getElementById('highlightTextBackgroundAlphaLabel')
-);
-const boldInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextBoldInput')
-);
-const italicInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextItalicInput')
-);
-const underlineInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextUnderlineInput')
-);
-const ignoreCaseInput = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('highlightTextIgnoreCaseInput')
+const addHighlightBtn = /** @type {HTMLButtonElement | null} */ (
+  document.getElementById('highlightTextAddHighlightBtn')
 );
 const formError = /** @type {HTMLParagraphElement | null} */ (
   document.getElementById('highlightTextFormError')
@@ -81,26 +57,28 @@ const rulesList = /** @type {HTMLDivElement | null} */ (
 const ruleDetails = /** @type {HTMLDivElement | null} */ (
   document.getElementById('highlightTextRuleDetails')
 );
-const ignoreCaseDetail = /** @type {HTMLElement | null} */ (
-  document.getElementById('highlightTextRuleIgnoreCaseDetail')
-);
-const boldPreview = /** @type {HTMLSpanElement | null} */ (
-  document.getElementById('highlightTextRuleBoldPreview')
-);
-const italicPreview = /** @type {HTMLSpanElement | null} */ (
-  document.getElementById('highlightTextRuleItalicPreview')
-);
-const underlinePreview = /** @type {HTMLSpanElement | null} */ (
-  document.getElementById('highlightTextRuleUnderlinePreview')
-);
+
+// ============================================================================
+// State
+// ============================================================================
 
 /** @type {HighlightTextRuleSettings[]} */
 let rules = [];
 /** @type {string | null} */
 let editingRuleId = null;
+/** @type {string[]} */
+let currentPatterns = [];
+/** @type {HighlightEntry[]} */
+let currentHighlights = [];
+/** @type {Set<string>} */
+let expandedHighlights = new Set();
+
+// ============================================================================
+// Utilities
+// ============================================================================
 
 /**
- * Generate a stable identifier for highlight text rules lacking one.
+ * Generate a stable identifier for rules.
  * @returns {string}
  */
 function generateRuleId() {
@@ -118,7 +96,6 @@ function generateRuleId() {
  */
 function isValidUrlPattern(pattern) {
   try {
-    // eslint-disable-next-line no-new
     new URLPattern(pattern);
     return true;
   } catch (error) {
@@ -133,7 +110,6 @@ function isValidUrlPattern(pattern) {
  */
 function isValidRegex(pattern) {
   try {
-    // eslint-disable-next-line no-new
     new RegExp(pattern);
     return true;
   } catch (error) {
@@ -266,167 +242,6 @@ function formatColorWithAlpha(hexColor, alpha) {
 }
 
 /**
- * Apply a color string to UI controls.
- * @param {HTMLInputElement | null} colorInputEl
- * @param {HTMLInputElement | null} alphaInputEl
- * @param {HTMLSpanElement | null} alphaLabelEl
- * @param {string} colorValue
- * @param {string} fallbackHex
- */
-function applyColorToInputs(colorInputEl, alphaInputEl, alphaLabelEl, colorValue, fallbackHex) {
-  const { hex, alpha } = parseColorWithAlpha(colorValue, fallbackHex);
-  if (colorInputEl) {
-    colorInputEl.value = hex;
-  }
-  if (alphaInputEl) {
-    alphaInputEl.value = String(Math.round(alpha * 100));
-  }
-  updateAlphaLabel(alphaInputEl, alphaLabelEl);
-}
-
-/**
- * Combine color and alpha inputs into a CSS color string.
- * @param {HTMLInputElement | null} colorInputEl
- * @param {HTMLInputElement | null} alphaInputEl
- * @param {string} fallbackHex
- * @returns {string}
- */
-function getColorFromInputs(colorInputEl, alphaInputEl, fallbackHex) {
-  const hex = colorInputEl ? colorInputEl.value : fallbackHex;
-  const alphaPercent = alphaInputEl ? clamp(Number(alphaInputEl.value), 0, 100) : 100;
-  return formatColorWithAlpha(hex, alphaPercent / 100);
-}
-
-/**
- * Update alpha percentage label next to a slider.
- * @param {HTMLInputElement | null} alphaInputEl
- * @param {HTMLSpanElement | null} labelEl
- */
-function updateAlphaLabel(alphaInputEl, labelEl) {
-  if (!alphaInputEl || !labelEl) {
-    return;
-  }
-  const percent = clamp(Number(alphaInputEl.value), 0, 100);
-  labelEl.textContent = `${percent}%`;
-}
-
-/**
- * Validate form data.
- * @returns {string | null} Error message or null if valid
- */
-function validateForm() {
-  if (!patternInput || !typeSelect || !valueInput) {
-    return 'Form elements not found';
-  }
-
-  const pattern = patternInput.value.trim();
-  const type = typeSelect.value;
-  const value = valueInput.value.trim();
-
-  if (!pattern) {
-    return 'URL pattern is required';
-  }
-
-  if (!isValidUrlPattern(pattern)) {
-    return 'Invalid URL pattern format';
-  }
-
-  if (!value) {
-    return 'Value is required';
-  }
-
-  if (type === 'regex' && !isValidRegex(value)) {
-    return 'Invalid regular expression pattern';
-  }
-
-  return null;
-}
-
-/**
- * Clear form and reset to add mode.
- */
-function clearForm() {
-  if (patternInput) patternInput.value = '';
-  if (typeSelect) typeSelect.value = 'whole-phrase';
-  if (valueInput) valueInput.value = '';
-  applyColorToInputs(textColorInput, textColorAlphaInput, textColorAlphaLabel, DEFAULT_TEXT_COLOR, DEFAULT_TEXT_COLOR);
-  applyColorToInputs(
-    backgroundColorInput,
-    backgroundColorAlphaInput,
-    backgroundColorAlphaLabel,
-    DEFAULT_BACKGROUND_COLOR,
-    DEFAULT_BACKGROUND_COLOR
-  );
-  if (boldInput) boldInput.checked = false;
-  if (italicInput) italicInput.checked = false;
-  if (underlineInput) underlineInput.checked = false;
-  if (ignoreCaseInput) ignoreCaseInput.checked = false;
-  if (formError) {
-    formError.textContent = '';
-    formError.hidden = true;
-  }
-  if (saveButton) saveButton.textContent = 'Add rule';
-  if (cancelEditButton) cancelEditButton.hidden = true;
-  editingRuleId = null;
-}
-
-/**
- * Load rules from storage.
- * @returns {Promise<HighlightTextRuleSettings[]>}
- */
-async function loadRules() {
-  try {
-    const result = await chrome.storage.local.get(HIGHLIGHT_TEXT_RULES_KEY);
-    const storedRules = result[HIGHLIGHT_TEXT_RULES_KEY];
-    
-    if (!Array.isArray(storedRules)) {
-      return [];
-    }
-
-    // Validate and normalize rules
-    return storedRules.filter(rule => {
-      return rule &&
-        typeof rule === 'object' &&
-        typeof rule.id === 'string' &&
-        typeof rule.pattern === 'string' &&
-        typeof rule.type === 'string' &&
-        typeof rule.value === 'string' &&
-        typeof rule.textColor === 'string' &&
-        typeof rule.backgroundColor === 'string' &&
-        ['whole-phrase', 'comma-separated', 'regex'].includes(rule.type) &&
-        isValidUrlPattern(rule.pattern) &&
-        (rule.type !== 'regex' || isValidRegex(rule.value));
-    }).map(rule => ({
-      ...rule,
-      bold: typeof rule.bold === 'boolean' ? rule.bold : false,
-      italic: typeof rule.italic === 'boolean' ? rule.italic : false,
-      underline: typeof rule.underline === 'boolean' ? rule.underline : false,
-      ignoreCase: typeof rule.ignoreCase === 'boolean' ? rule.ignoreCase : false,
-      disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
-    }));
-  } catch (error) {
-    console.warn('[highlightText] Failed to load rules:', error);
-    return [];
-  }
-}
-
-/**
- * Save rules to storage.
- * @param {HighlightTextRuleSettings[]} rulesToSave
- * @returns {Promise<void>}
- */
-async function saveRules(rulesToSave) {
-  try {
-    await chrome.storage.local.set({
-      [HIGHLIGHT_TEXT_RULES_KEY]: rulesToSave
-    });
-  } catch (error) {
-    console.warn('[highlightText] Failed to save rules:', error);
-    throw error;
-  }
-}
-
-/**
  * Format date for display.
  * @param {string | undefined} dateString
  * @returns {string}
@@ -458,6 +273,484 @@ function getTypeDisplayName(type) {
   }
 }
 
+// ============================================================================
+// Patterns Chip UI
+// ============================================================================
+
+/**
+ * Render the patterns chips.
+ */
+function renderPatternsChips() {
+  if (!patternsChipsContainer) return;
+
+  patternsChipsContainer.innerHTML = '';
+
+  currentPatterns.forEach((pattern, index) => {
+    const chip = document.createElement('div');
+    chip.className = 'badge badge-lg gap-1 font-mono text-xs';
+    chip.innerHTML = `
+      <span class="max-w-48 truncate">${escapeHtml(pattern)}</span>
+      <button type="button" class="btn btn-ghost btn-xs p-0 min-h-0 h-4 w-4" data-pattern-index="${index}">
+        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+        </svg>
+      </button>
+    `;
+    const removeBtn = chip.querySelector('button');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        currentPatterns.splice(index, 1);
+        renderPatternsChips();
+      });
+    }
+    patternsChipsContainer.appendChild(chip);
+  });
+}
+
+/**
+ * Handle adding a new pattern.
+ */
+function handleAddPattern() {
+  if (!patternInput || !patternError) return;
+
+  const pattern = patternInput.value.trim();
+  if (!pattern) {
+    patternError.textContent = 'Please enter a URL pattern';
+    patternError.hidden = false;
+    return;
+  }
+
+  if (!isValidUrlPattern(pattern)) {
+    patternError.textContent = 'Invalid URL pattern format';
+    patternError.hidden = false;
+    return;
+  }
+
+  if (currentPatterns.includes(pattern)) {
+    patternError.textContent = 'This pattern already exists';
+    patternError.hidden = false;
+    return;
+  }
+
+  patternError.hidden = true;
+  currentPatterns.push(pattern);
+  patternInput.value = '';
+  renderPatternsChips();
+}
+
+// ============================================================================
+// Highlights Accordion UI
+// ============================================================================
+
+/**
+ * Create the default highlight entry.
+ * @returns {HighlightEntry}
+ */
+function createDefaultHighlight() {
+  return {
+    id: generateHighlightId(),
+    type: 'whole-phrase',
+    value: '',
+    textColor: DEFAULT_TEXT_COLOR,
+    backgroundColor: DEFAULT_BACKGROUND_COLOR,
+    bold: false,
+    italic: false,
+    underline: false,
+    ignoreCase: false,
+  };
+}
+
+/**
+ * Escape HTML entities.
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+/**
+ * Render a single highlight accordion entry.
+ * @param {HighlightEntry} highlight
+ * @param {number} index
+ * @returns {HTMLElement}
+ */
+function createHighlightAccordionEntry(highlight, index) {
+  const isExpanded = expandedHighlights.has(highlight.id);
+  const canDelete = currentHighlights.length > 1;
+
+  const { hex: textHex, alpha: textAlpha } = parseColorWithAlpha(highlight.textColor, DEFAULT_TEXT_COLOR);
+  const { hex: bgHex, alpha: bgAlpha } = parseColorWithAlpha(highlight.backgroundColor, DEFAULT_BACKGROUND_COLOR);
+
+  const entry = document.createElement('div');
+  entry.className = 'border border-base-300 rounded-lg overflow-hidden';
+  entry.dataset.highlightId = highlight.id;
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'flex items-center gap-2 p-3 bg-base-200 cursor-pointer hover:bg-base-300 transition-colors';
+  header.innerHTML = `
+    <svg class="w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
+    </svg>
+    <span class="badge badge-outline badge-sm">${escapeHtml(getTypeDisplayName(highlight.type))}</span>
+    <span class="text-sm truncate flex-1 font-mono">${escapeHtml(highlight.value || '(empty)')}</span>
+    <div class="flex gap-1">
+      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(highlight.textColor)}"></div>
+      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(highlight.backgroundColor)}"></div>
+    </div>
+    ${highlight.bold ? '<span class="text-xs font-bold">B</span>' : ''}
+    ${highlight.italic ? '<span class="text-xs italic">I</span>' : ''}
+    ${highlight.underline ? '<span class="text-xs underline">U</span>' : ''}
+  `;
+
+  header.addEventListener('click', (e) => {
+    if ((/** @type {HTMLElement} */ (e.target)).closest('button')) return;
+    if (isExpanded) {
+      expandedHighlights.delete(highlight.id);
+    } else {
+      expandedHighlights.add(highlight.id);
+    }
+    renderHighlightsAccordion();
+  });
+
+  entry.appendChild(header);
+
+  // Body (expanded content)
+  if (isExpanded) {
+    const body = document.createElement('div');
+    body.className = 'p-4 space-y-4 border-t border-base-300';
+    body.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label class="form-label">Type</label>
+          <select class="nenya-input highlight-type-select" data-highlight-id="${highlight.id}">
+            <option value="whole-phrase" ${highlight.type === 'whole-phrase' ? 'selected' : ''}>Whole phrase matches</option>
+            <option value="comma-separated" ${highlight.type === 'comma-separated' ? 'selected' : ''}>Comma separated words</option>
+            <option value="regex" ${highlight.type === 'regex' ? 'selected' : ''}>Regular expression</option>
+          </select>
+        </div>
+        <div>
+          <label class="flex items-center gap-3 p-3 bg-base-200 rounded-xl cursor-pointer h-full">
+            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-ignorecase-input" data-highlight-id="${highlight.id}" ${highlight.ignoreCase ? 'checked' : ''}>
+            <span class="text-sm">Ignore case</span>
+          </label>
+        </div>
+      </div>
+      <div>
+        <label class="form-label">Value</label>
+        <textarea class="nenya-input font-mono text-sm resize-none highlight-value-input" data-highlight-id="${highlight.id}" placeholder="Enter text to highlight" rows="2">${escapeHtml(highlight.value)}</textarea>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+          <label class="text-xs text-base-content/50 mb-2 block">Text color</label>
+          <div class="flex items-center gap-3">
+            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-textcolor-input" data-highlight-id="${highlight.id}" value="${textHex}">
+            <div class="flex-1 flex items-center gap-2">
+              <input type="range" class="range range-xs range-primary flex-1 highlight-textcolor-alpha" data-highlight-id="${highlight.id}" min="0" max="100" value="${Math.round(textAlpha * 100)}">
+              <span class="text-xs text-base-content/50 w-10 text-right highlight-textcolor-alpha-label">${Math.round(textAlpha * 100)}%</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-base-content/50 mb-2 block">Background color</label>
+          <div class="flex items-center gap-3">
+            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-bgcolor-input" data-highlight-id="${highlight.id}" value="${bgHex}">
+            <div class="flex-1 flex items-center gap-2">
+              <input type="range" class="range range-xs range-primary flex-1 highlight-bgcolor-alpha" data-highlight-id="${highlight.id}" min="0" max="100" value="${Math.round(bgAlpha * 100)}">
+              <span class="text-xs text-base-content/50 w-10 text-right highlight-bgcolor-alpha-label">${Math.round(bgAlpha * 100)}%</span>
+            </div>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-base-content/50 mb-2 block">Text styling</label>
+          <div class="flex gap-3 mt-2">
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-bold-input" data-highlight-id="${highlight.id}" ${highlight.bold ? 'checked' : ''}>
+              <span class="text-sm font-bold">B</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-italic-input" data-highlight-id="${highlight.id}" ${highlight.italic ? 'checked' : ''}>
+              <span class="text-sm italic">I</span>
+            </label>
+            <label class="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-underline-input" data-highlight-id="${highlight.id}" ${highlight.underline ? 'checked' : ''}>
+              <span class="text-sm underline">U</span>
+            </label>
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end">
+        <button type="button" class="btn btn-sm btn-error btn-outline highlight-delete-btn" data-highlight-id="${highlight.id}" ${canDelete ? '' : 'disabled'}>
+          Delete highlight
+        </button>
+      </div>
+    `;
+
+    // Add event listeners for inputs
+    setupHighlightEntryListeners(body, highlight.id);
+
+    entry.appendChild(body);
+  }
+
+  return entry;
+}
+
+/**
+ * Setup event listeners for a highlight entry's inputs.
+ * @param {HTMLElement} container
+ * @param {string} highlightId
+ */
+function setupHighlightEntryListeners(container, highlightId) {
+  const highlight = currentHighlights.find((h) => h.id === highlightId);
+  if (!highlight) return;
+
+  // Type select
+  const typeSelect = container.querySelector('.highlight-type-select');
+  if (typeSelect) {
+    typeSelect.addEventListener('change', (e) => {
+      highlight.type = /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (
+        /** @type {HTMLSelectElement} */ (e.target).value
+      );
+    });
+  }
+
+  // Value input
+  const valueInput = container.querySelector('.highlight-value-input');
+  if (valueInput) {
+    valueInput.addEventListener('input', (e) => {
+      highlight.value = /** @type {HTMLTextAreaElement} */ (e.target).value;
+    });
+  }
+
+  // Ignore case
+  const ignoreCaseInput = container.querySelector('.highlight-ignorecase-input');
+  if (ignoreCaseInput) {
+    ignoreCaseInput.addEventListener('change', (e) => {
+      highlight.ignoreCase = /** @type {HTMLInputElement} */ (e.target).checked;
+    });
+  }
+
+  // Text color
+  const textColorInput = container.querySelector('.highlight-textcolor-input');
+  const textColorAlpha = container.querySelector('.highlight-textcolor-alpha');
+  const textColorAlphaLabel = container.querySelector('.highlight-textcolor-alpha-label');
+  if (textColorInput && textColorAlpha) {
+    const updateTextColor = () => {
+      const hex = /** @type {HTMLInputElement} */ (textColorInput).value;
+      const alpha = clamp(Number(/** @type {HTMLInputElement} */ (textColorAlpha).value), 0, 100) / 100;
+      highlight.textColor = formatColorWithAlpha(hex, alpha);
+      if (textColorAlphaLabel) {
+        textColorAlphaLabel.textContent = `${Math.round(alpha * 100)}%`;
+      }
+    };
+    textColorInput.addEventListener('input', updateTextColor);
+    textColorAlpha.addEventListener('input', updateTextColor);
+  }
+
+  // Background color
+  const bgColorInput = container.querySelector('.highlight-bgcolor-input');
+  const bgColorAlpha = container.querySelector('.highlight-bgcolor-alpha');
+  const bgColorAlphaLabel = container.querySelector('.highlight-bgcolor-alpha-label');
+  if (bgColorInput && bgColorAlpha) {
+    const updateBgColor = () => {
+      const hex = /** @type {HTMLInputElement} */ (bgColorInput).value;
+      const alpha = clamp(Number(/** @type {HTMLInputElement} */ (bgColorAlpha).value), 0, 100) / 100;
+      highlight.backgroundColor = formatColorWithAlpha(hex, alpha);
+      if (bgColorAlphaLabel) {
+        bgColorAlphaLabel.textContent = `${Math.round(alpha * 100)}%`;
+      }
+    };
+    bgColorInput.addEventListener('input', updateBgColor);
+    bgColorAlpha.addEventListener('input', updateBgColor);
+  }
+
+  // Bold, italic, underline
+  const boldInput = container.querySelector('.highlight-bold-input');
+  if (boldInput) {
+    boldInput.addEventListener('change', (e) => {
+      highlight.bold = /** @type {HTMLInputElement} */ (e.target).checked;
+    });
+  }
+
+  const italicInput = container.querySelector('.highlight-italic-input');
+  if (italicInput) {
+    italicInput.addEventListener('change', (e) => {
+      highlight.italic = /** @type {HTMLInputElement} */ (e.target).checked;
+    });
+  }
+
+  const underlineInput = container.querySelector('.highlight-underline-input');
+  if (underlineInput) {
+    underlineInput.addEventListener('change', (e) => {
+      highlight.underline = /** @type {HTMLInputElement} */ (e.target).checked;
+    });
+  }
+
+  // Delete button
+  const deleteBtn = container.querySelector('.highlight-delete-btn');
+  if (deleteBtn) {
+    deleteBtn.addEventListener('click', () => {
+      const index = currentHighlights.findIndex((h) => h.id === highlightId);
+      if (index !== -1 && currentHighlights.length > 1) {
+        currentHighlights.splice(index, 1);
+        expandedHighlights.delete(highlightId);
+        renderHighlightsAccordion();
+      }
+    });
+  }
+}
+
+/**
+ * Render all highlight accordion entries.
+ */
+function renderHighlightsAccordion() {
+  if (!highlightsAccordion) return;
+
+  highlightsAccordion.innerHTML = '';
+
+  currentHighlights.forEach((highlight, index) => {
+    const entry = createHighlightAccordionEntry(highlight, index);
+    highlightsAccordion.appendChild(entry);
+  });
+}
+
+/**
+ * Handle adding a new highlight.
+ */
+function handleAddHighlight() {
+  const newHighlight = createDefaultHighlight();
+  currentHighlights.push(newHighlight);
+  expandedHighlights.add(newHighlight.id);
+  renderHighlightsAccordion();
+}
+
+// ============================================================================
+// Form Handling
+// ============================================================================
+
+/**
+ * Validate form data.
+ * @returns {string | null} Error message or null if valid
+ */
+function validateForm() {
+  if (currentPatterns.length === 0) {
+    return 'At least one URL pattern is required';
+  }
+
+  if (currentHighlights.length === 0) {
+    return 'At least one highlight entry is required';
+  }
+
+  for (const highlight of currentHighlights) {
+    if (!highlight.value.trim()) {
+      return 'All highlight entries must have a value';
+    }
+    if (highlight.type === 'regex' && !isValidRegex(highlight.value)) {
+      return `Invalid regex pattern: ${highlight.value}`;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Clear form and reset to add mode.
+ */
+function clearForm() {
+  if (patternInput) patternInput.value = '';
+  if (patternError) patternError.hidden = true;
+  if (formError) {
+    formError.textContent = '';
+    formError.hidden = true;
+  }
+
+  currentPatterns = [];
+  currentHighlights = [createDefaultHighlight()];
+  expandedHighlights.clear();
+  expandedHighlights.add(currentHighlights[0].id);
+
+  renderPatternsChips();
+  renderHighlightsAccordion();
+
+  if (saveButton) saveButton.textContent = 'Add rule';
+  if (cancelEditButton) cancelEditButton.hidden = true;
+  editingRuleId = null;
+}
+
+/**
+ * Load rules from storage.
+ * @returns {Promise<HighlightTextRuleSettings[]>}
+ */
+async function loadRules() {
+  try {
+    const result = await chrome.storage.local.get(HIGHLIGHT_TEXT_RULES_KEY);
+    const storedRules = result[HIGHLIGHT_TEXT_RULES_KEY];
+
+    if (!Array.isArray(storedRules)) {
+      return [];
+    }
+
+    // Migrate legacy rules
+    const { rules: migratedRules, migrated } = migrateHighlightRules(storedRules);
+
+    // Save back if migration occurred
+    if (migrated) {
+      await chrome.storage.local.set({
+        [HIGHLIGHT_TEXT_RULES_KEY]: migratedRules,
+      });
+    }
+
+    // Validate and normalize rules
+    return migratedRules.filter((rule) => {
+      return (
+        rule &&
+        typeof rule === 'object' &&
+        typeof rule.id === 'string' &&
+        Array.isArray(rule.patterns) &&
+        rule.patterns.length > 0 &&
+        Array.isArray(rule.highlights) &&
+        rule.highlights.length > 0
+      );
+    }).map((rule) => ({
+      ...rule,
+      disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
+      highlights: rule.highlights.map((h) => ({
+        ...h,
+        bold: typeof h.bold === 'boolean' ? h.bold : false,
+        italic: typeof h.italic === 'boolean' ? h.italic : false,
+        underline: typeof h.underline === 'boolean' ? h.underline : false,
+        ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+      })),
+    }));
+  } catch (error) {
+    console.warn('[highlightText] Failed to load rules:', error);
+    return [];
+  }
+}
+
+/**
+ * Save rules to storage.
+ * @param {HighlightTextRuleSettings[]} rulesToSave
+ * @returns {Promise<void>}
+ */
+async function saveRules(rulesToSave) {
+  try {
+    await chrome.storage.local.set({
+      [HIGHLIGHT_TEXT_RULES_KEY]: rulesToSave,
+    });
+  } catch (error) {
+    console.warn('[highlightText] Failed to save rules:', error);
+    throw error;
+  }
+}
+
+// ============================================================================
+// Rules List Rendering
+// ============================================================================
+
 /**
  * Render rules list.
  */
@@ -486,25 +779,37 @@ function renderRulesList() {
     const info = document.createElement('div');
     info.className = 'space-y-1 flex-1 min-w-0';
 
-    const pattern = document.createElement('p');
-    pattern.className = 'font-mono text-sm break-words';
-    pattern.textContent = rule.pattern;
-    info.appendChild(pattern);
+    // Pattern summary
+    const patternSummary = document.createElement('p');
+    patternSummary.className = 'font-mono text-sm break-words';
+    if (rule.patterns.length === 1) {
+      patternSummary.textContent = rule.patterns[0];
+    } else {
+      patternSummary.innerHTML = `${escapeHtml(rule.patterns[0])} <span class="badge badge-sm badge-ghost">+${rule.patterns.length - 1} more</span>`;
+    }
+    info.appendChild(patternSummary);
 
-    const value = document.createElement('p');
-    value.className = 'text-sm text-base-content/70 truncate';
-    value.textContent = rule.value;
-    info.appendChild(value);
+    // Highlight summary
+    const highlightSummary = document.createElement('p');
+    highlightSummary.className = 'text-sm text-base-content/70 truncate';
+    const firstHighlight = rule.highlights[0];
+    if (rule.highlights.length === 1) {
+      highlightSummary.textContent = firstHighlight.value || '(empty)';
+    } else {
+      highlightSummary.innerHTML = `${escapeHtml(firstHighlight.value || '(empty)')} <span class="badge badge-sm badge-ghost">+${rule.highlights.length - 1} more</span>`;
+    }
+    info.appendChild(highlightSummary);
 
+    // Meta badges for first highlight
     const meta = document.createElement('div');
     meta.className = 'flex items-center gap-2 mt-1';
 
     const typeBadge = document.createElement('span');
     typeBadge.className = 'badge badge-outline badge-sm';
-    typeBadge.textContent = getTypeDisplayName(rule.type);
+    typeBadge.textContent = getTypeDisplayName(firstHighlight.type);
     meta.appendChild(typeBadge);
 
-    if (rule.ignoreCase) {
+    if (firstHighlight.ignoreCase) {
       const caseBadge = document.createElement('span');
       caseBadge.className = 'badge badge-sm badge-ghost';
       caseBadge.textContent = 'Aa';
@@ -515,29 +820,29 @@ function renderRulesList() {
     colorPreview.className = 'flex gap-1';
     const textColorBox = document.createElement('div');
     textColorBox.className = 'w-3 h-3 rounded border border-base-300';
-    textColorBox.style.backgroundColor = rule.textColor;
+    textColorBox.style.backgroundColor = firstHighlight.textColor;
     colorPreview.appendChild(textColorBox);
     const bgColorBox = document.createElement('div');
     bgColorBox.className = 'w-3 h-3 rounded border border-base-300';
-    bgColorBox.style.backgroundColor = rule.backgroundColor;
+    bgColorBox.style.backgroundColor = firstHighlight.backgroundColor;
     colorPreview.appendChild(bgColorBox);
     meta.appendChild(colorPreview);
 
     const stylePreview = document.createElement('div');
     stylePreview.className = 'flex gap-1 text-xs';
-    if (rule.bold) {
+    if (firstHighlight.bold) {
       const boldSpan = document.createElement('span');
       boldSpan.className = 'font-bold';
       boldSpan.textContent = 'B';
       stylePreview.appendChild(boldSpan);
     }
-    if (rule.italic) {
+    if (firstHighlight.italic) {
       const italicSpan = document.createElement('span');
       italicSpan.className = 'italic';
       italicSpan.textContent = 'I';
       stylePreview.appendChild(italicSpan);
     }
-    if (rule.underline) {
+    if (firstHighlight.underline) {
       const underlineSpan = document.createElement('span');
       underlineSpan.className = 'underline';
       underlineSpan.textContent = 'U';
@@ -603,26 +908,50 @@ function renderRulesList() {
  * @param {string} ruleId
  */
 function showRuleDetails(ruleId) {
-  const rule = rules.find(r => r.id === ruleId);
+  const rule = rules.find((r) => r.id === ruleId);
   if (!rule || !ruleDetails) return;
 
-  const patternDetail = document.getElementById('highlightTextRulePatternDetail');
-  const valueDetail = document.getElementById('highlightTextRuleValueDetail');
-  const typeSummary = document.getElementById('highlightTextRuleTypeSummary');
-  const colorPreview = document.getElementById('highlightTextRuleColorPreview');
-  const backgroundPreview = document.getElementById('highlightTextRuleBackgroundPreview');
+  const patternsDetail = document.getElementById('highlightTextRulePatternsDetail');
+  const highlightsDetail = document.getElementById('highlightTextRuleHighlightsDetail');
   const createdDetail = document.getElementById('highlightTextRuleCreatedDetail');
   const updatedDetail = document.getElementById('highlightTextRuleUpdatedDetail');
 
-  if (patternDetail) patternDetail.textContent = rule.pattern;
-  if (valueDetail) valueDetail.textContent = rule.value;
-  if (typeSummary) typeSummary.textContent = getTypeDisplayName(rule.type);
-  if (colorPreview) colorPreview.style.backgroundColor = rule.textColor;
-  if (backgroundPreview) backgroundPreview.style.backgroundColor = rule.backgroundColor;
-  if (boldPreview) boldPreview.hidden = !rule.bold;
-  if (italicPreview) italicPreview.hidden = !rule.italic;
-  if (underlinePreview) underlinePreview.hidden = !rule.underline;
-  if (ignoreCaseDetail) ignoreCaseDetail.textContent = rule.ignoreCase ? 'Yes' : 'No';
+  // Patterns list
+  if (patternsDetail) {
+    patternsDetail.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'list-disc list-inside space-y-1';
+    rule.patterns.forEach((pattern) => {
+      const li = document.createElement('li');
+      li.textContent = pattern;
+      ul.appendChild(li);
+    });
+    patternsDetail.appendChild(ul);
+  }
+
+  // Highlights list
+  if (highlightsDetail) {
+    highlightsDetail.innerHTML = '';
+    const container = document.createElement('div');
+    container.className = 'space-y-2';
+    rule.highlights.forEach((h) => {
+      const item = document.createElement('div');
+      item.className = 'flex items-center gap-2 p-2 bg-base-200 rounded';
+      item.innerHTML = `
+        <span class="badge badge-outline badge-sm">${escapeHtml(getTypeDisplayName(h.type))}</span>
+        <span class="text-sm truncate flex-1 font-mono">${escapeHtml(h.value || '(empty)')}</span>
+        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(h.textColor)}"></div>
+        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(h.backgroundColor)}"></div>
+        ${h.bold ? '<span class="text-xs font-bold">B</span>' : ''}
+        ${h.italic ? '<span class="text-xs italic">I</span>' : ''}
+        ${h.underline ? '<span class="text-xs underline">U</span>' : ''}
+        ${h.ignoreCase ? '<span class="badge badge-xs badge-ghost">Aa</span>' : ''}
+      `;
+      container.appendChild(item);
+    });
+    highlightsDetail.appendChild(container);
+  }
+
   if (createdDetail) createdDetail.textContent = formatDate(rule.createdAt);
   if (updatedDetail) updatedDetail.textContent = formatDate(rule.updatedAt);
 
@@ -634,30 +963,20 @@ function showRuleDetails(ruleId) {
  * @param {string} ruleId
  */
 function editRule(ruleId) {
-  const rule = rules.find(r => r.id === ruleId);
+  const rule = rules.find((r) => r.id === ruleId);
   if (!rule) return;
 
-  if (patternInput) patternInput.value = rule.pattern;
-  if (typeSelect) typeSelect.value = rule.type;
-  if (valueInput) valueInput.value = rule.value;
-  applyColorToInputs(
-    textColorInput,
-    textColorAlphaInput,
-    textColorAlphaLabel,
-    rule.textColor,
-    DEFAULT_TEXT_COLOR
-  );
-  applyColorToInputs(
-    backgroundColorInput,
-    backgroundColorAlphaInput,
-    backgroundColorAlphaLabel,
-    rule.backgroundColor,
-    DEFAULT_BACKGROUND_COLOR
-  );
-  if (boldInput) boldInput.checked = rule.bold || false;
-  if (italicInput) italicInput.checked = rule.italic || false;
-  if (underlineInput) underlineInput.checked = rule.underline || false;
-  if (ignoreCaseInput) ignoreCaseInput.checked = rule.ignoreCase || false;
+  // Populate patterns
+  currentPatterns = [...rule.patterns];
+  renderPatternsChips();
+
+  // Populate highlights
+  currentHighlights = rule.highlights.map((h) => ({ ...h }));
+  expandedHighlights.clear();
+  if (currentHighlights.length > 0) {
+    expandedHighlights.add(currentHighlights[0].id);
+  }
+  renderHighlightsAccordion();
 
   if (saveButton) saveButton.textContent = 'Update rule';
   if (cancelEditButton) cancelEditButton.hidden = false;
@@ -674,17 +993,20 @@ function editRule(ruleId) {
  * @param {string} ruleId
  */
 async function deleteRule(ruleId) {
-  const rule = rules.find(r => r.id === ruleId);
+  const rule = rules.find((r) => r.id === ruleId);
   if (!rule) return;
 
-  const confirmed = window.confirm(`Delete rule for pattern "${rule.pattern}"?`);
+  const patternPreview = rule.patterns.length === 1
+    ? rule.patterns[0]
+    : `${rule.patterns[0]} (+${rule.patterns.length - 1} more)`;
+  const confirmed = window.confirm(`Delete rule for pattern "${patternPreview}"?`);
   if (!confirmed) return;
 
   try {
-    rules = rules.filter(r => r.id !== ruleId);
+    rules = rules.filter((r) => r.id !== ruleId);
     await saveRules(rules);
     renderRulesList();
-    
+
     // Hide details if showing deleted rule
     if (ruleDetails) {
       ruleDetails.hidden = true;
@@ -711,34 +1033,15 @@ async function handleFormSubmit(event) {
     return;
   }
 
-  if (!patternInput || !typeSelect || !valueInput || !textColorInput || !backgroundColorInput || !boldInput || !italicInput || !underlineInput || !ignoreCaseInput) {
-    return;
-  }
-
-  const ruleData = {
-    pattern: patternInput.value.trim(),
-    type: typeSelect.value,
-    value: valueInput.value.trim(),
-    textColor: getColorFromInputs(textColorInput, textColorAlphaInput, DEFAULT_TEXT_COLOR),
-    backgroundColor: getColorFromInputs(
-      backgroundColorInput,
-      backgroundColorAlphaInput,
-      DEFAULT_BACKGROUND_COLOR
-    ),
-    bold: boldInput.checked,
-    italic: italicInput.checked,
-    underline: underlineInput.checked,
-    ignoreCase: ignoreCaseInput.checked,
-  };
-
   try {
     if (editingRuleId) {
       // Update existing rule
-      const ruleIndex = rules.findIndex(r => r.id === editingRuleId);
+      const ruleIndex = rules.findIndex((r) => r.id === editingRuleId);
       if (ruleIndex !== -1) {
         rules[ruleIndex] = /** @type {HighlightTextRuleSettings} */ ({
           ...rules[ruleIndex],
-          ...ruleData,
+          patterns: [...currentPatterns],
+          highlights: currentHighlights.map((h) => ({ ...h })),
           updatedAt: new Date().toISOString(),
         });
       }
@@ -746,7 +1049,8 @@ async function handleFormSubmit(event) {
       // Add new rule
       const newRule = /** @type {HighlightTextRuleSettings} */ ({
         id: generateRuleId(),
-        ...ruleData,
+        patterns: [...currentPatterns],
+        highlights: currentHighlights.map((h) => ({ ...h })),
         createdAt: new Date().toISOString(),
       });
       rules.push(newRule);
@@ -761,11 +1065,15 @@ async function handleFormSubmit(event) {
   }
 }
 
+// ============================================================================
+// Initialization
+// ============================================================================
+
 /**
  * Initialize highlight text functionality.
  */
 async function initHighlightText() {
-  if (!form || !patternInput || !typeSelect || !valueInput || !textColorInput || !backgroundColorInput) {
+  if (!form || !patternInput || !patternsChipsContainer || !highlightsAccordion) {
     console.warn('[highlightText] Required form elements not found');
     return;
   }
@@ -774,52 +1082,37 @@ async function initHighlightText() {
   rules = await loadRules();
   renderRulesList();
 
+  // Initialize form with default state
+  clearForm();
+
   // Set up form event listeners
   form.addEventListener('submit', handleFormSubmit);
+
+  if (addPatternBtn) {
+    addPatternBtn.addEventListener('click', handleAddPattern);
+  }
+
+  if (patternInput) {
+    patternInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleAddPattern();
+      }
+    });
+    patternInput.addEventListener('input', () => {
+      if (patternError) patternError.hidden = true;
+    });
+  }
+
+  if (addHighlightBtn) {
+    addHighlightBtn.addEventListener('click', handleAddHighlight);
+  }
 
   if (cancelEditButton) {
     cancelEditButton.addEventListener('click', () => {
       clearForm();
     });
   }
-
-  if (textColorAlphaInput) {
-    textColorAlphaInput.addEventListener('input', () => {
-      updateAlphaLabel(textColorAlphaInput, textColorAlphaLabel);
-    });
-  }
-
-  if (backgroundColorAlphaInput) {
-    backgroundColorAlphaInput.addEventListener('input', () => {
-      updateAlphaLabel(backgroundColorAlphaInput, backgroundColorAlphaLabel);
-    });
-  }
-
-  updateAlphaLabel(textColorAlphaInput, textColorAlphaLabel);
-  updateAlphaLabel(backgroundColorAlphaInput, backgroundColorAlphaLabel);
-
-  // Clear form error when user starts typing
-  [
-    patternInput,
-    typeSelect,
-    valueInput,
-    textColorInput,
-    backgroundColorInput,
-    textColorAlphaInput,
-    backgroundColorAlphaInput,
-    boldInput,
-    italicInput,
-    underlineInput,
-    ignoreCaseInput,
-  ].forEach(element => {
-    if (element) {
-      element.addEventListener('input', () => {
-        if (formError) {
-          formError.hidden = true;
-        }
-      });
-    }
-  });
 
   // Listen for storage changes to update UI when options are restored/imported
   if (chrome?.storage?.onChanged) {
@@ -834,7 +1127,7 @@ async function initHighlightText() {
         rules = await loadRules();
         renderRulesList();
         // Clear selection if selected rule no longer exists
-        if (editingRuleId && !rules.find(r => r.id === editingRuleId)) {
+        if (editingRuleId && !rules.find((r) => r.id === editingRuleId)) {
           editingRuleId = null;
           clearForm();
         }
@@ -845,7 +1138,6 @@ async function initHighlightText() {
 
 /**
  * Check for prefilled URL from popup and set it in the pattern input.
- * Also navigates to the highlight text section if needed.
  * @returns {Promise<void>}
  */
 async function checkForPrefillUrl() {
@@ -883,9 +1175,11 @@ async function checkForPrefillUrl() {
       setTimeout(resolve, 150);
     });
 
-    // Set the pattern input value
+    // Add the prefill URL as the first pattern
+    currentPatterns.push(prefillUrl);
+    renderPatternsChips();
+
     if (patternInput) {
-      patternInput.value = prefillUrl;
       patternInput.focus();
     }
   } catch (error) {
