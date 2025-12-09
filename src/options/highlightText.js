@@ -206,13 +206,18 @@ function parseColorWithAlpha(colorValue, fallbackHex = DEFAULT_TEXT_COLOR) {
     return { hex, alpha };
   }
 
-  const rgbaMatch = value.match(/rgba?\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)/i);
+  const rgbaMatch = value.match(
+    /rgba?\s*\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})(?:\s*,\s*(\d*\.?\d+))?\s*\)/i,
+  );
   if (rgbaMatch) {
     const r = clamp(parseInt(rgbaMatch[1], 10), 0, 255);
     const g = clamp(parseInt(rgbaMatch[2], 10), 0, 255);
     const b = clamp(parseInt(rgbaMatch[3], 10), 0, 255);
-    const a = rgbaMatch[4] !== undefined ? clamp(parseFloat(rgbaMatch[4]), 0, 1) : 1;
-    const hex = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+    const a =
+      rgbaMatch[4] !== undefined ? clamp(parseFloat(rgbaMatch[4]), 0, 1) : 1;
+    const hex = `#${r.toString(16).padStart(2, '0')}${g
+      .toString(16)
+      .padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
     return { hex, alpha: a };
   }
 
@@ -381,8 +386,14 @@ function createHighlightAccordionEntry(highlight, index) {
   const isExpanded = expandedHighlights.has(highlight.id);
   const canDelete = currentHighlights.length > 1;
 
-  const { hex: textHex, alpha: textAlpha } = parseColorWithAlpha(highlight.textColor, DEFAULT_TEXT_COLOR);
-  const { hex: bgHex, alpha: bgAlpha } = parseColorWithAlpha(highlight.backgroundColor, DEFAULT_BACKGROUND_COLOR);
+  const { hex: textHex, alpha: textAlpha } = parseColorWithAlpha(
+    highlight.textColor,
+    DEFAULT_TEXT_COLOR,
+  );
+  const { hex: bgHex, alpha: bgAlpha } = parseColorWithAlpha(
+    highlight.backgroundColor,
+    DEFAULT_BACKGROUND_COLOR,
+  );
 
   const entry = document.createElement('div');
   entry.className = 'border border-base-300 rounded-lg overflow-hidden';
@@ -390,16 +401,27 @@ function createHighlightAccordionEntry(highlight, index) {
 
   // Header
   const header = document.createElement('div');
-  header.className = 'flex items-center gap-2 p-3 bg-base-200 cursor-pointer hover:bg-base-300 transition-colors';
+  header.className =
+    'flex items-center gap-2 p-3 bg-base-200 cursor-pointer hover:bg-base-300 transition-colors';
   header.innerHTML = `
-    <svg class="w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <svg class="w-4 h-4 transition-transform ${
+      isExpanded ? 'rotate-90' : ''
+    }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path>
     </svg>
-    <span class="badge badge-outline badge-sm">${escapeHtml(getTypeDisplayName(highlight.type))}</span>
-    <span class="text-sm truncate flex-1 font-mono">${escapeHtml(highlight.value || '(empty)')}</span>
+    <span class="badge badge-outline badge-sm">${escapeHtml(
+      getTypeDisplayName(highlight.type),
+    )}</span>
+    <span class="text-sm truncate flex-1 font-mono">${escapeHtml(
+      highlight.value || '(empty)',
+    )}</span>
     <div class="flex gap-1">
-      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(highlight.textColor)}"></div>
-      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(highlight.backgroundColor)}"></div>
+      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(
+        highlight.textColor,
+      )}"></div>
+      <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(
+        highlight.backgroundColor,
+      )}"></div>
     </div>
     ${highlight.bold ? '<span class="text-xs font-bold">B</span>' : ''}
     ${highlight.italic ? '<span class="text-xs italic">I</span>' : ''}
@@ -407,7 +429,7 @@ function createHighlightAccordionEntry(highlight, index) {
   `;
 
   header.addEventListener('click', (e) => {
-    if ((/** @type {HTMLElement} */ (e.target)).closest('button')) return;
+    if (/** @type {HTMLElement} */ (e.target).closest('button')) return;
     if (isExpanded) {
       expandedHighlights.delete(highlight.id);
     } else {
@@ -426,41 +448,67 @@ function createHighlightAccordionEntry(highlight, index) {
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label class="form-label">Type</label>
-          <select class="nenya-input highlight-type-select" data-highlight-id="${highlight.id}">
-            <option value="whole-phrase" ${highlight.type === 'whole-phrase' ? 'selected' : ''}>Whole phrase matches</option>
-            <option value="comma-separated" ${highlight.type === 'comma-separated' ? 'selected' : ''}>Comma separated words</option>
-            <option value="regex" ${highlight.type === 'regex' ? 'selected' : ''}>Regular expression</option>
+          <select class="nenya-input highlight-type-select" data-highlight-id="${
+            highlight.id
+          }">
+            <option value="whole-phrase" ${
+              highlight.type === 'whole-phrase' ? 'selected' : ''
+            }>Whole phrase matches</option>
+            <option value="comma-separated" ${
+              highlight.type === 'comma-separated' ? 'selected' : ''
+            }>Comma separated words</option>
+            <option value="regex" ${
+              highlight.type === 'regex' ? 'selected' : ''
+            }>Regular expression</option>
           </select>
         </div>
-        <div>
+        <div class="pt-6">
           <label class="flex items-center gap-3 p-3 bg-base-200 rounded-xl cursor-pointer h-full">
-            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-ignorecase-input" data-highlight-id="${highlight.id}" ${highlight.ignoreCase ? 'checked' : ''}>
+            <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-ignorecase-input" data-highlight-id="${
+              highlight.id
+            }" ${highlight.ignoreCase ? 'checked' : ''}>
             <span class="text-sm">Ignore case</span>
           </label>
         </div>
       </div>
       <div>
         <label class="form-label">Value</label>
-        <textarea class="nenya-input font-mono text-sm resize-none highlight-value-input" data-highlight-id="${highlight.id}" placeholder="Enter text to highlight" rows="2">${escapeHtml(highlight.value)}</textarea>
+        <textarea class="nenya-input font-mono text-sm resize-none highlight-value-input" data-highlight-id="${
+          highlight.id
+        }" placeholder="Enter text to highlight" rows="2">${escapeHtml(
+      highlight.value,
+    )}</textarea>
       </div>
       <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label class="text-xs text-base-content/50 mb-2 block">Text color</label>
           <div class="flex items-center gap-3">
-            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-textcolor-input" data-highlight-id="${highlight.id}" value="${textHex}">
+            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-textcolor-input" data-highlight-id="${
+              highlight.id
+            }" value="${textHex}">
             <div class="flex-1 flex items-center gap-2">
-              <input type="range" class="range range-xs range-primary flex-1 highlight-textcolor-alpha" data-highlight-id="${highlight.id}" min="0" max="100" value="${Math.round(textAlpha * 100)}">
-              <span class="text-xs text-base-content/50 w-10 text-right highlight-textcolor-alpha-label">${Math.round(textAlpha * 100)}%</span>
+              <input type="range" class="range range-xs range-primary flex-1 highlight-textcolor-alpha" data-highlight-id="${
+                highlight.id
+              }" min="0" max="100" value="${Math.round(textAlpha * 100)}">
+              <span class="text-xs text-base-content/50 w-10 text-right highlight-textcolor-alpha-label">${Math.round(
+                textAlpha * 100,
+              )}%</span>
             </div>
           </div>
         </div>
         <div>
           <label class="text-xs text-base-content/50 mb-2 block">Background color</label>
           <div class="flex items-center gap-3">
-            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-bgcolor-input" data-highlight-id="${highlight.id}" value="${bgHex}">
+            <input type="color" class="w-12 h-10 rounded-lg border border-base-300 cursor-pointer highlight-bgcolor-input" data-highlight-id="${
+              highlight.id
+            }" value="${bgHex}">
             <div class="flex-1 flex items-center gap-2">
-              <input type="range" class="range range-xs range-primary flex-1 highlight-bgcolor-alpha" data-highlight-id="${highlight.id}" min="0" max="100" value="${Math.round(bgAlpha * 100)}">
-              <span class="text-xs text-base-content/50 w-10 text-right highlight-bgcolor-alpha-label">${Math.round(bgAlpha * 100)}%</span>
+              <input type="range" class="range range-xs range-primary flex-1 highlight-bgcolor-alpha" data-highlight-id="${
+                highlight.id
+              }" min="0" max="100" value="${Math.round(bgAlpha * 100)}">
+              <span class="text-xs text-base-content/50 w-10 text-right highlight-bgcolor-alpha-label">${Math.round(
+                bgAlpha * 100,
+              )}%</span>
             </div>
           </div>
         </div>
@@ -468,22 +516,30 @@ function createHighlightAccordionEntry(highlight, index) {
           <label class="text-xs text-base-content/50 mb-2 block">Text styling</label>
           <div class="flex gap-3 mt-2">
             <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-bold-input" data-highlight-id="${highlight.id}" ${highlight.bold ? 'checked' : ''}>
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-bold-input" data-highlight-id="${
+                highlight.id
+              }" ${highlight.bold ? 'checked' : ''}>
               <span class="text-sm font-bold">B</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-italic-input" data-highlight-id="${highlight.id}" ${highlight.italic ? 'checked' : ''}>
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-italic-input" data-highlight-id="${
+                highlight.id
+              }" ${highlight.italic ? 'checked' : ''}>
               <span class="text-sm italic">I</span>
             </label>
             <label class="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-underline-input" data-highlight-id="${highlight.id}" ${highlight.underline ? 'checked' : ''}>
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary highlight-underline-input" data-highlight-id="${
+                highlight.id
+              }" ${highlight.underline ? 'checked' : ''}>
               <span class="text-sm underline">U</span>
             </label>
           </div>
         </div>
       </div>
       <div class="flex justify-end">
-        <button type="button" class="btn btn-sm btn-error btn-outline highlight-delete-btn" data-highlight-id="${highlight.id}" ${canDelete ? '' : 'disabled'}>
+        <button type="button" class="btn btn-sm btn-error btn-outline highlight-delete-btn" data-highlight-id="${
+          highlight.id
+        }" ${canDelete ? '' : 'disabled'}>
           Delete highlight
         </button>
       </div>
@@ -511,9 +567,10 @@ function setupHighlightEntryListeners(container, highlightId) {
   const typeSelect = container.querySelector('.highlight-type-select');
   if (typeSelect) {
     typeSelect.addEventListener('change', (e) => {
-      highlight.type = /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (
-        /** @type {HTMLSelectElement} */ (e.target).value
-      );
+      highlight.type =
+        /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (
+          /** @type {HTMLSelectElement} */ (e.target).value
+        );
     });
   }
 
@@ -526,7 +583,9 @@ function setupHighlightEntryListeners(container, highlightId) {
   }
 
   // Ignore case
-  const ignoreCaseInput = container.querySelector('.highlight-ignorecase-input');
+  const ignoreCaseInput = container.querySelector(
+    '.highlight-ignorecase-input',
+  );
   if (ignoreCaseInput) {
     ignoreCaseInput.addEventListener('change', (e) => {
       highlight.ignoreCase = /** @type {HTMLInputElement} */ (e.target).checked;
@@ -536,11 +595,18 @@ function setupHighlightEntryListeners(container, highlightId) {
   // Text color
   const textColorInput = container.querySelector('.highlight-textcolor-input');
   const textColorAlpha = container.querySelector('.highlight-textcolor-alpha');
-  const textColorAlphaLabel = container.querySelector('.highlight-textcolor-alpha-label');
+  const textColorAlphaLabel = container.querySelector(
+    '.highlight-textcolor-alpha-label',
+  );
   if (textColorInput && textColorAlpha) {
     const updateTextColor = () => {
       const hex = /** @type {HTMLInputElement} */ (textColorInput).value;
-      const alpha = clamp(Number(/** @type {HTMLInputElement} */ (textColorAlpha).value), 0, 100) / 100;
+      const alpha =
+        clamp(
+          Number(/** @type {HTMLInputElement} */ (textColorAlpha).value),
+          0,
+          100,
+        ) / 100;
       highlight.textColor = formatColorWithAlpha(hex, alpha);
       if (textColorAlphaLabel) {
         textColorAlphaLabel.textContent = `${Math.round(alpha * 100)}%`;
@@ -553,11 +619,18 @@ function setupHighlightEntryListeners(container, highlightId) {
   // Background color
   const bgColorInput = container.querySelector('.highlight-bgcolor-input');
   const bgColorAlpha = container.querySelector('.highlight-bgcolor-alpha');
-  const bgColorAlphaLabel = container.querySelector('.highlight-bgcolor-alpha-label');
+  const bgColorAlphaLabel = container.querySelector(
+    '.highlight-bgcolor-alpha-label',
+  );
   if (bgColorInput && bgColorAlpha) {
     const updateBgColor = () => {
       const hex = /** @type {HTMLInputElement} */ (bgColorInput).value;
-      const alpha = clamp(Number(/** @type {HTMLInputElement} */ (bgColorAlpha).value), 0, 100) / 100;
+      const alpha =
+        clamp(
+          Number(/** @type {HTMLInputElement} */ (bgColorAlpha).value),
+          0,
+          100,
+        ) / 100;
       highlight.backgroundColor = formatColorWithAlpha(hex, alpha);
       if (bgColorAlphaLabel) {
         bgColorAlphaLabel.textContent = `${Math.round(alpha * 100)}%`;
@@ -694,7 +767,8 @@ async function loadRules() {
     }
 
     // Migrate legacy rules
-    const { rules: migratedRules, migrated } = migrateHighlightRules(storedRules);
+    const { rules: migratedRules, migrated } =
+      migrateHighlightRules(storedRules);
 
     // Save back if migration occurred
     if (migrated) {
@@ -704,27 +778,29 @@ async function loadRules() {
     }
 
     // Validate and normalize rules
-    return migratedRules.filter((rule) => {
-      return (
-        rule &&
-        typeof rule === 'object' &&
-        typeof rule.id === 'string' &&
-        Array.isArray(rule.patterns) &&
-        rule.patterns.length > 0 &&
-        Array.isArray(rule.highlights) &&
-        rule.highlights.length > 0
-      );
-    }).map((rule) => ({
-      ...rule,
-      disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
-      highlights: rule.highlights.map((h) => ({
-        ...h,
-        bold: typeof h.bold === 'boolean' ? h.bold : false,
-        italic: typeof h.italic === 'boolean' ? h.italic : false,
-        underline: typeof h.underline === 'boolean' ? h.underline : false,
-        ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
-      })),
-    }));
+    return migratedRules
+      .filter((rule) => {
+        return (
+          rule &&
+          typeof rule === 'object' &&
+          typeof rule.id === 'string' &&
+          Array.isArray(rule.patterns) &&
+          rule.patterns.length > 0 &&
+          Array.isArray(rule.highlights) &&
+          rule.highlights.length > 0
+        );
+      })
+      .map((rule) => ({
+        ...rule,
+        disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
+        highlights: rule.highlights.map((h) => ({
+          ...h,
+          bold: typeof h.bold === 'boolean' ? h.bold : false,
+          italic: typeof h.italic === 'boolean' ? h.italic : false,
+          underline: typeof h.underline === 'boolean' ? h.underline : false,
+          ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+        })),
+      }));
   } catch (error) {
     console.warn('[highlightText] Failed to load rules:', error);
     return [];
@@ -785,7 +861,11 @@ function renderRulesList() {
     if (rule.patterns.length === 1) {
       patternSummary.textContent = rule.patterns[0];
     } else {
-      patternSummary.innerHTML = `${escapeHtml(rule.patterns[0])} <span class="badge badge-sm badge-ghost">+${rule.patterns.length - 1} more</span>`;
+      patternSummary.innerHTML = `${escapeHtml(
+        rule.patterns[0],
+      )} <span class="badge badge-sm badge-ghost">+${
+        rule.patterns.length - 1
+      } more</span>`;
     }
     info.appendChild(patternSummary);
 
@@ -796,7 +876,11 @@ function renderRulesList() {
     if (rule.highlights.length === 1) {
       highlightSummary.textContent = firstHighlight.value || '(empty)';
     } else {
-      highlightSummary.innerHTML = `${escapeHtml(firstHighlight.value || '(empty)')} <span class="badge badge-sm badge-ghost">+${rule.highlights.length - 1} more</span>`;
+      highlightSummary.innerHTML = `${escapeHtml(
+        firstHighlight.value || '(empty)',
+      )} <span class="badge badge-sm badge-ghost">+${
+        rule.highlights.length - 1
+      } more</span>`;
     }
     info.appendChild(highlightSummary);
 
@@ -911,10 +995,18 @@ function showRuleDetails(ruleId) {
   const rule = rules.find((r) => r.id === ruleId);
   if (!rule || !ruleDetails) return;
 
-  const patternsDetail = document.getElementById('highlightTextRulePatternsDetail');
-  const highlightsDetail = document.getElementById('highlightTextRuleHighlightsDetail');
-  const createdDetail = document.getElementById('highlightTextRuleCreatedDetail');
-  const updatedDetail = document.getElementById('highlightTextRuleUpdatedDetail');
+  const patternsDetail = document.getElementById(
+    'highlightTextRulePatternsDetail',
+  );
+  const highlightsDetail = document.getElementById(
+    'highlightTextRuleHighlightsDetail',
+  );
+  const createdDetail = document.getElementById(
+    'highlightTextRuleCreatedDetail',
+  );
+  const updatedDetail = document.getElementById(
+    'highlightTextRuleUpdatedDetail',
+  );
 
   // Patterns list
   if (patternsDetail) {
@@ -938,14 +1030,26 @@ function showRuleDetails(ruleId) {
       const item = document.createElement('div');
       item.className = 'flex items-center gap-2 p-2 bg-base-200 rounded';
       item.innerHTML = `
-        <span class="badge badge-outline badge-sm">${escapeHtml(getTypeDisplayName(h.type))}</span>
-        <span class="text-sm truncate flex-1 font-mono">${escapeHtml(h.value || '(empty)')}</span>
-        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(h.textColor)}"></div>
-        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(h.backgroundColor)}"></div>
+        <span class="badge badge-outline badge-sm">${escapeHtml(
+          getTypeDisplayName(h.type),
+        )}</span>
+        <span class="text-sm truncate flex-1 font-mono">${escapeHtml(
+          h.value || '(empty)',
+        )}</span>
+        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(
+          h.textColor,
+        )}"></div>
+        <div class="w-4 h-4 rounded border border-base-300" style="background-color: ${escapeHtml(
+          h.backgroundColor,
+        )}"></div>
         ${h.bold ? '<span class="text-xs font-bold">B</span>' : ''}
         ${h.italic ? '<span class="text-xs italic">I</span>' : ''}
         ${h.underline ? '<span class="text-xs underline">U</span>' : ''}
-        ${h.ignoreCase ? '<span class="badge badge-xs badge-ghost">Aa</span>' : ''}
+        ${
+          h.ignoreCase
+            ? '<span class="badge badge-xs badge-ghost">Aa</span>'
+            : ''
+        }
       `;
       container.appendChild(item);
     });
@@ -996,10 +1100,13 @@ async function deleteRule(ruleId) {
   const rule = rules.find((r) => r.id === ruleId);
   if (!rule) return;
 
-  const patternPreview = rule.patterns.length === 1
-    ? rule.patterns[0]
-    : `${rule.patterns[0]} (+${rule.patterns.length - 1} more)`;
-  const confirmed = window.confirm(`Delete rule for pattern "${patternPreview}"?`);
+  const patternPreview =
+    rule.patterns.length === 1
+      ? rule.patterns[0]
+      : `${rule.patterns[0]} (+${rule.patterns.length - 1} more)`;
+  const confirmed = window.confirm(
+    `Delete rule for pattern "${patternPreview}"?`,
+  );
   if (!confirmed) return;
 
   try {
@@ -1073,7 +1180,12 @@ async function handleFormSubmit(event) {
  * Initialize highlight text functionality.
  */
 async function initHighlightText() {
-  if (!form || !patternInput || !patternsChipsContainer || !highlightsAccordion) {
+  if (
+    !form ||
+    !patternInput ||
+    !patternsChipsContainer ||
+    !highlightsAccordion
+  ) {
     console.warn('[highlightText] Required form elements not found');
     return;
   }
@@ -1120,7 +1232,9 @@ async function initHighlightText() {
       if (area !== 'local') {
         return;
       }
-      if (!Object.prototype.hasOwnProperty.call(changes, HIGHLIGHT_TEXT_RULES_KEY)) {
+      if (
+        !Object.prototype.hasOwnProperty.call(changes, HIGHLIGHT_TEXT_RULES_KEY)
+      ) {
         return;
       }
       void (async () => {
