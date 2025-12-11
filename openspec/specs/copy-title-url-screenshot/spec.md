@@ -56,7 +56,8 @@ The extension MUST support copying tab titles only.
 
 - **GIVEN** a single tab is active
 - **WHEN** the user selects "Copy Title"
-- **THEN** the tab's title MUST be copied to the clipboard
+- **THEN** the tab's title MUST be transformed using matching title transform rules
+- **AND** the transformed title MUST be copied to the clipboard
 - **AND** a success badge MUST be displayed
 - **AND** a success notification MUST be shown (if notifications are enabled)
 
@@ -64,7 +65,8 @@ The extension MUST support copying tab titles only.
 
 - **GIVEN** multiple tabs are highlighted
 - **WHEN** the user selects "Copy Title"
-- **THEN** all selected tab titles MUST be copied to the clipboard
+- **THEN** each tab's title MUST be transformed using matching title transform rules
+- **AND** all transformed titles MUST be copied to the clipboard
 - **AND** each title MUST be on a separate line
 - **AND** the success message MUST indicate the number of tabs copied
 
@@ -76,7 +78,8 @@ The extension MUST support copying tab title and URL on separate lines.
 
 - **GIVEN** a single tab is active
 - **WHEN** the user selects "Copy Title\\nURL"
-- **THEN** the tab's title MUST be copied on the first line
+- **THEN** the tab's title MUST be transformed using matching title transform rules
+- **AND** the transformed title MUST be copied on the first line
 - **AND** the tab's URL MUST be copied on the second line
 - **AND** the URL MUST be processed through the URL processor
 
@@ -84,7 +87,8 @@ The extension MUST support copying tab title and URL on separate lines.
 
 - **GIVEN** multiple tabs are highlighted
 - **WHEN** the user selects "Copy Title\\nURL"
-- **THEN** each tab's information MUST be formatted as title on first line, URL on second line
+- **THEN** each tab's title MUST be transformed using matching title transform rules
+- **AND** each tab's information MUST be formatted as transformed title on first line, URL on second line
 - **AND** each tab's information MUST be separated by a blank line
 - **AND** tabs MUST be ordered by their selection order
 
@@ -96,14 +100,16 @@ The extension MUST support copying tab title and URL on a single line separated 
 
 - **GIVEN** a single tab is active
 - **WHEN** the user selects "Copy Title - URL"
-- **THEN** the format MUST be: `{title} - {url}`
+- **THEN** the tab's title MUST be transformed using matching title transform rules
+- **AND** the format MUST be: `{transformedTitle} - {url}`
 - **AND** the URL MUST be processed through the URL processor
 
 #### Scenario: Copy multiple tabs in dash format
 
 - **GIVEN** multiple tabs are highlighted
 - **WHEN** the user selects "Copy Title - URL"
-- **THEN** each tab MUST be formatted as `{title} - {url}` on separate lines
+- **THEN** each tab's title MUST be transformed using matching title transform rules
+- **AND** each tab MUST be formatted as `{transformedTitle} - {url}` on separate lines
 - **AND** URLs MUST be processed through the URL processor
 
 ### Requirement: Copy Markdown Link Format
@@ -114,14 +120,16 @@ The extension MUST support copying tab information as markdown links.
 
 - **GIVEN** a single tab is active
 - **WHEN** the user selects "Copy [Title](URL)"
-- **THEN** the format MUST be: `[{title}]({url})`
+- **THEN** the tab's title MUST be transformed using matching title transform rules
+- **AND** the format MUST be: `[{transformedTitle}]({url})`
 - **AND** the URL MUST be processed through the URL processor
 
 #### Scenario: Copy multiple tabs as markdown links
 
 - **GIVEN** multiple tabs are highlighted
 - **WHEN** the user selects "Copy [Title](URL)"
-- **THEN** each tab MUST be formatted as `[{title}]({url})` on separate lines
+- **THEN** each tab's title MUST be transformed using matching title transform rules
+- **AND** each tab MUST be formatted as `[{transformedTitle}]({url})` on separate lines
 - **AND** URLs MUST be processed through the URL processor
 
 ### Requirement: Copy Screenshot
@@ -456,6 +464,31 @@ The extension MUST normalize screenshot settings to ensure data integrity.
 - **THEN** `autoSave` MUST be coerced to a boolean
 - **AND** any extra properties MUST be ignored
 - **AND** only valid settings MUST be persisted to storage
+
+### Requirement: Title Transformation
+
+The extension MUST apply title transform rules before copying titles to the clipboard.
+
+#### Scenario: Apply matching rules to title
+
+- **GIVEN** title transform rules exist
+- **WHEN** copying a title to clipboard
+- **THEN** the system MUST find all rules that match the tab's URL
+- **AND** all matching rules MUST be applied sequentially
+- **AND** within each rule, operations MUST be applied in order
+- **AND** only enabled rules MUST be applied
+
+#### Scenario: No transformation when no rules match
+
+- **GIVEN** no title transform rules match the tab's URL
+- **WHEN** copying a title to clipboard
+- **THEN** the original title MUST be used without transformation
+
+#### Scenario: Transform applies to all copy formats
+
+- **GIVEN** title transform rules match a tab's URL
+- **WHEN** copying title in any format (title only, title-url, title-dash-url, markdown-link)
+- **THEN** the transformed title MUST be used in all formats
 
 ## Implementation Notes
 

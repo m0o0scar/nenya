@@ -2,8 +2,13 @@
  * Clipboard context menu functionality for copying tab data.
  */
 
-import { setActionBadge, animateActionBadge, getNotificationPreferences } from './mirror.js';
+import {
+  setActionBadge,
+  animateActionBadge,
+  getNotificationPreferences,
+} from './mirror.js';
 import { processUrl } from '../shared/urlProcessor.js';
+import { transformTitle } from '../shared/titleTransform.js';
 
 /**
  * Context menu IDs for clipboard operations.
@@ -47,7 +52,8 @@ function normalizeScreenshotSettings(settings) {
   }
 
   return {
-    autoSave: typeof settings.autoSave === 'boolean' ? settings.autoSave : false,
+    autoSave:
+      typeof settings.autoSave === 'boolean' ? settings.autoSave : false,
   };
 }
 
@@ -195,8 +201,10 @@ async function getTabData(tabs) {
       continue;
     }
     const processedUrl = await processUrl(tab.url, 'copy-to-clipboard');
+    const originalTitle = typeof tab.title === 'string' ? tab.title : '';
+    const transformedTitle = await transformTitle(originalTitle, tab.url);
     tabData.push({
-      title: typeof tab.title === 'string' ? tab.title : '',
+      title: transformedTitle,
       url: processedUrl,
     });
   }
@@ -329,13 +337,13 @@ async function copyImageViaTab(tabId, dataUrl, originalTabId) {
   try {
     // Focus the tab first - clipboard API requires document focus
     await chrome.tabs.update(tabId, { active: true });
-    
+
     // Get the window ID and focus it
     const tab = await chrome.tabs.get(tabId);
     if (tab.windowId) {
       await chrome.windows.update(tab.windowId, { focused: true });
     }
-    
+
     // Wait a bit for the tab to be focused
     await new Promise((resolve) => setTimeout(resolve, 100));
 
@@ -346,10 +354,13 @@ async function copyImageViaTab(tabId, dataUrl, originalTabId) {
           try {
             // Ensure window is focused
             window.focus();
-            
+
             // Convert data URL to blob
             const byteString = atob(dataUrlToCopy.split(',')[1]);
-            const mimeString = dataUrlToCopy.split(',')[0].split(':')[1].split(';')[0];
+            const mimeString = dataUrlToCopy
+              .split(',')[0]
+              .split(':')[1]
+              .split(';')[0];
             const ab = new ArrayBuffer(byteString.length);
             const ia = new Uint8Array(ab);
             for (let i = 0; i < byteString.length; i++) {
@@ -393,11 +404,18 @@ async function copyImageViaTab(tabId, dataUrl, originalTabId) {
     }
 
     // Restore focus to original tab if we switched tabs
-    if (typeof originalTabId === 'number' && originalTabId !== tabId && success) {
+    if (
+      typeof originalTabId === 'number' &&
+      originalTabId !== tabId &&
+      success
+    ) {
       try {
         await chrome.tabs.update(originalTabId, { active: true });
       } catch (error) {
-        console.warn('[clipboard] Failed to restore focus to original tab:', error);
+        console.warn(
+          '[clipboard] Failed to restore focus to original tab:',
+          error,
+        );
       }
     }
 
@@ -439,10 +457,7 @@ async function handleScreenshotCopy(tabId) {
 
     if (isExtensionPage) {
       // For extension pages, find another tab in the same window to inject into
-      const injectableTabId = await findInjectableTab(
-        tab.windowId,
-        tabId,
-      );
+      const injectableTabId = await findInjectableTab(tab.windowId, tabId);
       if (injectableTabId) {
         // Pass the original tab ID to restore focus after copying
         return await copyImageViaTab(injectableTabId, dataUrl, tabId);
@@ -472,7 +487,10 @@ async function handleScreenshotCopy(tabId) {
            * @type {(updatedTabId: number, changeInfo: {status?: string}) => void}
            */
           const listener = (updatedTabId, changeInfo) => {
-            if (updatedTabId === fallbackTabId && changeInfo.status === 'complete') {
+            if (
+              updatedTabId === fallbackTabId &&
+              changeInfo.status === 'complete'
+            ) {
               chrome.tabs.onUpdated.removeListener(listener);
               resolve(undefined);
             }
@@ -497,7 +515,10 @@ async function handleScreenshotCopy(tabId) {
 
         return success;
       } catch (fallbackError) {
-        console.warn('[clipboard] Fallback tab operation failed:', fallbackError);
+        console.warn(
+          '[clipboard] Fallback tab operation failed:',
+          fallbackError,
+        );
         return false;
       }
     } else {
@@ -537,10 +558,7 @@ export function setupClipboardContextMenus() {
     },
     (error) => {
       if (error) {
-        console.warn(
-          '[clipboard] Failed to create Title context menu:',
-          error,
-        );
+        console.warn('[clipboard] Failed to create Title context menu:', error);
       }
     },
   );
@@ -715,10 +733,11 @@ export async function handleClipboardContextMenuClick(info, tab) {
     if (success) {
       // Check preferences before showing success notification
       const prefs = await getNotificationPreferences();
-      const shouldShowSuccess = prefs.enabled && 
-        prefs.clipboard?.enabled && 
+      const shouldShowSuccess =
+        prefs.enabled &&
+        prefs.clipboard?.enabled &&
         prefs.clipboard?.copySuccess;
-      
+
       if (shouldShowSuccess) {
         const message =
           menuItemId === CLIPBOARD_CONTEXT_MENU_IDS.COPY_SCREENSHOT
@@ -816,10 +835,11 @@ export async function handleClipboardCommand(command) {
 
       // Check preferences before showing success notification
       const prefs = await getNotificationPreferences();
-      const shouldShowSuccess = prefs.enabled && 
-        prefs.clipboard?.enabled && 
+      const shouldShowSuccess =
+        prefs.enabled &&
+        prefs.clipboard?.enabled &&
         prefs.clipboard?.copySuccess;
-      
+
       if (shouldShowSuccess) {
         // Show notification
         const message =

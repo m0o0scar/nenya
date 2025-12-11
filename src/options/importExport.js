@@ -14,6 +14,7 @@ import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 import { loadRules as loadVideoEnhancementRules } from './videoEnhancements.js';
 import { loadLLMPrompts } from './llmPrompts.js';
 import { loadRules as loadUrlProcessRules } from './urlProcessRules.js';
+import { loadRules as loadTitleTransformRules } from './titleTransformRules.js';
 import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 
 /**
@@ -166,6 +167,29 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 /**
+ * @typedef {'remove' | 'replace' | 'prefix' | 'suffix'} TitleTransformOperationType
+ */
+
+/**
+ * @typedef {Object} TitleTransformOperationSettings
+ * @property {string} id
+ * @property {TitleTransformOperationType} type
+ * @property {string} [pattern] - Regex pattern for remove/replace operations
+ * @property {string} [value] - Replacement value for replace, or text for prefix/suffix
+ */
+
+/**
+ * @typedef {Object} TitleTransformRuleSettings
+ * @property {string} id
+ * @property {string} name
+ * @property {string[]} urlPatterns
+ * @property {TitleTransformOperationSettings[]} operations
+ * @property {boolean | undefined} disabled
+ * @property {string} [createdAt]
+ * @property {string} [updatedAt]
+ */
+
+/**
  * @typedef {Object} ScreenshotSettings
  * @property {boolean} autoSave
  */
@@ -183,6 +207,7 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  * @property {CustomCodeRuleSettings[]} customCodeRules
  * @property {LLMPromptSettings[]} llmPrompts
  * @property {UrlProcessRuleSettings[]} urlProcessRules
+ * @property {TitleTransformRuleSettings[]} titleTransformRules
  * @property {AutoGoogleLoginRuleSettings[]} autoGoogleLoginRules
  * @property {ScreenshotSettings} screenshotSettings
  * @property {string[]} pinnedShortcuts
@@ -195,7 +220,7 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 const PROVIDER_ID = 'raindrop';
-const EXPORT_VERSION = 11;
+const EXPORT_VERSION = 12;
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
@@ -206,6 +231,7 @@ const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
 const URL_PROCESS_RULES_KEY = 'urlProcessRules';
+const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
 const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
@@ -495,42 +521,53 @@ function normalizeHighlightTextRules(value) {
     }
 
     // Validate all highlights
-    const validHighlights = entry.highlights.filter((h) => {
-      if (!h || typeof h !== 'object') {
-        return false;
-      }
-      if (typeof h.value !== 'string' || !h.value.trim()) {
-        return false;
-      }
-      const validTypes = ['whole-phrase', 'comma-separated', 'regex'];
-      if (!validTypes.includes(h.type)) {
-        console.warn('[importExport:highlightText] Ignoring invalid type:', h.type);
-        return false;
-      }
-      if (h.type === 'regex') {
-        try {
-          new RegExp(h.value);
-        } catch (error) {
+    const validHighlights = entry.highlights
+      .filter((h) => {
+        if (!h || typeof h !== 'object') {
+          return false;
+        }
+        if (typeof h.value !== 'string' || !h.value.trim()) {
+          return false;
+        }
+        const validTypes = ['whole-phrase', 'comma-separated', 'regex'];
+        if (!validTypes.includes(h.type)) {
           console.warn(
-            '[importExport:highlightText] Ignoring invalid regex:',
-            h.value,
-            error,
+            '[importExport:highlightText] Ignoring invalid type:',
+            h.type,
           );
           return false;
         }
-      }
-      return true;
-    }).map((h) => ({
-      id: typeof h.id === 'string' && h.id.trim() ? h.id.trim() : generateRuleId(),
-      type: /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (h.type),
-      value: h.value.trim(),
-      textColor: typeof h.textColor === 'string' ? h.textColor : '#000000',
-      backgroundColor: typeof h.backgroundColor === 'string' ? h.backgroundColor : '#ffff00',
-      bold: typeof h.bold === 'boolean' ? h.bold : false,
-      italic: typeof h.italic === 'boolean' ? h.italic : false,
-      underline: typeof h.underline === 'boolean' ? h.underline : false,
-      ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
-    }));
+        if (h.type === 'regex') {
+          try {
+            new RegExp(h.value);
+          } catch (error) {
+            console.warn(
+              '[importExport:highlightText] Ignoring invalid regex:',
+              h.value,
+              error,
+            );
+            return false;
+          }
+        }
+        return true;
+      })
+      .map((h) => ({
+        id:
+          typeof h.id === 'string' && h.id.trim()
+            ? h.id.trim()
+            : generateRuleId(),
+        type: /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (
+          h.type
+        ),
+        value: h.value.trim(),
+        textColor: typeof h.textColor === 'string' ? h.textColor : '#000000',
+        backgroundColor:
+          typeof h.backgroundColor === 'string' ? h.backgroundColor : '#ffff00',
+        bold: typeof h.bold === 'boolean' ? h.bold : false,
+        italic: typeof h.italic === 'boolean' ? h.italic : false,
+        underline: typeof h.underline === 'boolean' ? h.underline : false,
+        ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+      }));
 
     if (validHighlights.length === 0) {
       return;
@@ -609,7 +646,8 @@ function normalizeVideoEnhancementRules(value) {
 
     if (
       (patternType === 'url-pattern' && !isValidUrlPattern(pattern)) ||
-      (patternType === 'wildcard' && !isValidEnhancementWildcardPattern(pattern))
+      (patternType === 'wildcard' &&
+        !isValidEnhancementWildcardPattern(pattern))
     ) {
       console.warn(
         '[importExport:videoEnhancements] Ignoring invalid pattern:',
@@ -978,6 +1016,129 @@ function normalizeUrlProcessRules(value) {
 }
 
 /**
+ * Normalize title transform rules from storage or input.
+ * @param {unknown} value
+ * @returns {TitleTransformRuleSettings[]}
+ */
+function normalizeTitleTransformRules(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  /** @type {TitleTransformRuleSettings[]} */
+  const sanitized = [];
+
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return;
+    }
+    const raw =
+      /** @type {{ id?: unknown, name?: unknown, urlPatterns?: unknown, operations?: unknown, disabled?: unknown, createdAt?: unknown, updatedAt?: unknown }} */ (
+        entry
+      );
+    const name = typeof raw.name === 'string' ? raw.name.trim() : '';
+    if (!name) {
+      return;
+    }
+
+    const urlPatterns = Array.isArray(raw.urlPatterns)
+      ? raw.urlPatterns
+          .map((p) => (typeof p === 'string' ? p.trim() : ''))
+          .filter((p) => p && isValidUrlPattern(p))
+      : [];
+    if (urlPatterns.length === 0) {
+      return;
+    }
+
+    const operations = Array.isArray(raw.operations)
+      ? raw.operations
+          .map((op) => {
+            if (!op || typeof op !== 'object') {
+              return null;
+            }
+            const opRaw =
+              /** @type {{ id?: unknown, type?: unknown, pattern?: unknown, value?: unknown }} */ (
+                op
+              );
+            const type = opRaw.type;
+            if (
+              typeof type !== 'string' ||
+              !['remove', 'replace', 'prefix', 'suffix'].includes(type)
+            ) {
+              return null;
+            }
+
+            /** @type {TitleTransformOperationSettings} */
+            const operation = {
+              id:
+                typeof opRaw.id === 'string' && opRaw.id.trim()
+                  ? opRaw.id.trim()
+                  : 'op-' +
+                    Date.now().toString(36) +
+                    '-' +
+                    Math.random().toString(36).slice(2),
+              type: /** @type {TitleTransformOperationType} */ (type),
+            };
+
+            // For remove and replace, pattern is required
+            if (type === 'remove' || type === 'replace') {
+              const pattern =
+                typeof opRaw.pattern === 'string' ? opRaw.pattern.trim() : '';
+              if (!pattern) {
+                return null;
+              }
+              operation.pattern = pattern;
+              // For replace, value is optional (defaults to empty string)
+              if (type === 'replace') {
+                operation.value =
+                  typeof opRaw.value === 'string' ? opRaw.value : '';
+              }
+            } else {
+              // For prefix and suffix, value is required
+              const value = typeof opRaw.value === 'string' ? opRaw.value : '';
+              if (!value) {
+                return null;
+              }
+              operation.value = value;
+            }
+
+            return operation;
+          })
+          .filter((op) => op !== null)
+      : [];
+    if (operations.length === 0) {
+      return;
+    }
+
+    /** @type {TitleTransformRuleSettings} */
+    const normalized = {
+      id:
+        typeof raw.id === 'string' && raw.id.trim()
+          ? raw.id.trim()
+          : 'rule-' +
+            Date.now().toString(36) +
+            '-' +
+            Math.random().toString(36).slice(2),
+      name,
+      urlPatterns,
+      operations,
+      disabled: !!raw.disabled,
+    };
+
+    if (typeof raw.createdAt === 'string') {
+      normalized.createdAt = raw.createdAt;
+    }
+    if (typeof raw.updatedAt === 'string') {
+      normalized.updatedAt = raw.updatedAt;
+    }
+
+    sanitized.push(normalized);
+  });
+
+  return sanitized.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
  * Normalize auto Google login rules from storage or input.
  * @param {unknown} value
  * @returns {AutoGoogleLoginRuleSettings[]}
@@ -1101,7 +1262,8 @@ function normalizeScreenshotSettings(value) {
 
   const raw = /** @type {Partial<ScreenshotSettings>} */ (value);
   return {
-    autoSave: typeof raw.autoSave === 'boolean' ? raw.autoSave : fallback.autoSave,
+    autoSave:
+      typeof raw.autoSave === 'boolean' ? raw.autoSave : fallback.autoSave,
   };
 }
 
@@ -1189,7 +1351,7 @@ function normalizePreferences(value) {
 
 /**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[] }>}
+ * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[] }>}
  */
 async function readCurrentOptions() {
   const [
@@ -1203,6 +1365,7 @@ async function readCurrentOptions() {
     customCodeResp,
     llmPromptsResp,
     urlProcessRulesResp,
+    titleTransformRulesResp,
     autoGoogleLoginRulesResp,
     pinnedShortcutsResp,
   ] = await Promise.all([
@@ -1216,6 +1379,7 @@ async function readCurrentOptions() {
     chrome.storage.local.get(CUSTOM_CODE_RULES_KEY),
     loadLLMPrompts(),
     loadUrlProcessRules(),
+    loadTitleTransformRules(),
     loadAutoGoogleLoginRules(),
     chrome.storage.local.get(PINNED_SHORTCUTS_KEY),
   ]);
@@ -1277,6 +1441,10 @@ async function readCurrentOptions() {
 
   const urlProcessRules = normalizeUrlProcessRules(urlProcessRulesResp);
 
+  const titleTransformRules = normalizeTitleTransformRules(
+    titleTransformRulesResp,
+  );
+
   const autoGoogleLoginRules = normalizeAutoGoogleLoginRules(
     autoGoogleLoginRulesResp,
   );
@@ -1303,6 +1471,7 @@ async function readCurrentOptions() {
     customCodeRules,
     llmPrompts,
     urlProcessRules,
+    titleTransformRules,
     autoGoogleLoginRules,
     screenshotSettings,
     pinnedShortcuts,
@@ -1347,6 +1516,7 @@ async function handleExportClick() {
       customCodeRules,
       llmPrompts,
       urlProcessRules,
+      titleTransformRules,
       autoGoogleLoginRules,
       screenshotSettings,
       pinnedShortcuts,
@@ -1366,6 +1536,7 @@ async function handleExportClick() {
         customCodeRules,
         llmPrompts,
         urlProcessRules,
+        titleTransformRules,
         autoGoogleLoginRules,
         screenshotSettings,
         pinnedShortcuts,
@@ -1415,6 +1586,7 @@ async function applyImportedOptions(
   customCodeRules,
   llmPrompts,
   urlProcessRules,
+  titleTransformRules,
   autoGoogleLoginRules,
   screenshotSettings,
   pinnedShortcuts,
@@ -1482,6 +1654,10 @@ async function applyImportedOptions(
     urlProcessRules || [],
   );
 
+  const sanitizedTitleTransformRules = normalizeTitleTransformRules(
+    titleTransformRules || [],
+  );
+
   const sanitizedAutoGoogleLoginRules = normalizeAutoGoogleLoginRules(
     autoGoogleLoginRules || [],
   );
@@ -1525,6 +1701,7 @@ async function applyImportedOptions(
       [BLOCK_ELEMENT_RULES_KEY]: sanitizedBlockElementRules,
       [LLM_PROMPTS_KEY]: sanitizedLLMPrompts,
       [URL_PROCESS_RULES_KEY]: sanitizedUrlProcessRules,
+      [TITLE_TRANSFORM_RULES_KEY]: sanitizedTitleTransformRules,
       [AUTO_GOOGLE_LOGIN_RULES_KEY]: sanitizedAutoGoogleLoginRules,
       [SCREENSHOT_SETTINGS_KEY]: sanitizedScreenshotSettings,
       [PINNED_SHORTCUTS_KEY]: sanitizedPinnedShortcuts,
@@ -1585,6 +1762,9 @@ async function handleFileChosen() {
     const urlProcessRules = /** @type {UrlProcessRuleSettings[]} */ (
       data.urlProcessRules || []
     );
+    const titleTransformRules = /** @type {TitleTransformRuleSettings[]} */ (
+      data.titleTransformRules || []
+    );
     const autoGoogleLoginRules = /** @type {AutoGoogleLoginRuleSettings[]} */ (
       data.autoGoogleLoginRules || []
     );
@@ -1619,6 +1799,7 @@ async function handleFileChosen() {
       customCodeRules,
       llmPrompts,
       urlProcessRules,
+      titleTransformRules,
       autoGoogleLoginRules,
       screenshotSettings,
       pinnedShortcuts,
