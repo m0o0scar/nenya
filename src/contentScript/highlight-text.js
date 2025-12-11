@@ -800,8 +800,8 @@
       // Check if it's one of our elements
       if (node.nodeType === Node.ELEMENT_NODE) {
         const element = /** @type {HTMLElement} */ (node);
-        const className = element.className || '';
-        const id = element.id || '';
+        const className = String(element.className || '');
+        const id = String(element.id || '');
         if (
           className.includes(HIGHLIGHT_CLASS_PREFIX) ||
           className.includes('nenya-minimap') ||
