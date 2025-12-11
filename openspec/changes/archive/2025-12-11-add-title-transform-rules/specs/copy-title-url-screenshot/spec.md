@@ -84,6 +84,8 @@ The extension MUST support copying tab information as markdown links.
 - **AND** each tab MUST be formatted as `[{transformedTitle}]({url})` on separate lines
 - **AND** URLs MUST be processed through the URL processor
 
+## ADDED Requirements
+
 ### Requirement: Title Transformation
 
 The extension MUST apply title transform rules before copying titles to the clipboard.
@@ -108,4 +110,3 @@ The extension MUST apply title transform rules before copying titles to the clip
 - **GIVEN** title transform rules match a tab's URL
 - **WHEN** copying title in any format (title only, title-url, title-dash-url, markdown-link)
 - **THEN** the transformed title MUST be used in all formats
-

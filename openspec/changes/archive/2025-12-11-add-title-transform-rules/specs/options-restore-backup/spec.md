@@ -35,6 +35,8 @@ Manual backups SHALL serialize all configurable options into a plain JSON payloa
 - **AND** the payload SHALL omit Automerge metadata and SHALL store only plain JSON fields
 - **AND** restore SHALL overwrite the corresponding local keys, applying defaults when fields are missing.
 
+## ADDED Requirements
+
 ### Requirement: Title Transform Rules Import/Export
 
 The JSON import/export functionality MUST include title transform rules.
@@ -63,4 +65,3 @@ The JSON import/export functionality MUST include title transform rules.
 - **THEN** the import MUST NOT modify existing title transform rules
 - **AND** existing rules MUST be preserved unchanged
 - **AND** no error or warning MUST be shown
-
