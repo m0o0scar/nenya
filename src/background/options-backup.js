@@ -35,6 +35,7 @@ const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
 const URL_PROCESS_RULES_KEY = 'urlProcessRules';
+const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
 const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
@@ -51,6 +52,7 @@ const OPTION_KEYS = [
   CUSTOM_CODE_RULES_KEY,
   LLM_PROMPTS_KEY,
   URL_PROCESS_RULES_KEY,
+  TITLE_TRANSFORM_RULES_KEY,
   AUTO_GOOGLE_LOGIN_RULES_KEY,
   SCREENSHOT_SETTINGS_KEY,
   PINNED_SHORTCUTS_KEY,
@@ -109,6 +111,7 @@ let initialized = false;
  * @property {any[]} customCodeRules
  * @property {any[]} llmPrompts
  * @property {any[]} urlProcessRules
+ * @property {any[]} titleTransformRules
  * @property {any[]} autoGoogleLoginRules
  * @property {any} screenshotSettings
  * @property {any[]} pinnedShortcuts
@@ -224,7 +227,10 @@ async function buildBackupPayload() {
   try {
     parentFolderPath = await getBookmarkFolderPath(parentFolderId);
   } catch (error) {
-    console.warn('[options-backup] Failed to resolve parent folder path:', error);
+    console.warn(
+      '[options-backup] Failed to resolve parent folder path:',
+      error,
+    );
   }
   if (!parentFolderPath) {
     parentFolderPath = DEFAULT_PARENT_PATH;
@@ -240,7 +246,8 @@ async function buildBackupPayload() {
       rootFolderName,
     },
     notificationPreferences:
-      stored?.[NOTIFICATION_PREFERENCES_KEY] || clone(DEFAULT_NOTIFICATION_PREFERENCES),
+      stored?.[NOTIFICATION_PREFERENCES_KEY] ||
+      clone(DEFAULT_NOTIFICATION_PREFERENCES),
     autoReloadRules: stored?.[AUTO_RELOAD_RULES_KEY] || [],
     darkModeRules: stored?.[DARK_MODE_RULES_KEY] || [],
     brightModeWhitelist: stored?.[BRIGHT_MODE_WHITELIST_KEY] || [],
@@ -250,11 +257,11 @@ async function buildBackupPayload() {
     customCodeRules: stored?.[CUSTOM_CODE_RULES_KEY] || [],
     llmPrompts: stored?.[LLM_PROMPTS_KEY] || [],
     urlProcessRules: stored?.[URL_PROCESS_RULES_KEY] || [],
+    titleTransformRules: stored?.[TITLE_TRANSFORM_RULES_KEY] || [],
     autoGoogleLoginRules: stored?.[AUTO_GOOGLE_LOGIN_RULES_KEY] || [],
-    screenshotSettings:
-      stored?.[SCREENSHOT_SETTINGS_KEY] || {
-        autoSave: false,
-      },
+    screenshotSettings: stored?.[SCREENSHOT_SETTINGS_KEY] || {
+      autoSave: false,
+    },
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
   };
 
@@ -300,14 +307,15 @@ async function applyBackupPayload(payload) {
   }
 
   const rootFolderName =
-    typeof rootFolder.rootFolderName === 'string' && rootFolder.rootFolderName.trim()
+    typeof rootFolder.rootFolderName === 'string' &&
+    rootFolder.rootFolderName.trim()
       ? rootFolder.rootFolderName.trim()
       : DEFAULT_ROOT_FOLDER_NAME;
 
   const existing = await chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY);
   const map =
-    (existing?.[ROOT_FOLDER_SETTINGS_KEY] &&
-      typeof existing[ROOT_FOLDER_SETTINGS_KEY] === 'object')
+    existing?.[ROOT_FOLDER_SETTINGS_KEY] &&
+    typeof existing[ROOT_FOLDER_SETTINGS_KEY] === 'object'
       ? existing[ROOT_FOLDER_SETTINGS_KEY]
       : {};
   map[PROVIDER_ID] = { parentFolderId, rootFolderName };
@@ -321,7 +329,8 @@ async function applyBackupPayload(payload) {
   const updates = {
     [ROOT_FOLDER_SETTINGS_KEY]: map,
     [NOTIFICATION_PREFERENCES_KEY]:
-      payload.notificationPreferences || clone(DEFAULT_NOTIFICATION_PREFERENCES),
+      payload.notificationPreferences ||
+      clone(DEFAULT_NOTIFICATION_PREFERENCES),
     [AUTO_RELOAD_RULES_KEY]: payload.autoReloadRules || [],
     [DARK_MODE_RULES_KEY]: payload.darkModeRules || [],
     [BRIGHT_MODE_WHITELIST_KEY]: payload.brightModeWhitelist || [],
@@ -331,11 +340,11 @@ async function applyBackupPayload(payload) {
     [CUSTOM_CODE_RULES_KEY]: payload.customCodeRules || [],
     [LLM_PROMPTS_KEY]: payload.llmPrompts || [],
     [URL_PROCESS_RULES_KEY]: payload.urlProcessRules || [],
+    [TITLE_TRANSFORM_RULES_KEY]: payload.titleTransformRules || [],
     [AUTO_GOOGLE_LOGIN_RULES_KEY]: payload.autoGoogleLoginRules || [],
-    [SCREENSHOT_SETTINGS_KEY]:
-      payload.screenshotSettings || {
-        autoSave: false,
-      },
+    [SCREENSHOT_SETTINGS_KEY]: payload.screenshotSettings || {
+      autoSave: false,
+    },
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
   };
 
@@ -374,7 +383,9 @@ function getCollectionId(collection) {
  */
 async function fetchBackupCollections(tokens) {
   const collectionsResponse = await raindropRequest('/collections', tokens);
-  return Array.isArray(collectionsResponse?.items) ? collectionsResponse.items : [];
+  return Array.isArray(collectionsResponse?.items)
+    ? collectionsResponse.items
+    : [];
 }
 
 /**
@@ -385,7 +396,9 @@ async function fetchBackupCollections(tokens) {
 async function findBackupCollectionIds(tokens) {
   const items = await fetchBackupCollections(tokens);
   const primary = items.find((item) => item.title === BACKUP_COLLECTION_TITLE);
-  const legacy = items.find((item) => item.title === LEGACY_BACKUP_COLLECTION_TITLE);
+  const legacy = items.find(
+    (item) => item.title === LEGACY_BACKUP_COLLECTION_TITLE,
+  );
   return {
     primaryId: getCollectionId(primary),
     legacyId: getCollectionId(legacy),
@@ -498,8 +511,10 @@ async function saveChunks(tokens, collectionId, chunks) {
  */
 async function loadChunks(tokens, collectionId) {
   const items = await fetchAllCollectionItems(tokens, collectionId);
-  const chunkItems = items.filter((item) =>
-    typeof item?.title === 'string' && item.title.startsWith(BACKUP_ITEM_PREFIX),
+  const chunkItems = items.filter(
+    (item) =>
+      typeof item?.title === 'string' &&
+      item.title.startsWith(BACKUP_ITEM_PREFIX),
   );
 
   if (chunkItems.length === 0) {
@@ -567,7 +582,8 @@ export async function runManualBackup() {
 
     return { ok: true, errors: [], state };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+    const message =
+      error instanceof Error ? error.message : String(error ?? 'Unknown error');
     const state = await updateState((draft) => {
       draft.lastError = message;
       draft.lastErrorAt = Date.now();
@@ -614,7 +630,10 @@ export async function runManualRestore() {
       };
     }
 
-    let { payload, lastModified } = await loadChunks(tokens, targetCollectionId);
+    let { payload, lastModified } = await loadChunks(
+      tokens,
+      targetCollectionId,
+    );
 
     if (!payload && primaryId && legacyId && legacyId !== targetCollectionId) {
       const legacyResult = await loadChunks(tokens, legacyId);
@@ -645,7 +664,8 @@ export async function runManualRestore() {
     });
     return { ok: true, errors: [], state };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error ?? 'Unknown error');
+    const message =
+      error instanceof Error ? error.message : String(error ?? 'Unknown error');
     const state = await updateState((draft) => {
       draft.lastError = message;
       draft.lastErrorAt = Date.now();
@@ -682,6 +702,7 @@ export async function resetOptionsToDefaults() {
     [CUSTOM_CODE_RULES_KEY]: [],
     [LLM_PROMPTS_KEY]: [],
     [URL_PROCESS_RULES_KEY]: [],
+    [TITLE_TRANSFORM_RULES_KEY]: [],
     [AUTO_GOOGLE_LOGIN_RULES_KEY]: [],
     [SCREENSHOT_SETTINGS_KEY]: { autoSave: false },
     [PINNED_SHORTCUTS_KEY]: [],
@@ -731,7 +752,10 @@ export function handleOptionsBackupMessage(message, sendResponse) {
         .catch((error) =>
           sendResponse({
             ok: false,
-            error: error instanceof Error ? error.message : String(error ?? 'Unknown error'),
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error ?? 'Unknown error'),
           }),
         );
       return true;
@@ -742,7 +766,11 @@ export function handleOptionsBackupMessage(message, sendResponse) {
         .catch((error) =>
           sendResponse({
             ok: false,
-            errors: [error instanceof Error ? error.message : String(error ?? 'Unknown error')],
+            errors: [
+              error instanceof Error
+                ? error.message
+                : String(error ?? 'Unknown error'),
+            ],
           }),
         );
       return true;
@@ -753,7 +781,11 @@ export function handleOptionsBackupMessage(message, sendResponse) {
         .catch((error) =>
           sendResponse({
             ok: false,
-            errors: [error instanceof Error ? error.message : String(error ?? 'Unknown error')],
+            errors: [
+              error instanceof Error
+                ? error.message
+                : String(error ?? 'Unknown error'),
+            ],
           }),
         );
       return true;
@@ -764,7 +796,10 @@ export function handleOptionsBackupMessage(message, sendResponse) {
         .catch((error) =>
           sendResponse({
             ok: false,
-            error: error instanceof Error ? error.message : String(error ?? 'Unknown error'),
+            error:
+              error instanceof Error
+                ? error.message
+                : String(error ?? 'Unknown error'),
           }),
         );
       return true;
@@ -801,4 +836,3 @@ export async function handleOptionsBackupLifecycle(trigger) {
     }
   }
 }
-

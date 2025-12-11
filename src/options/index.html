@@ -570,6 +570,10 @@
           <span class="nav-icon text-lg">🔗</span>
           <span>URL Process Rules</span>
         </a>
+        <a href="#title-transform-rules-heading" class="nav-item nav-link" data-section="title-transform-rules-heading">
+          <span class="nav-icon text-lg">✏️</span>
+          <span>Transform Title</span>
+        </a>
         <a href="#auto-google-login-heading" class="nav-item nav-link" data-section="auto-google-login-heading">
           <span class="nav-icon text-lg">🔑</span>
           <span>Auto Google Login</span>
@@ -1356,6 +1360,103 @@
                     <div>
                       <dt class="form-label">Last Updated</dt>
                       <dd id="urlProcessRuleDetailUpdated"></dd>
+                    </div>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Transform Title Section -->
+        <section class="section-content" data-section="title-transform-rules-heading" id="section-title-transform">
+          <div class="animate-in">
+            <div class="section-header">
+              <h1 id="title-transform-rules-heading" class="section-title">Transform Title</h1>
+              <p class="section-description">Create rules to transform page titles before copying to clipboard.</p>
+            </div>
+
+            <div class="options-card mb-6">
+              <form id="titleTransformRuleForm" class="space-y-4" novalidate>
+                <div>
+                  <label class="form-label">Rule Name</label>
+                  <input id="titleTransformRuleNameInput" class="nenya-input" type="text" autocomplete="off"
+                    placeholder="E.g., Remove site names from titles" required>
+                </div>
+
+                <div class="space-y-3">
+                  <label class="form-label">URL Patterns</label>
+                  <div class="flex gap-2">
+                    <input id="titleTransformRuleAddPatternInput" class="nenya-input font-mono text-sm flex-1"
+                      type="text" autocomplete="off" placeholder="https://example.com/*">
+                    <button id="titleTransformRuleAddPatternButton" class="nenya-btn nenya-btn-secondary"
+                      type="button">Add</button>
+                  </div>
+                  <div id="titleTransformRulePatternsList" class="space-y-2"></div>
+                </div>
+
+                <div class="space-y-3">
+                  <label class="form-label">Transform Operations</label>
+                  <div class="flex gap-2 flex-wrap">
+                    <select id="titleTransformRuleOperationTypeSelect" class="nenya-input w-44">
+                      <option value="remove">Remove</option>
+                      <option value="replace">Replace</option>
+                      <option value="prefix">Prefix</option>
+                      <option value="suffix">Suffix</option>
+                    </select>
+                    <div class="form-control flex-1 min-w-32">
+                      <input id="titleTransformRuleOperationPatternInput" class="nenya-input font-mono text-sm w-full"
+                        type="text" autocomplete="off" placeholder="Regex pattern (for remove/replace)">
+                    </div>
+                    <div class="form-control flex-1 min-w-32">
+                      <input id="titleTransformRuleOperationValueInput" class="nenya-input font-mono text-sm w-full"
+                        type="text" autocomplete="off" placeholder="Value (for replace/prefix/suffix)">
+                    </div>
+                    <button id="titleTransformRuleAddOperationButton" class="nenya-btn nenya-btn-secondary"
+                      type="button">Add</button>
+                  </div>
+                  <div id="titleTransformRuleOperationsList" class="space-y-2"></div>
+                </div>
+
+                <p id="titleTransformRuleFormError" class="text-sm text-error" hidden></p>
+                <div class="flex gap-3">
+                  <button id="titleTransformRuleSaveButton" class="nenya-btn nenya-btn-vibrant" type="submit">Add
+                    Rule</button>
+                  <button id="titleTransformRuleCancelEditButton" class="nenya-btn nenya-btn-secondary" type="button"
+                    hidden>Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="options-card">
+              <h3 class="text-xs font-bold text-base-content/40 uppercase tracking-wider mb-4">Saved Rules</h3>
+              <div id="titleTransformRulesEmpty" class="empty-state">No title transform rules yet. Add one above to
+                start.</div>
+              <div id="titleTransformRulesList" class="space-y-3" role="list"></div>
+
+              <div id="titleTransformRuleDetails" class="mt-6 pt-6 border-t border-base-300" hidden>
+                <h3 class="text-lg font-semibold mb-4">Rule Details</h3>
+                <dl class="space-y-4 text-sm">
+                  <div>
+                    <dt class="form-label">Name</dt>
+                    <dd id="titleTransformRuleDetailName" class="font-medium"></dd>
+                  </div>
+                  <div>
+                    <dt class="form-label">URL Patterns</dt>
+                    <dd id="titleTransformRuleDetailPatterns" class="space-y-1"></dd>
+                  </div>
+                  <div>
+                    <dt class="form-label">Operations</dt>
+                    <dd id="titleTransformRuleDetailOperations" class="space-y-1"></dd>
+                  </div>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div>
+                      <dt class="form-label">Created</dt>
+                      <dd id="titleTransformRuleDetailCreated"></dd>
+                    </div>
+                    <div>
+                      <dt class="form-label">Last Updated</dt>
+                      <dd id="titleTransformRuleDetailUpdated"></dd>
                     </div>
                   </div>
                 </dl>

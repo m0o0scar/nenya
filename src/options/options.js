@@ -14,6 +14,7 @@ import './blockElements.js';
 import './customCode.js';
 import './llmPrompts.js';
 import './urlProcessRules.js';
+import './titleTransformRules.js';
 import './screenshots.js';
 import './autoGoogleLogin.js';
 import './debug.js';
