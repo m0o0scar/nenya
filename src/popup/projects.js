@@ -895,14 +895,6 @@ async function handleProjectReplacementAction(
 
   const statusElement = document.getElementById('statusMessage');
 
-  const confirmText = messages.confirm(displayName);
-  if (confirmText && !window.confirm(confirmText)) {
-    if (statusElement) {
-      concludeStatus(messages.cancelMessage, 'info', 3000, statusElement);
-    }
-    return;
-  }
-
   const button = trigger;
   if (button) {
     /** @type {HTMLButtonElement} */ (button).disabled = true;
