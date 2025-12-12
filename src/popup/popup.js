@@ -14,6 +14,7 @@ import {
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
 import { initializeProjects } from './projects.js';
+import { debounce } from '../shared/debounce.js';
 
 /**
  * Available shortcut buttons configuration
@@ -1701,6 +1702,9 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     });
   }
 
+  // Debounce search to improve performance and prevent excessive calls while typing.
+  const debouncedSearch = debounce(performSearch, 300);
+
   inputElement.addEventListener('input', (event) => {
     const target = /** @type {HTMLInputElement | null} */ (event.target);
     if (!target) {
@@ -1709,7 +1713,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     const query = target.value;
     highlightedIndex = -1; // Reset highlight when query changes
     if (query.length > 2) {
-      performSearch(query);
+      debouncedSearch(query);
     } else {
       resultsElement.innerHTML = '';
       currentResults = [];
