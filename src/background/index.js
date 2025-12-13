@@ -960,86 +960,38 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 
     // Inject content scripts into existing tabs instead of reloading them
     // This preserves user state (scroll position, form data, etc.)
+    // ⚡ Bolt: Use Promise.all to inject scripts into all tabs concurrently for faster startup.
     const windows = await chrome.windows.getAll({ populate: true });
+    const allTabs = windows.flatMap((window) => window.tabs || []);
 
-    // Content scripts to inject (matching manifest.json structure)
-    // Note: iframe-monitor.js runs in all_frames and is skipped here;
-    // it will be injected automatically for new tabs/iframes
     const contentScripts = [
-      // document_start scripts
-      [
-        'src/contentScript/bright-mode.js',
-        'src/contentScript/block-elements.js',
-        'src/contentScript/custom-js-css.js',
-      ],
-      // document_idle scripts
-      [
-        'src/contentScript/video-controller.js',
-        'src/contentScript/highlight-text.js',
-      ],
+      ['src/contentScript/bright-mode.js', 'src/contentScript/block-elements.js', 'src/contentScript/custom-js-css.js'],
+      ['src/contentScript/video-controller.js', 'src/contentScript/highlight-text.js'],
     ];
-
-    // CSS to inject (for video-controller)
     const cssFiles = ['src/contentScript/video-controller.css'];
 
-    for (const window of windows) {
-      if (!window.tabs) {
-        continue;
-      }
-      for (const tab of window.tabs) {
-        if (
-          tab.id &&
-          tab.url &&
-          (tab.url.startsWith('http:') || tab.url.startsWith('https:'))
-        ) {
+    const injectionPromises = allTabs
+      .filter((tab) => tab.id && tab.url && (tab.url.startsWith('http:') || tab.url.startsWith('https:')))
+      .map((tab) => {
+        const tabId = tab.id;
+        return (async () => {
           try {
-            // Inject CSS files
-            for (const cssFile of cssFiles) {
-              try {
-                await chrome.scripting.insertCSS({
-                  target: { tabId: tab.id },
-                  files: [cssFile],
-                });
-              } catch (error) {
-                console.warn(
-                  `[background] Failed to inject CSS ${cssFile} into tab ${tab.id}:`,
-                  error,
-                );
-              }
-            }
-
-            // Inject JavaScript files (scripts handle their own initialization)
-            for (const scriptFiles of contentScripts) {
-              try {
-                await chrome.scripting.executeScript({
-                  target: { tabId: tab.id },
-                  files: scriptFiles,
-                });
-              } catch (error) {
-                console.warn(
-                  `[background] Failed to inject scripts into tab ${tab.id}:`,
-                  error,
-                );
-              }
+            await Promise.all(cssFiles.map((file) => chrome.scripting.insertCSS({ target: { tabId }, files: [file] }).catch((e) => console.warn(`CSS injection failed for ${file} in tab ${tabId}:`, e))));
+            for (const scriptGroup of contentScripts) {
+              await chrome.scripting.executeScript({ target: { tabId }, files: scriptGroup }).catch((e) => console.warn(`JS injection failed for group in tab ${tabId}:`, e));
             }
           } catch (error) {
-            console.warn(
-              `[background] Failed to inject content scripts into tab ${tab.id}:`,
-              error,
-            );
-            // Fallback: reload the tab if injection fails (e.g., for restricted pages)
+            console.warn(`Content script injection failed for tab ${tabId}:`, error);
             try {
-              await chrome.tabs.reload(tab.id, { bypassCache: true });
+              await chrome.tabs.reload(tabId, { bypassCache: true });
             } catch (reloadError) {
-              console.warn(
-                `[background] Failed to reload tab ${tab.id}:`,
-                reloadError,
-              );
+              console.warn(`Tab reload failed for tab ${tabId}:`, reloadError);
             }
           }
-        }
-      }
-    }
+        })();
+      });
+
+    await Promise.all(injectionPromises);
   }
 });
 
