@@ -732,9 +732,10 @@ export async function addTabsToProject(projectId, rawTabs) {
     let maxIndex = -1;
     /** @type {{ name: string, color: string, index: number } | undefined} */
     let groupCandidate;
-    let consistentGroup = true;
+    let firstGroupFound = false;
+    let isGroupConsistent = true;
 
-    existingItems.forEach((item) => {
+    for (const item of existingItems) {
       const itemUrl = typeof item?.link === 'string' ? item.link : '';
       const normalizedUrl = normalizeHttpUrl(itemUrl);
       if (normalizedUrl) {
@@ -746,18 +747,21 @@ export async function addTabsToProject(projectId, rawTabs) {
         maxIndex = Math.max(maxIndex, Number(metadata.tabIndex));
       }
 
-      if (metadata.group) {
-        if (!groupCandidate) {
+      if (isGroupConsistent) {
+        if (!firstGroupFound) {
           groupCandidate = metadata.group;
-        } else if (!isMatchingGroupMetadata(groupCandidate, metadata.group)) {
-          consistentGroup = false;
+          firstGroupFound = true;
+        } else if (groupCandidate && metadata.group) {
+          if (!isMatchingGroupMetadata(groupCandidate, metadata.group)) {
+            isGroupConsistent = false;
+          }
+        } else if (groupCandidate || metadata.group) {
+          isGroupConsistent = false;
         }
-      } else {
-        consistentGroup = false;
       }
-    });
+    }
 
-    if (!consistentGroup) {
+    if (!isGroupConsistent) {
       groupCandidate = undefined;
     }
 
