@@ -1438,6 +1438,44 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
   let currentResults = [];
 
   /**
+   * Opens a bookmark, reusing the current tab if it's empty.
+   * @param {string} url - The URL of the bookmark to open.
+   * @returns {Promise<void>}
+   */
+  async function openBookmark(url) {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tabs.length > 0) {
+        const currentTab = tabs[0];
+        // Check if the current tab is a new tab page or a blank page across different browsers.
+        const newTabUrls = [
+          'chrome://newtab/', // Chrome
+          'about:newtab', // Firefox
+          'edge://newtab/', // Edge
+          'about:blank', // All browsers
+        ];
+        if (
+          currentTab.id &&
+          (!currentTab.url || newTabUrls.includes(currentTab.url))
+        ) {
+          await chrome.tabs.update(currentTab.id, { url });
+        } else {
+          await chrome.tabs.create({ url });
+        }
+      } else {
+        // Fallback to creating a new tab if no active tab is found.
+        await chrome.tabs.create({ url });
+      }
+      window.close();
+    } catch (error) {
+      console.error('Error opening bookmark:', error);
+      // Fallback in case of error
+      chrome.tabs.create({ url });
+      window.close();
+    }
+  }
+
+  /**
    * Updates the visual highlight of search results.
    * @param {number} index
    */
@@ -1548,8 +1586,9 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         `;
 
         resultItem.addEventListener('click', () => {
-          chrome.tabs.create({ url: bookmark.url });
-          window.close();
+          if (bookmark.url) {
+            void openBookmark(bookmark.url);
+          }
         });
       } else {
         // Bookmark folder
@@ -1729,9 +1768,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
         const highlightedItem = currentResults[highlightedIndex];
         if (highlightedItem.url) {
-          // Bookmark item
-          chrome.tabs.create({ url: highlightedItem.url });
-          window.close();
+          void openBookmark(highlightedItem.url);
         } else {
           // Bookmark folder - open all direct children bookmarks
           void openFolderBookmarks(highlightedItem);
