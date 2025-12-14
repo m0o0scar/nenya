@@ -1478,6 +1478,7 @@ function isEmptyTabUrl(url) {
     'chrome://newtab',
     'chrome://new-tab-page',
     'edge://newtab',
+    'edge://new-tab-page',
     'about:newtab',
     'about:blank',
     'about:home',
