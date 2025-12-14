@@ -1447,12 +1447,16 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tabs.length > 0) {
         const currentTab = tabs[0];
-        // Check if the current tab is a new tab page or a blank page.
+        // Check if the current tab is a new tab page or a blank page across different browsers.
+        const newTabUrls = [
+          'chrome://newtab/', // Chrome
+          'about:newtab', // Firefox
+          'edge://newtab/', // Edge
+          'about:blank', // All browsers
+        ];
         if (
           currentTab.id &&
-          (currentTab.url === 'chrome://newtab/' ||
-            currentTab.url === 'about:blank' ||
-            !currentTab.url)
+          (!currentTab.url || newTabUrls.includes(currentTab.url))
         ) {
           await chrome.tabs.update(currentTab.id, { url });
         } else {
