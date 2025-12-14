@@ -130,3 +130,57 @@ export async function collectSavableTabs() {
     return Boolean(normalizeUrlForSave(convertedUrl));
   });
 }
+
+/**
+ * Returns a function to close pre-existing empty tabs.
+ * This should be called *before* opening new tabs to capture the state.
+ * The returned function should be called *after* new tabs have been opened.
+ * @returns {Promise<() => Promise<void>>} A function that performs the closing action.
+ */
+export async function getCloseExistingEmptyTabsAction() {
+  try {
+    // 1. Get all non-pinned tabs in the current window.
+    const existingTabs = await queryTabs({
+      currentWindow: true,
+      pinned: false,
+    });
+
+    /**
+     * The action to be executed after new tabs are opened.
+     */
+    const closeAction = async () => {
+      if (existingTabs.length === 0) {
+        return;
+      }
+
+      // 2. Check if ALL of the *pre-existing* tabs were non-http.
+      const allExistingTabsWereEmpty = existingTabs.every((tab) => {
+        const url = tab.url || '';
+        // Also check for localhost, which should not be considered an empty tab.
+        const isLocalhost =
+          url.includes('localhost') || url.includes('127.0.0.1');
+        return !isLocalhost && !url.startsWith('http://') && !url.startsWith('https://');
+      });
+
+      // 3. If so, close them.
+      if (allExistingTabsWereEmpty) {
+        const tabIds = existingTabs
+          .map((tab) => tab.id)
+          .filter((id) => typeof id === 'number');
+        if (tabIds.length > 0) {
+          try {
+            await chrome.tabs.remove(tabIds);
+          } catch (error) {
+            console.error('[shared] Error removing tabs:', error);
+          }
+        }
+      }
+    };
+
+    return closeAction;
+  } catch (error) {
+    console.error('[shared] Error getting existing tabs:', error);
+    // Return a no-op function in case of error.
+    return async () => {};
+  }
+}

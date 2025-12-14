@@ -7,6 +7,7 @@ import {
   queryTabs,
   normalizeUrlForSave,
   collectSavableTabs,
+  getCloseExistingEmptyTabsAction,
 } from './shared.js';
 import {
   convertSplitUrlForRestore,
@@ -485,11 +486,17 @@ async function handleRestoreProjectTabs(projectId, projectTitle, trigger) {
   }
 
   try {
+    // Get the action to close empty tabs *before* restoring the project.
+    const closeExistingEmptyTabs = await getCloseExistingEmptyTabsAction();
+
     const response = await sendRuntimeMessage({
       type: 'projects:restoreProjectTabs',
       projectId: normalizedId,
       projectTitle: displayName,
     });
+
+    // Now, execute the closing action.
+    await closeExistingEmptyTabs();
 
     if (!response || typeof response !== 'object') {
       if (statusElement) {

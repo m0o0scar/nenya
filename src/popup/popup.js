@@ -12,7 +12,7 @@ import {
   handleSaveToUnsorted,
   handlePull,
 } from './mirror.js';
-import { concludeStatus } from './shared.js';
+import { concludeStatus, getCloseExistingEmptyTabsAction } from './shared.js';
 import { initializeProjects } from './projects.js';
 import { debounce } from '../shared/debounce.js';
 
@@ -1438,34 +1438,20 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
   let currentResults = [];
 
   /**
-   * Opens a bookmark, reusing the current tab if it's empty.
+   * Opens a bookmark, and closes any pre-existing empty tabs.
    * @param {string} url - The URL of the bookmark to open.
    * @returns {Promise<void>}
    */
   async function openBookmark(url) {
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (tabs.length > 0) {
-        const currentTab = tabs[0];
-        // Check if the current tab is a new tab page or a blank page across different browsers.
-        const newTabUrls = [
-          'chrome://newtab/', // Chrome
-          'about:newtab', // Firefox
-          'edge://newtab/', // Edge
-          'about:blank', // All browsers
-        ];
-        if (
-          currentTab.id &&
-          (!currentTab.url || newTabUrls.includes(currentTab.url))
-        ) {
-          await chrome.tabs.update(currentTab.id, { url });
-        } else {
-          await chrome.tabs.create({ url });
-        }
-      } else {
-        // Fallback to creating a new tab if no active tab is found.
-        await chrome.tabs.create({ url });
-      }
+      // Get the action to close empty tabs *before* opening the new one.
+      const closeExistingEmptyTabs = await getCloseExistingEmptyTabsAction();
+
+      await chrome.tabs.create({ url });
+
+      // Now, execute the closing action.
+      await closeExistingEmptyTabs();
+
       window.close();
     } catch (error) {
       console.error('Error opening bookmark:', error);
@@ -1627,54 +1613,63 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @returns {Promise<void>}
    */
   async function openFolderBookmarks(folder) {
-    return new Promise((resolve) => {
-      if (!folder.id) {
-        resolve();
+    if (!folder.id) {
+      return;
+    }
+
+    try {
+      // Get the action to close empty tabs *before* opening new ones.
+      const closeExistingEmptyTabs = await getCloseExistingEmptyTabsAction();
+
+      const subTree = await new Promise((resolve) => {
+        chrome.bookmarks.getSubTree(folder.id, (tree) => resolve(tree));
+      });
+
+      if (!subTree || subTree.length === 0) {
         return;
       }
 
-      // Get full folder details with children
-      chrome.bookmarks.getSubTree(folder.id, (subTree) => {
-        if (!subTree || subTree.length === 0) {
-          resolve();
-          return;
+      const folderNode = subTree[0];
+      if (!folderNode.children || folderNode.children.length === 0) {
+        return;
+      }
+
+      // Filter to only direct children that are bookmarks (have URLs)
+      const bookmarkChildren = folderNode.children.filter((child) => child.url);
+
+      // Deduplicate by URL to prevent opening the same bookmark multiple times
+      const seenUrls = new Set();
+      const uniqueBookmarks = bookmarkChildren.filter((bookmark) => {
+        if (!bookmark.url) {
+          return false;
         }
-
-        const folderNode = subTree[0];
-        if (!folderNode.children || folderNode.children.length === 0) {
-          resolve();
-          return;
+        if (seenUrls.has(bookmark.url)) {
+          return false;
         }
-
-        // Filter to only direct children that are bookmarks (have URLs)
-        const bookmarkChildren = folderNode.children.filter(
-          (child) => child.url,
-        );
-
-        // Deduplicate by URL to prevent opening the same bookmark multiple times
-        const seenUrls = new Set();
-        const uniqueBookmarks = bookmarkChildren.filter((bookmark) => {
-          if (!bookmark.url) {
-            return false;
-          }
-          if (seenUrls.has(bookmark.url)) {
-            return false;
-          }
-          seenUrls.add(bookmark.url);
-          return true;
-        });
-
-        // Open each bookmark in a separate tab
-        uniqueBookmarks.forEach((bookmark) => {
-          if (bookmark.url) {
-            chrome.tabs.create({ url: bookmark.url });
-          }
-        });
-
-        window.close();
-        resolve();
+        seenUrls.add(bookmark.url);
+        return true;
       });
-    });
+
+      // Open each bookmark in a separate tab
+      if (uniqueBookmarks.length > 0) {
+        await Promise.all(
+          uniqueBookmarks.map((bookmark) => {
+            if (bookmark.url) {
+              return chrome.tabs.create({ url: bookmark.url });
+            }
+            return Promise.resolve();
+          }),
+        );
+      }
+
+      // Now, execute the closing action.
+      await closeExistingEmptyTabs();
+
+      window.close();
+    } catch (error) {
+      console.error('Error opening folder of bookmarks:', error);
+      window.close();
+    }
   }
 
   /**
