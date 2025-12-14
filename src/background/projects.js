@@ -1466,6 +1466,26 @@ function computeProjectEntryIndex(entry) {
 }
 
 /**
+ * Check if a URL is for an empty tab page.
+ * @param {string} url - The URL to check.
+ * @returns {boolean}
+ */
+function isEmptyTabUrl(url) {
+  if (!url) {
+    return false;
+  }
+  const emptyTabUrls = [
+    'chrome://newtab',
+    'chrome://new-tab-page',
+    'edge://newtab',
+    'about:newtab',
+    'about:blank',
+    'about:home',
+  ];
+  return emptyTabUrls.some((emptyUrl) => url.startsWith(emptyUrl));
+}
+
+/**
  * Restore project tabs into the current window based on sanitized entries.
  * @param {ProjectRestoreEntry[]} entries
  * @param {{ projectName?: string }} [options]
@@ -1537,15 +1557,7 @@ async function applyProjectRestore(entries, options) {
   const hasOnlyEmptyTab =
     existingTabCount === 1 &&
     existingTabs[0] &&
-    existingTabs[0].url &&
-    (existingTabs[0].url === 'chrome://newtab/' ||
-      existingTabs[0].url === 'chrome://new-tab-page/' ||
-      existingTabs[0].url === 'edge://newtab/' ||
-      existingTabs[0].url === 'about:newtab' ||
-      existingTabs[0].url === 'about:blank' ||
-      existingTabs[0].url.startsWith('chrome://newtab/') ||
-      existingTabs[0].url.startsWith('chrome://new-tab-page/') ||
-      existingTabs[0].url.startsWith('edge://newtab/'));
+    isEmptyTabUrl(existingTabs[0].url);
 
   const sortedEntries = sortProjectRestoreEntries(entries);
   /** @type {{ tab: chrome.tabs.Tab, entry: ProjectRestoreEntry }[]} */
