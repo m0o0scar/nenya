@@ -9,3 +9,7 @@ body {
   width: var(--popup-width);
   max-width: var(--popup-width);
 }
+
+#projectsErrorContainer.flex {
+  display: flex;
+}

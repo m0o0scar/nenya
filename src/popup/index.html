@@ -115,6 +115,16 @@
           </div>
         </header>
         <section class="space-y-2 mt-2">
+          <div id="projectsErrorContainer" class="hidden items-center justify-between text-sm text-error p-2 border border-error/50 rounded-md my-2">
+            <span id="projectsErrorMessage" class="flex-1"></span>
+            <div class="tooltip tooltip-left" data-tip="Retry">
+              <button id="retryProjectsButton" class="btn btn-xs btn-square btn-ghost">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0011.664 0l3.18-3.185m-3.18-3.182a8.25 8.25 0 00-11.664 0l-3.18 3.185" />
+                </svg>
+              </button>
+            </div>
+          </div>
           <div id="projectsContainer" class="space-y-2" role="list"></div>
         </section>
       </div>

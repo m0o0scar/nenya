@@ -114,6 +114,12 @@ export async function refreshProjectList(projectsContainer) {
     return;
   }
 
+  // Hide error container on refresh
+  const errorContainer = document.getElementById('projectsErrorContainer');
+  if (errorContainer) {
+    errorContainer.classList.add('hidden');
+  }
+
   // Apply loading state to projects container
   projectsContainer.style.opacity = '0.5';
   projectsContainer.style.pointerEvents = 'none';
@@ -126,7 +132,8 @@ export async function refreshProjectList(projectsContainer) {
     if (
       cachedResponse &&
       cachedResponse.ok &&
-      Array.isArray(cachedResponse.projects)
+      Array.isArray(cachedResponse.projects) &&
+      cachedResponse.projects.length > 0
     ) {
       // Render cached data immediately
       renderProjectsResponse(cachedResponse, projectsContainer);
@@ -160,6 +167,12 @@ export async function refreshProjectList(projectsContainer) {
 function renderProjectsResponse(response, projectsContainer) {
   if (!projectsContainer) {
     return;
+  }
+
+  // Hide error on successful response processing
+  const errorContainer = document.getElementById('projectsErrorContainer');
+  if (errorContainer) {
+    errorContainer.classList.add('hidden');
   }
 
   if (!response || typeof response !== 'object') {
@@ -206,7 +219,9 @@ function renderProjectsResponse(response, projectsContainer) {
 }
 
 /**
- * Render an error message within the projects container.
+ * Render an error message.
+ * If a cached list is already shown, display the error above it.
+ * Otherwise, show the error in the main container.
  * @param {string} message
  * @param {HTMLElement} projectsContainer
  * @returns {void}
@@ -215,10 +230,26 @@ function renderProjectsError(message, projectsContainer) {
   if (!projectsContainer) {
     return;
   }
-  const errorNode = document.createElement('div');
-  errorNode.className = 'text-sm text-error';
-  errorNode.textContent = message;
-  projectsContainer.replaceChildren(errorNode);
+
+  // Check if there's already content (cached list)
+  const hasContent = projectsContainer.children.length > 0;
+
+  if (hasContent) {
+    // Show the error message above the list
+    const errorContainer = document.getElementById('projectsErrorContainer');
+    const errorMessageElement = document.getElementById('projectsErrorMessage');
+    if (errorContainer && errorMessageElement) {
+      errorMessageElement.textContent = message;
+      errorContainer.classList.remove('hidden');
+      errorContainer.classList.add('flex');
+    }
+  } else {
+    // No content, show the error in the main container
+    const errorNode = document.createElement('div');
+    errorNode.className = 'text-sm text-error';
+    errorNode.textContent = message;
+    projectsContainer.replaceChildren(errorNode);
+  }
 }
 
 /**
@@ -1272,6 +1303,13 @@ export function initializeProjects(
     void updateSaveProjectButtonLabel(saveProjectButton);
   } else {
     console.error('[popup] Save project button not found.');
+  }
+
+  const retryButton = document.getElementById('retryProjectsButton');
+  if (retryButton) {
+    retryButton.addEventListener('click', () => {
+      void refreshProjectList(projectsContainer);
+    });
   }
 
   // Initial load
