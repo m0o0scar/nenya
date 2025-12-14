@@ -153,23 +153,21 @@ export async function getCloseExistingEmptyTabsAction() {
         return;
       }
 
-      // 2. Check if ALL of the *pre-existing* tabs were non-http.
-      const allExistingTabsWereEmpty = existingTabs.every((tab) => {
+      // 2. Check if there are any non-pinned tabs with an http/https URL.
+      const hasHttpTabs = existingTabs.some((tab) => {
         const url = tab.url || '';
-        // Also check for localhost, which should not be considered an empty tab.
-        const isLocalhost =
-          url.includes('localhost') || url.includes('127.0.0.1');
-        return !isLocalhost && !url.startsWith('http://') && !url.startsWith('https://');
+        return url.startsWith('http://') || url.startsWith('https://');
       });
 
-      // 3. If so, close them.
-      if (allExistingTabsWereEmpty) {
-        const tabIds = existingTabs
+      // 3. If not, close all pre-existing empty tabs.
+      if (!hasHttpTabs) {
+        const tabIdsToClose = existingTabs
           .map((tab) => tab.id)
           .filter((id) => typeof id === 'number');
-        if (tabIds.length > 0) {
+
+        if (tabIdsToClose.length > 0) {
           try {
-            await chrome.tabs.remove(tabIds);
+            await chrome.tabs.remove(tabIdsToClose);
           } catch (error) {
             console.error('[shared] Error removing tabs:', error);
           }
