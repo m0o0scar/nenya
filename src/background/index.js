@@ -976,10 +976,11 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         const tabId = tab.id;
         return (async () => {
           try {
-            await Promise.all(cssFiles.map((file) => chrome.scripting.insertCSS({ target: { tabId }, files: [file] }).catch((e) => console.warn(`CSS injection failed for ${file} in tab ${tabId}:`, e))));
-            for (const scriptGroup of contentScripts) {
-              await chrome.scripting.executeScript({ target: { tabId }, files: scriptGroup }).catch((e) => console.warn(`JS injection failed for group in tab ${tabId}:`, e));
-            }
+            // ⚡ Bolt: Use Promise.all to inject CSS and JS script groups concurrently.
+            await Promise.all([
+              ...cssFiles.map((file) => chrome.scripting.insertCSS({ target: { tabId }, files: [file] }).catch((e) => console.warn(`CSS injection failed for ${file} in tab ${tabId}:`, e))),
+              ...contentScripts.map((scriptGroup) => chrome.scripting.executeScript({ target: { tabId }, files: scriptGroup }).catch((e) => console.warn(`JS injection failed for group in tab ${tabId}:`, e))),
+            ]);
           } catch (error) {
             console.warn(`Content script injection failed for tab ${tabId}:`, error);
             try {
@@ -1608,39 +1609,37 @@ async function collectPageContent(tabId, timeout = 10000) {
  * @returns {Promise<Array<{tabId: number, title: string, url: string, content: string}>>}
  */
 async function collectPageContentFromTabs(tabIds) {
-  const results = [];
-
-  for (const tabId of tabIds) {
-    if (typeof tabId !== 'number') continue;
+  // ⚡ Bolt: Use Promise.all to collect page content from all tabs concurrently.
+  const promises = tabIds.map(async (tabId) => {
+    if (typeof tabId !== 'number') return null;
 
     try {
       const content = await collectPageContent(tabId);
       if (content) {
-        results.push(content);
-      } else {
-        // Add empty result if collection failed
-        results.push({
-          tabId,
-          title: '',
-          url: '',
-          content: '(failed to collect content)',
-        });
+        return content;
       }
+      return {
+        tabId,
+        title: '',
+        url: '',
+        content: '(failed to collect content)',
+      };
     } catch (error) {
       console.error(
         `[background] Error collecting content from tab ${tabId}:`,
         error,
       );
-      results.push({
+      return {
         tabId,
         title: '',
         url: '',
         content: `(error: ${error.message})`,
-      });
+      };
     }
-  }
+  });
 
-  return results;
+  const results = await Promise.all(promises);
+  return results.filter((result) => result !== null);
 }
 
 // ============================================================================
