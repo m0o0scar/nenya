@@ -1561,64 +1561,113 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /**
    * Renders the bookmark search results.
-   * @param {chrome.bookmarks.BookmarkTreeNode[]} results
+   * @param {Array<{type: 'project'|'bookmark', data: any}>} results
    */
   function renderSearchResults(results) {
     resultsElement.innerHTML = '';
-    results.forEach((bookmark, index) => {
+    results.forEach((result, index) => {
       const resultItem = document.createElement('div');
       resultItem.className = 'p-2 hover:bg-base-300 cursor-pointer rounded-md';
       resultItem.dataset.index = String(index);
 
-      if (bookmark.url) {
-        // Bookmark item - show title and URL on separate lines
-        const titleText = bookmark.title || bookmark.url;
-        const truncatedUrl = truncateUrl(bookmark.url);
+      if (result.type === 'project') {
+        // Project item
+        const project = result.data;
+        const projectTitle = project.title || 'Untitled project';
+        const itemCount = Number.isFinite(project.itemCount) ? project.itemCount : 0;
+        const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
 
         resultItem.innerHTML = `
           <div class="flex items-center gap-1">
-            <span>↗️</span>
-            <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
+            <span>📚</span>
+            <span class="flex-1 truncate">${escapeHtml(projectTitle)}</span>
           </div>
           <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
-            ${escapeHtml(truncatedUrl)}
+            Project • ${escapeHtml(itemText)}
           </div>
         `;
 
         resultItem.addEventListener('click', () => {
-          if (bookmark.url) {
-            void openBookmark(bookmark.url);
-          }
+          void restoreProject(project.id, project.title);
         });
-      } else {
-        // Bookmark folder
-        const folderTitle = bookmark.title || 'Untitled';
+      } else if (result.type === 'bookmark') {
+        // Bookmark item
+        const bookmark = result.data;
+        
+        if (bookmark.url) {
+          // Bookmark item - show title and URL on separate lines
+          const titleText = bookmark.title || bookmark.url;
+          const truncatedUrl = truncateUrl(bookmark.url);
 
-        resultItem.innerHTML = `
-          <div class="flex items-center gap-1">
-            <span>📂</span>
-            <span>${escapeHtml(folderTitle)}</span>
-            <span class="count-display">(0)</span>
-          </div>
-        `;
+          resultItem.innerHTML = `
+            <div class="flex items-center gap-1">
+              <span>↗️</span>
+              <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
+            </div>
+            <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
+              ${escapeHtml(truncatedUrl)}
+            </div>
+          `;
 
-        // Count direct children bookmarks and update text
-        void countDirectChildrenBookmarks(bookmark).then((count) => {
-          const countSpan = resultItem.querySelector('.count-display');
-          if (countSpan) {
-            countSpan.textContent = `(${count})`;
-          }
-        });
+          resultItem.addEventListener('click', () => {
+            if (bookmark.url) {
+              void openBookmark(bookmark.url);
+            }
+          });
+        } else {
+          // Bookmark folder
+          const folderTitle = bookmark.title || 'Untitled';
 
-        resultItem.addEventListener('click', () => {
-          void openFolderBookmarks(bookmark);
-        });
+          resultItem.innerHTML = `
+            <div class="flex items-center gap-1">
+              <span>📂</span>
+              <span>${escapeHtml(folderTitle)}</span>
+              <span class="count-display">(0)</span>
+            </div>
+          `;
+
+          // Count direct children bookmarks and update text
+          void countDirectChildrenBookmarks(bookmark).then((count) => {
+            const countSpan = resultItem.querySelector('.count-display');
+            if (countSpan) {
+              countSpan.textContent = `(${count})`;
+            }
+          });
+
+          resultItem.addEventListener('click', () => {
+            void openFolderBookmarks(bookmark);
+          });
+        }
       }
 
       resultsElement.appendChild(resultItem);
     });
     // Reset highlight when results are re-rendered
     highlightedIndex = -1;
+  }
+
+  /**
+   * Restore a project from search results.
+   * @param {number} projectId
+   * @param {string} projectTitle
+   * @returns {Promise<void>}
+   */
+  async function restoreProject(projectId, projectTitle) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'projects:restoreProjectTabs',
+        projectId: projectId,
+        projectTitle: projectTitle,
+      });
+
+      if (response && response.ok) {
+        window.close();
+      } else {
+        console.error('[popup] Failed to restore project:', response?.error);
+      }
+    } catch (error) {
+      console.error('[popup] Failed to restore project:', error);
+    }
   }
 
   /**
@@ -1683,62 +1732,107 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * Includes both bookmarks and folders in results.
    * @param {string} query
    */
-  function performSearch(query) {
-    chrome.bookmarks.search(query, (results) => {
-      // Deduplicate results by title and URL (case insensitive) to prevent duplicates
-      // Keep only the first occurrence of items with the same title and URL
-      const seenKeys = new Set();
-      const uniqueResults = results.filter((item) => {
-        if (!item.id) {
-          return false;
-        }
-        // Create a key from title and URL (case insensitive)
-        const title = (item.title || '').toLowerCase();
-        const url = (item.url || '').toLowerCase();
-        const key = `${title}|${url}`;
+  async function performSearch(query) {
+    // Search both bookmarks and projects in parallel
+    const [bookmarkResults, projectResults] = await Promise.all([
+      searchBookmarks(query),
+      searchProjects(query),
+    ]);
 
-        if (seenKeys.has(key)) {
-          return false;
-        }
-        seenKeys.add(key);
-        return true;
-      });
+    // Merge results: projects first, then bookmarks
+    const mergedResults = [
+      ...projectResults.map((project) => ({ type: 'project', data: project })),
+      ...bookmarkResults.map((bookmark) => ({ type: 'bookmark', data: bookmark })),
+    ];
 
-      // Sort to prioritize title matches over URL matches
-      const lowerQuery = query.toLowerCase();
-      uniqueResults.sort((a, b) => {
-        const aTitleMatch =
-          a.title?.toLowerCase().includes(lowerQuery) ?? false;
-        const bTitleMatch =
-          b.title?.toLowerCase().includes(lowerQuery) ?? false;
-        const aUrlMatch = a.url?.toLowerCase().includes(lowerQuery) ?? false;
-        const bUrlMatch = b.url?.toLowerCase().includes(lowerQuery) ?? false;
+    // Limit to top 10 results
+    const topResults = mergedResults.slice(0, 10);
+    currentResults = topResults;
+    renderSearchResults(topResults);
+  }
 
-        // Prioritize bookmarks over folders if both match
-        if (aTitleMatch && bTitleMatch) {
-          if (a.url && !b.url) return -1; // Bookmark comes before folder
-          if (!a.url && b.url) return 1; // Folder comes after bookmark
-        }
-
-        // If both have title matches or both don't, keep original order
-        if (aTitleMatch === bTitleMatch) {
-          // If neither has title match, prioritize URL matches
-          if (!aTitleMatch && !bTitleMatch) {
-            if (aUrlMatch && !bUrlMatch) return -1;
-            if (!aUrlMatch && bUrlMatch) return 1;
+  /**
+   * Search bookmarks and return results.
+   * @param {string} query
+   * @returns {Promise<chrome.bookmarks.BookmarkTreeNode[]>}
+   */
+  function searchBookmarks(query) {
+    return new Promise((resolve) => {
+      chrome.bookmarks.search(query, (results) => {
+        // Deduplicate results by title and URL (case insensitive) to prevent duplicates
+        // Keep only the first occurrence of items with the same title and URL
+        const seenKeys = new Set();
+        const uniqueResults = results.filter((item) => {
+          if (!item.id) {
+            return false;
           }
-          return 0;
-        }
+          // Create a key from title and URL (case insensitive)
+          const title = (item.title || '').toLowerCase();
+          const url = (item.url || '').toLowerCase();
+          const key = `${title}|${url}`;
 
-        // Prioritize title matches
-        return aTitleMatch ? -1 : 1;
+          if (seenKeys.has(key)) {
+            return false;
+          }
+          seenKeys.add(key);
+          return true;
+        });
+
+        // Sort to prioritize title matches over URL matches
+        const lowerQuery = query.toLowerCase();
+        uniqueResults.sort((a, b) => {
+          const aTitleMatch =
+            a.title?.toLowerCase().includes(lowerQuery) ?? false;
+          const bTitleMatch =
+            b.title?.toLowerCase().includes(lowerQuery) ?? false;
+          const aUrlMatch = a.url?.toLowerCase().includes(lowerQuery) ?? false;
+          const bUrlMatch = b.url?.toLowerCase().includes(lowerQuery) ?? false;
+
+          // Prioritize bookmarks over folders if both match
+          if (aTitleMatch && bTitleMatch) {
+            if (a.url && !b.url) return -1; // Bookmark comes before folder
+            if (!a.url && b.url) return 1; // Folder comes after bookmark
+          }
+
+          // If both have title matches or both don't, keep original order
+          if (aTitleMatch === bTitleMatch) {
+            // If neither has title match, prioritize URL matches
+            if (!aTitleMatch && !bTitleMatch) {
+              if (aUrlMatch && !bUrlMatch) return -1;
+              if (!aUrlMatch && bUrlMatch) return 1;
+            }
+            return 0;
+          }
+
+          // Prioritize title matches
+          return aTitleMatch ? -1 : 1;
+        });
+
+        resolve(uniqueResults);
+      });
+    });
+  }
+
+  /**
+   * Search projects and return matching results.
+   * @param {string} query
+   * @returns {Promise<any[]>}
+   */
+  async function searchProjects(query) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'projects:searchProjects',
+        query: query,
       });
 
-      // Limit to top 10 results
-      const topResults = uniqueResults.slice(0, 10);
-      currentResults = topResults;
-      renderSearchResults(topResults);
-    });
+      if (response && response.ok && Array.isArray(response.projects)) {
+        return response.projects;
+      }
+      return [];
+    } catch (error) {
+      console.error('[popup] Failed to search projects:', error);
+      return [];
+    }
   }
 
   // Debounce search to improve performance and prevent excessive calls while typing.
@@ -1766,12 +1860,20 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
 
       // If there's a highlighted result, open it
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
-        const highlightedItem = currentResults[highlightedIndex];
-        if (highlightedItem.url) {
-          void openBookmark(highlightedItem.url);
-        } else {
-          // Bookmark folder - open all direct children bookmarks
-          void openFolderBookmarks(highlightedItem);
+        const highlightedResult = currentResults[highlightedIndex];
+        
+        if (highlightedResult.type === 'project') {
+          // Project - restore it
+          void restoreProject(highlightedResult.data.id, highlightedResult.data.title);
+        } else if (highlightedResult.type === 'bookmark') {
+          // Bookmark or folder
+          const bookmark = highlightedResult.data;
+          if (bookmark.url) {
+            void openBookmark(bookmark.url);
+          } else {
+            // Bookmark folder - open all direct children bookmarks
+            void openFolderBookmarks(bookmark);
+          }
         }
         return;
       }

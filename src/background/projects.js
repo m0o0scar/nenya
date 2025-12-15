@@ -107,6 +107,7 @@ export const ADD_PROJECT_TABS_MESSAGE = 'projects:addTabsToProject';
 export const REPLACE_PROJECT_ITEMS_MESSAGE = 'projects:replaceProjectItems';
 export const DELETE_PROJECT_MESSAGE = 'projects:deleteProject';
 export const RESTORE_PROJECT_TABS_MESSAGE = 'projects:restoreProjectTabs';
+export const SEARCH_PROJECTS_MESSAGE = 'projects:searchProjects';
 
 // Project-related constants
 const SAVED_PROJECTS_GROUP_TITLE = 'Saved projects';
@@ -494,6 +495,52 @@ export function handleRestoreProjectTabsMessage(message, sendResponse) {
       sendResponse({ ok: false, error: messageText });
     });
   return true;
+}
+
+/**
+ * Handle search projects message.
+ * @param {any} message
+ * @param {Function} sendResponse
+ * @returns {boolean}
+ */
+export function handleSearchProjectsMessage(message, sendResponse) {
+  const query = typeof message.query === 'string' ? message.query : '';
+  searchProjects(query)
+    .then((result) => {
+      sendResponse(result);
+    })
+    .catch((error) => {
+      const messageText =
+        error instanceof Error ? error.message : String(error);
+      sendResponse({ ok: false, error: messageText });
+    });
+  return true;
+}
+
+/**
+ * Search saved projects by query string.
+ * @param {string} query
+ * @returns {Promise<{ ok: boolean, projects?: SavedProjectDescriptor[], error?: string }>}
+ */
+async function searchProjects(query) {
+  const normalizedQuery = typeof query === 'string' ? query.trim().toLowerCase() : '';
+  if (!normalizedQuery) {
+    return { ok: true, projects: [] };
+  }
+
+  // Get all projects first
+  const listResult = await listSavedProjects();
+  if (!listResult.ok || !Array.isArray(listResult.projects)) {
+    return listResult;
+  }
+
+  // Filter projects by title match (case-insensitive)
+  const matchingProjects = listResult.projects.filter((project) => {
+    const title = typeof project.title === 'string' ? project.title.toLowerCase() : '';
+    return title.includes(normalizedQuery);
+  });
+
+  return { ok: true, projects: matchingProjects };
 }
 
 /**
