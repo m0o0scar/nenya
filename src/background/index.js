@@ -1722,44 +1722,27 @@ async function collectPageContent(tabId, timeout = 10000) {
 }
 
 /**
- * Collect page content from multiple tabs sequentially.
+ * Collect page content from multiple tabs concurrently.
  * @param {number[]} tabIds
  * @returns {Promise<Array<{tabId: number, title: string, url: string, content: string}>>}
  */
 async function collectPageContentFromTabs(tabIds) {
-  const results = [];
-
-  for (const tabId of tabIds) {
-    if (typeof tabId !== 'number') continue;
-
+  // ⚡ Bolt: Use Promise.all to fetch content from all tabs concurrently for a significant speed boost.
+  const promises = tabIds.map(async (tabId) => {
+    if (typeof tabId !== 'number') {
+      return null;
+    }
     try {
       const content = await collectPageContent(tabId);
-      if (content) {
-        results.push(content);
-      } else {
-        // Add empty result if collection failed
-        results.push({
-          tabId,
-          title: '',
-          url: '',
-          content: '(failed to collect content)',
-        });
-      }
+      return content || { tabId, title: '', url: '', content: '(failed to collect content)' };
     } catch (error) {
-      console.error(
-        `[background] Error collecting content from tab ${tabId}:`,
-        error,
-      );
-      results.push({
-        tabId,
-        title: '',
-        url: '',
-        content: `(error: ${error.message})`,
-      });
+      console.error(`[background] Error collecting content from tab ${tabId}:`, error);
+      return { tabId, title: '', url: '', content: `(error: ${error.message})` };
     }
-  }
+  });
 
-  return results;
+  const results = await Promise.all(promises);
+  return results.filter(Boolean);
 }
 
 // ============================================================================
