@@ -236,6 +236,47 @@ export function formatStats(stats) {
  */
 
 /**
+ * Check if a page title is problematic and likely needs user correction.
+ * A title is considered problematic if it is empty, the same as the URL,
+ * or contains common error messages.
+ * @param {string} title - The title of the page.
+ * @param {string} [url] - The URL of the page.
+ * @returns {boolean}
+ */
+function isProblematicTitle(title, url) {
+  const trimmedTitle = title.trim();
+
+  // Title is empty or just whitespace
+  if (!trimmedTitle) {
+    return true;
+  }
+
+  // Title is the same as the URL
+  if (url && trimmedTitle === url.trim()) {
+    return true;
+  }
+
+  // Title contains common error messages (case-insensitive)
+  const errorPatterns = [
+    'an error occurred',
+    'sorry for the inconvenience',
+    'problem loading page',
+    'page not found',
+    '404 not found',
+    'site can\'t be reached',
+  ];
+
+  const lowerCaseTitle = trimmedTitle.toLowerCase();
+  for (const pattern of errorPatterns) {
+    if (lowerCaseTitle.includes(pattern)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Handle the save to Unsorted action from the popup.
  * @param {HTMLElement} saveUnsortedButton
  * @param {HTMLElement} statusMessage
@@ -264,13 +305,13 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
     if (tabs.length === 1 && tabs[0]) {
       const tab = tabs[0];
       const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-      const isFigmaUrl =
-        typeof tab.url === 'string' && tab.url.includes('figma.com');
+      const url = typeof tab.url === 'string' ? tab.url : '';
+      const titleIsProblematic = isProblematicTitle(originalTitle, url);
 
-      // For Figma URLs, prompt without a default value and do not fall back to the original title
-      if (isFigmaUrl) {
+      // If the title is problematic, prompt without a default and require a title
+      if (titleIsProblematic) {
         const userTitle = window.prompt(
-          'Enter a title for this Figma page. Saving requires a title.',
+          'This page has a problematic title. Please enter a new one to save.',
           '',
         );
 
@@ -285,7 +326,7 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
         // User provided an empty title
         if (!trimmedTitle) {
           concludeStatus(
-            'Title cannot be empty for Figma pages.',
+            'Title cannot be empty for pages with problematic titles.',
             'error',
             3000,
             statusMessage,
