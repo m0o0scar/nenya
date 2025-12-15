@@ -59,8 +59,10 @@ const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
+const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const CONTEXT_MENU_SAVE_PAGE_ID = 'nenya-save-unsorted-page';
 const CONTEXT_MENU_SAVE_LINK_ID = 'nenya-save-unsorted-link';
+const CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID = 'nenya-save-clipboard-link';
 const CONTEXT_MENU_ENCRYPT_AND_SAVE_ID = 'nenya-encrypt-unsorted';
 const CONTEXT_MENU_SPLIT_TABS_ID = 'nenya-split-tabs';
 const CONTEXT_MENU_UNSPLIT_TABS_ID = 'nenya-unsplit-tabs';
@@ -203,6 +205,20 @@ chrome.commands.onCommand.addListener((command) => {
         }
       } catch (error) {
         console.warn('[commands] Save to Unsorted failed:', error);
+      }
+    })();
+    return;
+  }
+
+  if (command === 'bookmarks-save-clipboard-to-unsorted') {
+    void (async () => {
+      try {
+        const result = await handleSaveClipboardUrlToUnsorted();
+        if (!result.ok && result.error) {
+          console.warn('[commands] Save clipboard to Unsorted failed:', result.error);
+        }
+      } catch (error) {
+        console.warn('[commands] Save clipboard to Unsorted failed:', error);
       }
     })();
     return;
@@ -759,6 +775,79 @@ function derivePlainTitle(selectionText, fallbackTitle) {
     return fallbackTitle;
   }
   return '';
+}
+
+/**
+ * Read clipboard text and save to Raindrop Unsorted if it contains a valid URL.
+ * @returns {Promise<{ ok: boolean, created?: number, updated?: number, skipped?: number, error?: string }>}
+ */
+async function handleSaveClipboardUrlToUnsorted() {
+  try {
+    // Read clipboard using scripting API
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) {
+      const error = 'No active tab found';
+      void pushNotification('clipboard-save', 'Clipboard save failed', error);
+      return { ok: false, error };
+    }
+
+    // Inject script to read clipboard
+    const results = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: async () => {
+        try {
+          const text = await navigator.clipboard.readText();
+          return { text };
+        } catch (error) {
+          return { error: error instanceof Error ? error.message : String(error) };
+        }
+      },
+    });
+
+    const result = results?.[0]?.result;
+    if (!result || result.error) {
+      const error = result?.error || 'Failed to read clipboard';
+      void pushNotification('clipboard-save', 'Clipboard save failed', error);
+      return { ok: false, error };
+    }
+
+    const clipboardText = (result.text || '').trim();
+    if (!clipboardText) {
+      const error = 'Clipboard is empty';
+      void pushNotification('clipboard-save', 'Clipboard save failed', error);
+      return { ok: false, error };
+    }
+
+    // Validate URL
+    const normalizedUrl = normalizeHttpUrl(clipboardText);
+    if (!normalizedUrl) {
+      const error = 'Clipboard does not contain a valid URL';
+      void pushNotification('clipboard-save', 'Clipboard save failed', error);
+      return { ok: false, error };
+    }
+
+    // Process URL through the standard pipeline
+    const convertedUrl = convertSplitUrlForSave(normalizedUrl);
+    const processedUrl = await processUrl(convertedUrl, 'save-to-raindrop');
+
+    // Derive title from URL
+    const title = new URL(processedUrl).hostname || processedUrl;
+
+    // Save to Unsorted using existing pipeline
+    const saveResult = await saveUrlsToUnsorted([{ url: processedUrl, title }]);
+
+    return {
+      ok: saveResult.ok,
+      created: saveResult.created,
+      updated: saveResult.updated,
+      skipped: saveResult.skipped,
+      error: saveResult.error,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    void pushNotification('clipboard-save', 'Clipboard save failed', message);
+    return { ok: false, error: message };
+  }
 }
 
 /**
@@ -2193,6 +2282,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE) {
+    handleSaveClipboardUrlToUnsorted()
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        const messageText =
+          error instanceof Error ? error.message : String(error);
+        sendResponse({ ok: false, error: messageText });
+      });
+    return true;
+  }
+
   if (message.type === SAVE_PROJECT_MESSAGE) {
     return handleSaveProjectMessage(message, sendResponse);
   }
@@ -3147,6 +3249,23 @@ function setupContextMenus() {
 
     chrome.contextMenus.create(
       {
+        id: CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID,
+        title: 'Save link in clipboard to Raindrop Unsorted',
+        contexts: ['page', 'frame', 'selection', 'editable', 'image', 'link'],
+      },
+      () => {
+        const createError = chrome.runtime.lastError;
+        if (createError) {
+          console.warn(
+            '[contextMenu] Failed to register clipboard save item:',
+            createError.message,
+          );
+        }
+      },
+    );
+
+    chrome.contextMenus.create(
+      {
         id: CONTEXT_MENU_SPLIT_TABS_ID,
         title: 'Split tabs',
         contexts: ['page'],
@@ -3252,6 +3371,13 @@ if (chrome.contextMenus) {
       const title = await promptForTitle(tab?.id, originalTitle);
       void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
         console.error('[contextMenu] Failed to save link:', error);
+      });
+      return;
+    }
+
+    if (info.menuItemId === CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID) {
+      void handleSaveClipboardUrlToUnsorted().catch((error) => {
+        console.error('[contextMenu] Failed to save clipboard link:', error);
       });
       return;
     }

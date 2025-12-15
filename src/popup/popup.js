@@ -53,6 +53,11 @@ const SHORTCUT_CONFIG = {
       }
     },
   },
+  saveClipboardToUnsorted: {
+    emoji: '🔗',
+    tooltip: 'Save link in clipboard to unsorted',
+    handler: () => void handleSaveClipboardToUnsorted(),
+  },
   importCustomCode: {
     emoji: '💾',
     tooltip: 'Import custom JS/CSS rule',
@@ -1245,6 +1250,44 @@ async function handleCustomCode() {
     if (statusMessage) {
       concludeStatus(
         'Unable to open custom code options.',
+        'error',
+        3000,
+        statusMessage,
+      );
+    }
+  }
+}
+
+/**
+ * Handle saving clipboard URL to Raindrop Unsorted.
+ * @returns {Promise<void>}
+ */
+async function handleSaveClipboardToUnsorted() {
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: 'clipboard:saveToUnsorted',
+    });
+
+    if (response?.ok) {
+      if (statusMessage) {
+        const message =
+          response.created > 0
+            ? `Saved ${response.created} link(s) from clipboard to Unsorted`
+            : 'Clipboard link saved to Unsorted';
+        concludeStatus(message, 'success', 3000, statusMessage);
+      }
+    } else {
+      const errorMessage =
+        response?.error || 'Failed to save clipboard link to Unsorted';
+      if (statusMessage) {
+        concludeStatus(errorMessage, 'error', 4000, statusMessage);
+      }
+    }
+  } catch (error) {
+    console.error('[popup] Error saving clipboard to Unsorted:', error);
+    if (statusMessage) {
+      concludeStatus(
+        'Unable to save clipboard link to Unsorted.',
         'error',
         3000,
         statusMessage,
