@@ -880,41 +880,6 @@ async function scheduleMirrorAlarm() {
 }
 
 /**
- * Set up header removal rules for iframe functionality
- * @returns {Promise<void>}
- */
-async function setupHeaderRemovalRules() {
-  try {
-    await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [1],
-      addRules: [
-        {
-          id: 1,
-          condition: {
-            urlFilter: '*',
-            resourceTypes: ['sub_frame', 'main_frame'],
-          },
-          action: {
-            type: 'modifyHeaders',
-            responseHeaders: [
-              { header: 'X-Frame-Options', operation: 'remove' },
-              { header: 'Frame-Options', operation: 'remove' },
-              { header: 'Content-Security-Policy', operation: 'remove' },
-              {
-                header: 'Content-Security-Policy-Report-Only',
-                operation: 'remove',
-              },
-            ],
-          },
-        },
-      ],
-    });
-  } catch (error) {
-    console.error('Failed to install header removal rules:', error);
-  }
-}
-
-/**
  * Handle one-time initialization tasks.
  * @param {string} trigger
  * @returns {void}
@@ -923,7 +888,6 @@ function handleLifecycleEvent(trigger) {
   setupContextMenus();
   setupClipboardContextMenus();
   void scheduleMirrorAlarm();
-  void setupHeaderRemovalRules();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
   // Delay startup pull to avoid race condition with network initialization
