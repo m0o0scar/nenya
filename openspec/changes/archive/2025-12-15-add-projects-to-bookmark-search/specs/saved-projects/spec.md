@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: Users MUST be able to search for saved projects from the bookmark search input
+### Requirement: Bookmark search MUST include saved projects
 The popup's bookmark search functionality MUST include saved projects in search results, allowing users to discover and access projects alongside bookmarks.
 
 #### Scenario: Search projects by title

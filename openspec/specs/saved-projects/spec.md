@@ -1,7 +1,9 @@
-## Saved Projects Specification
+## Purpose
 
+The Saved Projects capability allows users to capture, store, and restore collections of browser tabs as projects in Raindrop. Users can save highlighted tabs with their context (pinned state, tab groups), manage projects from the popup, and restore entire project workspaces with a single click.
+## Requirements
 ### Requirement: Users MUST be able to save highlighted tabs as a Raindrop project
-The popup’s “Save project” button captures the user’s current context and persists it as a Raindrop collection under the “Saved projects” group.
+The popup's "Save project" button MUST capture the user's current context and persist it as a Raindrop collection under the "Saved projects" group.
 
 #### Scenario: Prompt for project name and sanitize tabs
 - **GIVEN** the user clicks “Save project” in the popup,
@@ -18,7 +20,7 @@ The popup’s “Save project” button captures the user’s current context an
 - **THEN** the background MUST return a `SaveProjectResult` with created/skipped/failed counts and the resolved project name, trigger the project save notification (when enabled), update the action badge, and the popup MUST surface the success/failure summary and refresh the saved-projects list.
 
 ### Requirement: Users MUST be able to manage saved projects from the popup
-The projects panel lists Raindrop collections within the “Saved projects” group and exposes actions to open, add tabs, replace content, or delete a project.
+The projects panel MUST list Raindrop collections within the "Saved projects" group and expose actions to open, add tabs, replace content, or delete a project.
 
 #### Scenario: Load cached projects then refresh from Raindrop
 - **GIVEN** the popup projects container renders,
@@ -41,7 +43,7 @@ The projects panel lists Raindrop collections within the “Saved projects” gr
 - **AND** the background MUST delete the Raindrop collection, invalidate the cache, and raise a notification so the popup can confirm success (or restore the row on error).
 
 ### Requirement: Users MUST be able to open or restore saved projects from the popup
-Users can either open the Raindrop page for a project or restore the stored tabs (respecting pinned order and tab groups) into their browser window.
+Users MUST be able to either open the Raindrop page for a project or restore the stored tabs (respecting pinned order and tab groups) into their browser window.
 
 #### Scenario: Open project in a new tab
 - **GIVEN** the user clicks the project title or cover,
@@ -56,3 +58,46 @@ Users can either open the Raindrop page for a project or restore the stored tabs
 #### Scenario: Handle restore failures gracefully
 - **GIVEN** restoration fails (missing tokens, empty collection, or tab creation errors),
 - **THEN** the background MUST return `ok: false` with an error message and surface project notifications (if enabled), while the popup re-enables controls and shows the error in `statusMessage`.
+
+### Requirement: Bookmark search MUST include saved projects
+The popup's bookmark search functionality MUST include saved projects in search results, allowing users to discover and access projects alongside bookmarks.
+
+#### Scenario: Search projects by title
+- **GIVEN** the user types a search query in the bookmark search input (at least 3 characters),
+- **THEN** the system MUST query both Chrome bookmarks and saved projects,
+- **AND** match projects where the title contains the search query (case-insensitive),
+- **AND** return matching projects with their metadata (id, title, itemCount, url, cover).
+
+#### Scenario: Sort projects before bookmarks in results
+- **GIVEN** the search returns both matching projects and matching bookmarks,
+- **THEN** the results MUST be sorted with all matching saved projects appearing before any matching bookmarks,
+- **AND** within projects, maintain relevance-based ordering,
+- **AND** within bookmarks, maintain the existing title-match priority ordering.
+
+#### Scenario: Render project results with visual distinction
+- **GIVEN** search results include saved projects,
+- **THEN** each project result MUST display the project icon (or cover if available), project title, and item count,
+- **AND** project results MUST use a distinct visual indicator (e.g., 📁 emoji or project-specific icon),
+- **AND** project results MUST be visually distinguishable from bookmark and folder results.
+
+#### Scenario: Open project from search results
+- **GIVEN** the user clicks on a project search result or presses Enter when a project is highlighted,
+- **THEN** the system MUST restore the project tabs into the current window (same behavior as clicking the project in the projects list),
+- **AND** show appropriate loading and status feedback,
+- **AND** close the popup after successful restoration.
+
+#### Scenario: Keyboard navigation across mixed results
+- **GIVEN** search results include both projects and bookmarks,
+- **THEN** the user MUST be able to navigate through all results using arrow keys,
+- **AND** the highlight indicator MUST work consistently across both result types,
+- **AND** pressing Enter on a highlighted item MUST trigger the appropriate action (restore project or open bookmark).
+
+#### Scenario: Handle empty project results gracefully
+- **GIVEN** the search query matches bookmarks but no projects,
+- **THEN** the system MUST display only bookmark results without errors,
+- **AND** the search experience MUST remain unchanged from current behavior.
+
+#### Scenario: Search input placeholder reflects broader scope
+- **GIVEN** the user views the bookmark search input,
+- **THEN** the placeholder text MUST indicate that both bookmarks and projects are searchable (e.g., "Search bookmarks and projects...").
+
