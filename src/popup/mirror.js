@@ -264,13 +264,46 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
     if (tabs.length === 1 && tabs[0]) {
       const tab = tabs[0];
       const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-      const userTitle = window.prompt(
-        'Enter an optional title to save to unsorted collection',
-        originalTitle,
-      );
+      const isFigmaUrl =
+        typeof tab.url === 'string' && tab.url.includes('figma.com');
 
-      if (userTitle !== null) {
-        tab.title = userTitle.trim() || originalTitle;
+      // For Figma URLs, prompt without a default value and do not fall back to the original title
+      if (isFigmaUrl) {
+        const userTitle = window.prompt(
+          'Enter a title for this Figma page. Saving requires a title.',
+          '',
+        );
+
+        // User cancelled the prompt
+        if (userTitle === null) {
+          concludeStatus('Save cancelled.', 'info', 2000, statusMessage);
+          return;
+        }
+
+        const trimmedTitle = userTitle.trim();
+
+        // User provided an empty title
+        if (!trimmedTitle) {
+          concludeStatus(
+            'Title cannot be empty for Figma pages.',
+            'error',
+            3000,
+            statusMessage,
+          );
+          return;
+        }
+
+        tab.title = trimmedTitle;
+      } else {
+        // For all other URLs, pre-fill the prompt with the current page title
+        const userTitle = window.prompt(
+          'Enter an optional title to save to unsorted collection',
+          originalTitle,
+        );
+
+        if (userTitle !== null) {
+          tab.title = userTitle.trim() || originalTitle;
+        }
       }
     }
 
