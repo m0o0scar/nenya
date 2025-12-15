@@ -16,6 +16,7 @@ import {
   REPLACE_PROJECT_ITEMS_MESSAGE,
   DELETE_PROJECT_MESSAGE,
   RESTORE_PROJECT_TABS_MESSAGE,
+  SEARCH_PROJECTS_MESSAGE,
   handleSaveProjectMessage,
   handleListProjectsMessage,
   handleGetCachedProjectsMessage,
@@ -23,6 +24,7 @@ import {
   handleReplaceProjectItemsMessage,
   handleDeleteProjectMessage,
   handleRestoreProjectTabsMessage,
+  handleSearchProjectsMessage,
 } from './projects.js';
 import {
   initializeOptionsBackupService,
@@ -2217,6 +2219,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === RESTORE_PROJECT_TABS_MESSAGE) {
     return handleRestoreProjectTabsMessage(message, sendResponse);
+  }
+
+  if (message.type === SEARCH_PROJECTS_MESSAGE) {
+    return handleSearchProjectsMessage(message, sendResponse);
   }
 
   if (message.type === 'launchElementPicker') {
