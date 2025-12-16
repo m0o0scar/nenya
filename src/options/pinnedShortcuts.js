@@ -20,6 +20,11 @@ const AVAILABLE_SHORTCUTS = [
     emoji: '🔐',
     tooltip: 'Encrypt & save to unsorted',
   },
+  {
+    id: 'saveClipboardToUnsorted',
+    emoji: '🔗',
+    tooltip: 'Save link in clipboard to unsorted',
+  },
   { id: 'importCustomCode', emoji: '💾', tooltip: 'Import custom JS/CSS rule' },
   { id: 'customFilter', emoji: '⚡️', tooltip: 'Hide elements in page' },
   { id: 'splitPage', emoji: '🈹', tooltip: 'Split page' },
@@ -41,8 +46,8 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'pull', // Pull from raindrop
   'saveUnsorted', // Save to unsorted
   'encryptSave', // Encrypt & save to unsorted
+  'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
-  'splitPage', // Split page
 ];
 
 /** @type {string[]} */
