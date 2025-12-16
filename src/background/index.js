@@ -1805,15 +1805,14 @@ async function openLLMTabs(
 
     const insertIndex = currentTabIndex + 1;
 
-    // Open tabs for each provider
-    for (let i = 0; i < providers.length; i++) {
-      const providerId = providers[i];
+    // Open tabs for each provider and wait for them to be ready
+    const tabPromises = providers.map(async (providerId, i) => {
       const meta = LLM_PROVIDER_META[providerId];
-      if (!meta) continue;
+      if (!meta) return;
 
       // Check if we already have a tab for this provider
       if (llmTabsMap.has(providerId)) {
-        continue;
+        return;
       }
 
       // Create new tab positioned right next to current tab
@@ -1825,8 +1824,12 @@ async function openLLMTabs(
 
       if (newTab.id) {
         llmTabsMap.set(providerId, newTab.id);
+        // Wait for the tab to complete loading
+        await waitForTabReady(newTab.id);
       }
-    }
+    });
+
+    await Promise.all(tabPromises);
 
     return { success: true };
   } catch (error) {
