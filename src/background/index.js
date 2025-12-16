@@ -1569,44 +1569,43 @@ async function collectPageContent(tabId, timeout = 10000) {
 }
 
 /**
- * Collect page content from multiple tabs sequentially.
+ * Collect page content from multiple tabs concurrently using Promise.all for performance.
  * @param {number[]} tabIds
  * @returns {Promise<Array<{tabId: number, title: string, url: string, content: string}>>}
  */
 async function collectPageContentFromTabs(tabIds) {
-  const results = [];
-
-  for (const tabId of tabIds) {
-    if (typeof tabId !== 'number') continue;
-
+  // ⚡ Bolt: Use Promise.all to fetch content from all tabs concurrently.
+  // This is significantly faster than fetching one-by-one (serially).
+  const collectionPromises = tabIds.map(async (tabId) => {
+    if (typeof tabId !== 'number') {
+      return { tabId, title: '', url: '', content: '(invalid tab id)' };
+    }
     try {
       const content = await collectPageContent(tabId);
       if (content) {
-        results.push(content);
-      } else {
-        // Add empty result if collection failed
-        results.push({
-          tabId,
-          title: '',
-          url: '',
-          content: '(failed to collect content)',
-        });
+        return content;
       }
+      return {
+        tabId,
+        title: '',
+        url: '',
+        content: '(failed to collect content)',
+      };
     } catch (error) {
       console.error(
         `[background] Error collecting content from tab ${tabId}:`,
         error,
       );
-      results.push({
+      return {
         tabId,
         title: '',
         url: '',
         content: `(error: ${error.message})`,
-      });
+      };
     }
-  }
+  });
 
-  return results;
+  return Promise.all(collectionPromises);
 }
 
 // ============================================================================
