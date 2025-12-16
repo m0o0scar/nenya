@@ -1,7 +1,8 @@
-## Pinned Shortcuts Specification
-
+## Purpose
+Enable users to customize up to six quick-action emoji buttons in the popup header, persisting their preferences across devices via Chrome sync.
+## Requirements
 ### Requirement: Pinned shortcuts MUST render in the popup header and trigger their actions
-Selected shortcuts show up as emoji buttons at the top of `src/popup/index.html` and execute their linked handlers.
+Selected shortcuts SHALL show up as emoji buttons at the top of `src/popup/index.html` and execute their linked handlers.
 
 #### Scenario: Render stored shortcuts or defaults
 - **GIVEN** the popup loads,
@@ -20,7 +21,7 @@ Selected shortcuts show up as emoji buttons at the top of `src/popup/index.html`
 - **THEN** the popup listener on `chrome.storage.onChanged` MUST reload shortcuts so new selections appear without reopening the popup.
 
 ### Requirement: Users MUST be able to manage pinned shortcuts from the options page
-`src/options/pinnedShortcuts.js` provides a drag/click UI to curate up to six shortcuts.
+The options page SHALL provide a drag/click UI (`src/options/pinnedShortcuts.js`) to curate up to six shortcuts.
 
 #### Scenario: Display pinned and available lists
 - **GIVEN** the user opens the Pinned Shortcuts section,
@@ -38,7 +39,7 @@ Selected shortcuts show up as emoji buttons at the top of `src/popup/index.html`
 - **THEN** the options page MUST listen via `chrome.storage.onChanged` and re-render, keeping the UI consistent across multiple open options tabs.
 
 ### Requirement: Pinned shortcuts MUST participate in Raindrop backup and restore
-Shortcuts are part of the options backup payload stored in Raindrop via `options-backup.js`.
+Shortcuts SHALL be part of the options backup payload stored in Raindrop via `options-backup.js`.
 
 #### Scenario: Include shortcuts in backup payload
 - **GIVEN** a backup executes,
@@ -49,7 +50,7 @@ Shortcuts are part of the options backup payload stored in Raindrop via `options
 - **THEN** `parsePinnedShortcutsItem` MUST validate IDs, trim duplicates, and pass the normalized list to `applyPinnedShortcuts`, which writes to `chrome.storage.sync` while suppressing backup recursion.
 
 ### Requirement: JSON import/export MUST include pinned shortcuts
-The Options → Backup/Import JSON flow must round-trip the user’s shortcut configuration.
+The Options → Backup/Import JSON flow SHALL round-trip the user's shortcut configuration.
 
 #### Scenario: Export pinned shortcuts
 - **GIVEN** the user exports options to JSON,
@@ -58,3 +59,24 @@ The Options → Backup/Import JSON flow must round-trip the user’s shortcut co
 #### Scenario: Import pinned shortcuts
 - **GIVEN** the user imports options from JSON,
 - **THEN** the importer MUST call `applyImportedOptions` with the sanitized `pinnedShortcuts` array, writing it back to `chrome.storage.sync` so the popup/options UI immediately reflect the imported selection.
+
+### Requirement: Save clipboard URL shortcut MUST be available in pinned shortcuts
+Users MUST be able to pin a shortcut that saves the URL currently in the clipboard to Raindrop Unsorted collection.
+
+#### Scenario: Add clipboard save shortcut to SHORTCUT_CONFIG
+- **GIVEN** the popup loads
+- **WHEN** the user has pinned the `saveClipboardToUnsorted` shortcut
+- **THEN** a button with emoji 🔗 and tooltip "Save link in clipboard to unsorted" MUST render in the shortcuts container
+- **AND** clicking the button MUST trigger the clipboard read and save pipeline
+
+#### Scenario: Clipboard save shortcut handler invokes background logic
+- **GIVEN** the clipboard save shortcut button is clicked in the popup
+- **WHEN** the handler executes
+- **THEN** it MUST send a runtime message to the background with type `clipboard:saveToUnsorted`
+- **AND** display appropriate status feedback based on the response (success, error, or no valid URL)
+
+#### Scenario: Clipboard save shortcut participates in backup/restore
+- **GIVEN** a user backs up their pinned shortcuts configuration
+- **WHEN** `saveClipboardToUnsorted` is in the pinned shortcuts array
+- **THEN** it MUST be included in the backup payload and restored correctly from Raindrop or JSON import
+

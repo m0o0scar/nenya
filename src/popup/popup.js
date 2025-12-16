@@ -53,6 +53,11 @@ const SHORTCUT_CONFIG = {
       }
     },
   },
+  saveClipboardToUnsorted: {
+    emoji: '🔗',
+    tooltip: 'Save link in clipboard to unsorted',
+    handler: () => void handleSaveClipboardToUnsorted(),
+  },
   importCustomCode: {
     emoji: '💾',
     tooltip: 'Import custom JS/CSS rule',
@@ -132,8 +137,8 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'pull', // Pull from raindrop
   'saveUnsorted', // Save to unsorted
   'encryptSave', // Encrypt & save to unsorted
+  'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
-  'splitPage', // Split page
 ];
 
 const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
@@ -198,7 +203,10 @@ let popupBackupBusy = false;
 function setPopupBackupDisabled(disabled) {
   if (popupBackupButton) {
     popupBackupButton.disabled = disabled;
-    popupBackupButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    popupBackupButton.setAttribute(
+      'aria-disabled',
+      disabled ? 'true' : 'false',
+    );
   }
   if (popupRestoreButton) {
     popupRestoreButton.disabled = disabled;
@@ -491,13 +499,13 @@ void loadAndRenderShortcuts();
 void refreshPopupBackupState();
 
 // Listen for storage changes to update buttons dynamically
-  if (chrome?.storage?.onChanged) {
-    chrome.storage.onChanged.addListener((changes, namespace) => {
-      if (namespace === 'local' && changes[STORAGE_KEY]) {
-        void loadAndRenderShortcuts();
-      }
-    });
-  }
+if (chrome?.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local' && changes[STORAGE_KEY]) {
+      void loadAndRenderShortcuts();
+    }
+  });
+}
 
 /**
  * Handle opening dark mode options with current tab URL prefilled.
@@ -1254,6 +1262,69 @@ async function handleCustomCode() {
 }
 
 /**
+ * Handle saving clipboard URL to Raindrop Unsorted.
+ * @returns {Promise<void>}
+ */
+async function handleSaveClipboardToUnsorted() {
+  try {
+    // Read clipboard directly from popup (which is focused)
+    let clipboardText;
+    try {
+      clipboardText = await navigator.clipboard.readText();
+    } catch (clipError) {
+      if (statusMessage) {
+        concludeStatus(
+          'Failed to read clipboard. Please allow clipboard access.',
+          'error',
+          4000,
+          statusMessage,
+        );
+      }
+      return;
+    }
+
+    if (!clipboardText || !clipboardText.trim()) {
+      if (statusMessage) {
+        concludeStatus('Clipboard is empty', 'error', 3000, statusMessage);
+      }
+      return;
+    }
+
+    // Send clipboard text to background for processing and saving
+    const response = await chrome.runtime.sendMessage({
+      type: 'clipboard:saveToUnsorted',
+      clipboardText: clipboardText.trim(),
+    });
+
+    if (response?.ok) {
+      if (statusMessage) {
+        const message =
+          response.created > 0
+            ? `Saved ${response.created} link(s) from clipboard to Unsorted`
+            : 'Clipboard link saved to Unsorted';
+        concludeStatus(message, 'success', 3000, statusMessage);
+      }
+    } else {
+      const errorMessage =
+        response?.error || 'Failed to save clipboard link to Unsorted';
+      if (statusMessage) {
+        concludeStatus(errorMessage, 'error', 4000, statusMessage);
+      }
+    }
+  } catch (error) {
+    console.error('[popup] Error saving clipboard to Unsorted:', error);
+    if (statusMessage) {
+      concludeStatus(
+        'Unable to save clipboard link to Unsorted.',
+        'error',
+        3000,
+        statusMessage,
+      );
+    }
+  }
+}
+
+/**
  * Handle Picture-in-Picture mode for the largest video in the current tab.
  * @returns {Promise<void>}
  */
@@ -1444,7 +1515,10 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    */
   async function openBookmark(url) {
     try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true,
+      });
       if (tabs.length > 0) {
         const currentTab = tabs[0];
         // Check if the current tab is a new tab page or a blank page across different browsers.
@@ -1574,7 +1648,9 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         // Project item
         const project = result.data;
         const projectTitle = project.title || 'Untitled project';
-        const itemCount = Number.isFinite(project.itemCount) ? project.itemCount : 0;
+        const itemCount = Number.isFinite(project.itemCount)
+          ? project.itemCount
+          : 0;
         const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
 
         resultItem.innerHTML = `
@@ -1593,7 +1669,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       } else if (result.type === 'bookmark') {
         // Bookmark item
         const bookmark = result.data;
-        
+
         if (bookmark.url) {
           // Bookmark item - show title and URL on separate lines
           const titleText = bookmark.title || bookmark.url;
@@ -1742,7 +1818,10 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     // Merge results: projects first, then bookmarks
     const mergedResults = [
       ...projectResults.map((project) => ({ type: 'project', data: project })),
-      ...bookmarkResults.map((bookmark) => ({ type: 'bookmark', data: bookmark })),
+      ...bookmarkResults.map((bookmark) => ({
+        type: 'bookmark',
+        data: bookmark,
+      })),
     ];
 
     // Limit to top 10 results
@@ -1861,10 +1940,13 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       // If there's a highlighted result, open it
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
         const highlightedResult = currentResults[highlightedIndex];
-        
+
         if (highlightedResult.type === 'project') {
           // Project - restore it
-          void restoreProject(highlightedResult.data.id, highlightedResult.data.title);
+          void restoreProject(
+            highlightedResult.data.id,
+            highlightedResult.data.title,
+          );
         } else if (highlightedResult.type === 'bookmark') {
           // Bookmark or folder
           const bookmark = highlightedResult.data;

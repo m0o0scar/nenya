@@ -35,6 +35,7 @@
     "scripting",
     "activeTab",
     "clipboardWrite",
+    "clipboardRead",
     "declarativeNetRequest",
     "downloads"
   ],
@@ -128,6 +129,9 @@
     },
     "bookmarks-save-to-unsorted-encrypted": {
       "description": "💧 Encrypt & Save to Unsorted"
+    },
+    "bookmarks-save-clipboard-to-unsorted": {
+      "description": "💧 Save clipboard link to Unsorted"
     },
     "bookmarks-save-project": {
       "description": "💧 Save as project"

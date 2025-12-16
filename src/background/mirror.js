@@ -1153,7 +1153,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
 
     for (const entry of dedupeResult.entries) {
       try {
-        const pleaseParse = !entry.title;
+        const pleaseParse = options.pleaseParse || !entry.title;
         const payload = {
           link: entry.url,
           collectionId: -1,
@@ -1177,9 +1177,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         }
 
         const itemTitle =
-          typeof response.item.title === 'string'
-            ? response.item.title
-            : '';
+          typeof response.item.title === 'string' ? response.item.title : '';
         const bookmarkTitle = normalizeBookmarkTitle(
           entry.title || itemTitle,
           entry.url,
