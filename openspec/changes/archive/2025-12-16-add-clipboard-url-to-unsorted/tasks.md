@@ -11,15 +11,14 @@
 
 ## 2. Testing
 
-- [ ] 2.1 Test pinned shortcut button triggers clipboard save when URL is in clipboard
-- [ ] 2.2 Test keyboard command saves clipboard URL to Raindrop Unsorted
-- [ ] 2.3 Test context menu item saves clipboard URL to Raindrop Unsorted
-- [ ] 2.4 Test error handling when clipboard is empty or contains non-URL text
-- [ ] 2.5 Test error handling when not authenticated with Raindrop
-- [ ] 2.6 Verify notifications appear according to user preferences
-- [ ] 2.7 Verify saved URL appears in local Unsorted bookmark folder
+- [x] 2.1 Test pinned shortcut button triggers clipboard save when URL is in clipboard
+- [x] 2.2 Test keyboard command saves clipboard URL to Raindrop Unsorted
+- [x] 2.3 Test context menu item saves clipboard URL to Raindrop Unsorted
+- [x] 2.4 Test error handling when clipboard is empty or contains non-URL text
+- [x] 2.5 Test error handling when not authenticated with Raindrop
+- [x] 2.6 Verify notifications appear according to user preferences
+- [x] 2.7 Verify saved URL appears in local Unsorted bookmark folder
 
 ## 3. Documentation
 
 - [x] 3.1 Update any user-facing documentation if needed
-

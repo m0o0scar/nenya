@@ -17,3 +17,4 @@ Users often have URLs in their clipboard and need a quick way to save them to th
   - `manifest.json` - add new command entry
   - `src/shared/shortcutConfig.js` (if extracted) - add shortcut metadata
 
+

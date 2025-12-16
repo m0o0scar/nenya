@@ -20,3 +20,4 @@ Users MUST be able to pin a shortcut that saves the URL currently in the clipboa
 - **WHEN** `saveClipboardToUnsorted` is in the pinned shortcuts array
 - **THEN** it MUST be included in the backup payload and restored correctly from Raindrop or JSON import
 
+
