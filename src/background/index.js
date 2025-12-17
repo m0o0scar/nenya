@@ -1288,13 +1288,15 @@ async function restoreSplitPages() {
       return;
     }
 
-    for (const entry of entriesToOpen) {
+    // ⚡ Bolt: Use Promise.all to create tabs concurrently for faster split page restoration.
+    const creationPromises = entriesToOpen.map(async (entry) => {
       try {
         const url = entry.url;
-        // Double-check the tab wasn't opened between the query and now
+        // Double-check the tab wasn't opened between the query and now to prevent duplicates.
+        // This check is lightweight and worth the safety against race conditions.
         const currentTabs = await chrome.tabs.query({ url });
         if (currentTabs.length > 0) {
-          continue;
+          return; // Skip creation if tab already exists
         }
 
         // Create the tab
@@ -1345,7 +1347,9 @@ async function restoreSplitPages() {
           error,
         );
       }
-    }
+    });
+
+    await Promise.all(creationPromises);
   } catch (error) {
     console.warn('[background] Failed to restore split pages:', error);
   } finally {
