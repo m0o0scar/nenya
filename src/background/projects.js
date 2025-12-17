@@ -523,20 +523,33 @@ export function handleSearchProjectsMessage(message, sendResponse) {
  * @returns {Promise<{ ok: boolean, projects?: SavedProjectDescriptor[], error?: string }>}
  */
 async function searchProjects(query) {
-  const normalizedQuery = typeof query === 'string' ? query.trim().toLowerCase() : '';
+  const normalizedQuery =
+    typeof query === 'string' ? query.trim().toLowerCase() : '';
   if (!normalizedQuery) {
     return { ok: true, projects: [] };
   }
 
-  // Get all projects first
-  const listResult = await listSavedProjects();
-  if (!listResult.ok || !Array.isArray(listResult.projects)) {
-    return listResult;
+  // Try to get projects from cache first
+  const cachedResult = await getCachedProjects();
+  let projectsToSearch = [];
+
+  if (cachedResult.ok && Array.isArray(cachedResult.projects)) {
+    projectsToSearch = cachedResult.projects;
+  } else {
+    // If cache is empty or fails, fetch from network
+    const listResult = await listSavedProjects();
+    if (!listResult.ok || !Array.isArray(listResult.projects)) {
+      return listResult; // Return the error or empty list
+    }
+    projectsToSearch = listResult.projects;
+    // Cache the newly fetched projects
+    await cacheProjectsList(projectsToSearch);
   }
 
   // Filter projects by title match (case-insensitive)
-  const matchingProjects = listResult.projects.filter((project) => {
-    const title = typeof project.title === 'string' ? project.title.toLowerCase() : '';
+  const matchingProjects = projectsToSearch.filter((project) => {
+    const title =
+      typeof project.title === 'string' ? project.title.toLowerCase() : '';
     return title.includes(normalizedQuery);
   });
 
