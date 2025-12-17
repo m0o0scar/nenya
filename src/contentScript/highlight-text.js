@@ -296,8 +296,10 @@
             fragment.appendChild(document.createTextNode(afterText));
           }
 
-          parent.replaceChild(fragment, textNode);
-          highlighted = true;
+          if (parent.contains(textNode)) {
+            parent.replaceChild(fragment, textNode);
+            highlighted = true;
+          }
         }
         break;
       }
@@ -328,8 +330,10 @@
               fragment.appendChild(document.createTextNode(afterText));
             }
 
-            parent.replaceChild(fragment, textNode);
-            highlighted = true;
+            if (parent.contains(textNode)) {
+              parent.replaceChild(fragment, textNode);
+              highlighted = true;
+            }
             break;
           }
         }
@@ -366,8 +370,10 @@
               );
             }
 
-            parent.replaceChild(fragment, textNode);
-            highlighted = true;
+            if (parent.contains(textNode)) {
+              parent.replaceChild(fragment, textNode);
+              highlighted = true;
+            }
           }
         } catch (error) {
           console.warn(
