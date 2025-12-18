@@ -54,6 +54,7 @@ import {
   convertSplitUrlForSave,
   convertSplitUrlForRestore,
 } from '../shared/splitUrl.js';
+import { handleOpenInPopup } from './popup.js';
 
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
@@ -66,6 +67,7 @@ const CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID = 'nenya-save-clipboard-link';
 const CONTEXT_MENU_ENCRYPT_AND_SAVE_ID = 'nenya-encrypt-unsorted';
 const CONTEXT_MENU_SPLIT_TABS_ID = 'nenya-split-tabs';
 const CONTEXT_MENU_UNSPLIT_TABS_ID = 'nenya-unsplit-tabs';
+const CONTEXT_MENU_OPEN_IN_POPUP_ID = 'nenya-open-in-popup';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -597,6 +599,10 @@ chrome.commands.onCommand.addListener((command) => {
         console.warn('[commands] Emoji picker failed:', error);
       }
     })();
+    return;
+  }
+  if (command === 'open-in-popup') {
+    void handleOpenInPopup();
     return;
   }
 });
@@ -2881,6 +2887,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'open-in-popup') {
+    void handleOpenInPopup();
+    return true;
+  }
   if (message.type === 'auto-google-login:checkTabActive') {
     void (async () => {
       try {
@@ -3350,6 +3360,23 @@ function setupContextMenus() {
         }
       },
     );
+
+    chrome.contextMenus.create(
+      {
+        id: CONTEXT_MENU_OPEN_IN_POPUP_ID,
+        title: 'Open in popup',
+        contexts: ['page'],
+      },
+      () => {
+        const createError = chrome.runtime.lastError;
+        if (createError) {
+          console.warn(
+            '[contextMenu] Failed to register open in popup item:',
+            createError.message,
+          );
+        }
+      },
+    );
   });
 }
 
@@ -3463,6 +3490,10 @@ if (chrome.contextMenus) {
     // Handle clipboard context menu clicks
     if (tab) {
       void handleClipboardContextMenuClick(info, tab);
+    }
+
+    if (info.menuItemId === CONTEXT_MENU_OPEN_IN_POPUP_ID) {
+      void handleOpenInPopup();
     }
   });
 }
