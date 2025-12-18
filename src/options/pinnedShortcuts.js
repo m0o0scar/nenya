@@ -34,6 +34,7 @@ const AVAILABLE_SHORTCUTS = [
   { id: 'highlightText', emoji: '🟨', tooltip: 'Highlight text in this page' },
   { id: 'customCode', emoji: '📑', tooltip: 'Inject js/css into this page' },
   { id: 'pictureInPicture', emoji: '🖼️', tooltip: 'Picture in Picture' },
+  { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup' },
   // Note: openOptions is always shown at the end and cannot be pinned
 ];
 
@@ -48,6 +49,7 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'encryptSave', // Encrypt & save to unsorted
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
+  'openInPopup', // Open in popup
 ];
 
 /** @type {string[]} */
