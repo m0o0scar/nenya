@@ -177,6 +177,9 @@
     },
     "emoji-picker-show": {
       "description": "😀 Show Emoji Picker"
+    },
+    "open-in-popup": {
+      "description": "↗️ Open in popup"
     }
   }
 }
