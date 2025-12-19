@@ -269,9 +269,12 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
         originalTitle,
       );
 
-      if (userTitle !== null) {
-        tab.title = userTitle.trim() || originalTitle;
+      // If user clicks cancel, abort saving.
+      if (userTitle === null) {
+        concludeStatus('Save cancelled.', 'info', 3000, statusMessage);
+        return;
       }
+      tab.title = userTitle.trim() || originalTitle;
     }
 
     const entries = buildSaveEntriesFromTabs(tabs);
