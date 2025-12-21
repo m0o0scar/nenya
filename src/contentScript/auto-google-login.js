@@ -326,6 +326,9 @@
         );
       }
 
+      // Wait 500ms for the page to settle down
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       // Click the button (handles both popup and redirect cases)
       button.click();
 
