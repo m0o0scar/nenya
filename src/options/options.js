@@ -17,6 +17,7 @@ import './urlProcessRules.js';
 import './titleTransformRules.js';
 import './screenshots.js';
 import './autoGoogleLogin.js';
+import './customSearchEngines.js';
 import './debug.js';
 
 /**

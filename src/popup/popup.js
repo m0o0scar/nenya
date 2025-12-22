@@ -17,6 +17,15 @@ import { initializeProjects } from './projects.js';
 import { debounce } from '../shared/debounce.js';
 
 /**
+ * Gets all custom search engines from storage.
+ * @returns {Promise<Array<{id: string, name: string, shortcut: string, searchUrl: string}>>}
+ */
+async function getCustomSearchEngines() {
+  const result = await chrome.storage.local.get('customSearchEngines');
+  return result.customSearchEngines || [];
+}
+
+/**
  * Available shortcut buttons configuration
  * @type {Record<string, { emoji: string, tooltip: string, handler: () => void | Promise<void> }>}
  */
@@ -1959,7 +1968,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     }
   });
 
-  inputElement.addEventListener('keydown', (event) => {
+  inputElement.addEventListener('keydown', async (event) => {
     if (event.key === 'Enter') {
       event.preventDefault();
       const query = inputElement.value.trim();
@@ -1987,8 +1996,41 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         return;
       }
 
-      // Otherwise, always open Google search if there's a query
+      // Otherwise, check for custom search engine shortcut
       if (query) {
+        // Try to parse as "<shortcut> <query>"
+        const spaceIndex = query.indexOf(' ');
+        if (spaceIndex > 0) {
+          const potentialShortcut = query.substring(0, spaceIndex);
+          const searchQuery = query.substring(spaceIndex + 1).trim();
+
+          if (searchQuery) {
+            // Check if this matches a custom search engine
+            try {
+              const engines = await getCustomSearchEngines();
+              const matchedEngine = engines.find(
+                (engine) =>
+                  engine.shortcut.toLowerCase() ===
+                  potentialShortcut.toLowerCase(),
+              );
+
+              if (matchedEngine) {
+                // Use custom search engine
+                const searchUrl = matchedEngine.searchUrl.replace(
+                  '%s',
+                  encodeURIComponent(searchQuery),
+                );
+                chrome.tabs.create({ url: searchUrl });
+                window.close();
+                return;
+              }
+            } catch (error) {
+              console.error('[popup] Failed to load custom search engines:', error);
+            }
+          }
+        }
+
+        // Fall back to Google search
         const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
           query,
         )}`;

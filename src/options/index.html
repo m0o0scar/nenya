@@ -528,6 +528,10 @@
           <span class="nav-icon text-lg">📸</span>
           <span>Screenshot Settings</span>
         </a>
+        <a href="#custom-search-engines-heading" class="nav-item nav-link" data-section="custom-search-engines-heading">
+          <span class="nav-icon text-lg">🔍</span>
+          <span>Search Engines</span>
+        </a>
 
         <div class="nav-group-title">Interface</div>
         <a href="#pinned-shortcuts-heading" class="nav-item nav-link" data-section="pinned-shortcuts-heading">
@@ -792,6 +796,29 @@
                 </div>
                 <input id="screenshotAutoSaveToggle" type="checkbox" class="toggle toggle-primary" />
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Custom Search Engines Section -->
+        <section class="section-content" data-section="custom-search-engines-heading" id="section-custom-search-engines">
+          <div class="animate-in">
+            <div class="section-header">
+              <h1 id="custom-search-engines-heading" class="section-title">Custom Search Engines</h1>
+              <p class="section-description">Add custom search engine shortcuts to use from the popup search.</p>
+            </div>
+
+            <div class="options-card mb-6">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h3 class="text-lg font-bold">Your Search Engines</h3>
+                  <p class="text-sm text-base-content/60 mt-1">Type <code class="bg-base-300 px-1 rounded">shortcut query</code> in the popup search to use a custom engine.</p>
+                </div>
+                <button id="addSearchEngineBtn" class="nenya-btn nenya-btn-vibrant" type="button">
+                  Add Search Engine
+                </button>
+              </div>
+              <div id="customSearchEnginesList"></div>
             </div>
           </div>
         </section>
@@ -1639,6 +1666,37 @@
     </main>
   </div>
 
+  <!-- Custom Search Engine Dialog -->
+  <dialog id="searchEngineDialog" class="modal">
+    <div class="modal-box">
+      <h3 id="searchEngineDialogTitle" class="font-bold text-lg mb-4">Add Search Engine</h3>
+      <form id="searchEngineForm" class="space-y-4">
+        <div>
+          <label class="form-label">Name</label>
+          <input id="engineName" class="nenya-input" type="text" autocomplete="off" placeholder="E.g., DuckDuckGo" required>
+        </div>
+        <div>
+          <label class="form-label">Shortcut</label>
+          <input id="engineShortcut" class="nenya-input" type="text" autocomplete="off" placeholder="E.g., dd" required>
+          <p class="text-sm text-base-content/60 mt-1">Type this shortcut followed by a space and your query in the popup search.</p>
+        </div>
+        <div>
+          <label class="form-label">Search URL</label>
+          <input id="engineUrl" class="nenya-input font-mono text-sm" type="text" autocomplete="off" placeholder="https://duckduckgo.com/?q=%s" required>
+          <p class="text-sm text-base-content/60 mt-1">Use <code class="bg-base-300 px-1 rounded">%s</code> as a placeholder for the search query.</p>
+        </div>
+        <div id="searchEngineError" class="text-sm text-error hidden"></div>
+        <div class="modal-action">
+          <button id="cancelSearchEngineBtn" type="button" class="nenya-btn nenya-btn-secondary">Cancel</button>
+          <button id="saveSearchEngineBtn" type="button" class="nenya-btn nenya-btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button>close</button>
+    </form>
+  </dialog>
+
   <div id="optionsBackupFloatingBar" class="options-floating-bar">
     <div class="options-floating-status" id="optionsBackupFloatingStatus">
       Manual backup keeps your settings safe in Raindrop. Connect your account to enable backup and restore.
@@ -1656,6 +1714,7 @@
     </div>
   </div>
 
+  <script src="../shared/customSearchEngines.js"></script>
   <script src="./options.js" type="module"></script>
 </body>
 

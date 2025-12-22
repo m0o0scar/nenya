@@ -235,6 +235,7 @@ const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
 const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
+const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
 const MIN_RULE_INTERVAL_SECONDS = 5;
 const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
 
@@ -1268,6 +1269,39 @@ function normalizeScreenshotSettings(value) {
 }
 
 /**
+ * Normalize custom search engines.
+ * @param {any} value
+ * @returns {Array<{id: string, name: string, shortcut: string, searchUrl: string}>}
+ */
+function normalizeCustomSearchEngines(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .filter((engine) => {
+      return (
+        engine &&
+        typeof engine === 'object' &&
+        typeof engine.id === 'string' &&
+        engine.id.trim() &&
+        typeof engine.name === 'string' &&
+        engine.name.trim() &&
+        typeof engine.shortcut === 'string' &&
+        engine.shortcut.trim() &&
+        typeof engine.searchUrl === 'string' &&
+        engine.searchUrl.includes('%s')
+      );
+    })
+    .map((engine) => ({
+      id: engine.id.trim(),
+      name: engine.name.trim(),
+      shortcut: engine.shortcut.trim(),
+      searchUrl: engine.searchUrl.trim(),
+    }));
+}
+
+/**
  * Normalize possibly partial preferences.
  * @param {unknown} value
  * @returns {NotificationPreferences}
@@ -1368,6 +1402,7 @@ async function readCurrentOptions() {
     titleTransformRulesResp,
     autoGoogleLoginRulesResp,
     pinnedShortcutsResp,
+    customSearchEnginesResp,
   ] = await Promise.all([
     chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY),
     chrome.storage.local.get(NOTIFICATION_PREFERENCES_KEY),
@@ -1382,6 +1417,7 @@ async function readCurrentOptions() {
     loadTitleTransformRules(),
     loadAutoGoogleLoginRules(),
     chrome.storage.local.get(PINNED_SHORTCUTS_KEY),
+    chrome.storage.local.get(CUSTOM_SEARCH_ENGINES_KEY),
   ]);
 
   /** @type {Record<string, RootFolderSettings> | undefined} */
@@ -1460,6 +1496,10 @@ async function readCurrentOptions() {
     screenshotSettingsResp?.[SCREENSHOT_SETTINGS_KEY],
   );
 
+  const customSearchEngines = normalizeCustomSearchEngines(
+    customSearchEnginesResp?.[CUSTOM_SEARCH_ENGINES_KEY],
+  );
+
   return {
     rootFolder,
     notifications,
@@ -1475,6 +1515,7 @@ async function readCurrentOptions() {
     autoGoogleLoginRules,
     screenshotSettings,
     pinnedShortcuts,
+    customSearchEngines,
   };
 }
 
@@ -1520,6 +1561,7 @@ async function handleExportClick() {
       autoGoogleLoginRules,
       screenshotSettings,
       pinnedShortcuts,
+      customSearchEngines,
     } = await readCurrentOptions();
     /** @type {ExportFile} */
     const payload = {
@@ -1540,6 +1582,7 @@ async function handleExportClick() {
         autoGoogleLoginRules,
         screenshotSettings,
         pinnedShortcuts,
+        customSearchEngines,
       },
     };
     const now = new Date();
@@ -1573,6 +1616,7 @@ async function handleExportClick() {
  * @param {AutoGoogleLoginRuleSettings[]} autoGoogleLoginRules
  * @param {ScreenshotSettings} screenshotSettings
  * @param {string[]} pinnedShortcuts
+ * @param {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} customSearchEngines
  * @returns {Promise<void>}
  */
 async function applyImportedOptions(
@@ -1590,6 +1634,7 @@ async function applyImportedOptions(
   autoGoogleLoginRules,
   screenshotSettings,
   pinnedShortcuts,
+  customSearchEngines,
 ) {
   let parentFolderId = '';
   const desiredPath =
@@ -1670,6 +1715,10 @@ async function applyImportedOptions(
     pinnedShortcuts || [],
   );
 
+  const sanitizedCustomSearchEngines = normalizeCustomSearchEngines(
+    customSearchEngines || [],
+  );
+
   // Handle bright mode settings - support both old and new format
   let sanitizedWhitelist = [];
 
@@ -1705,6 +1754,7 @@ async function applyImportedOptions(
       [AUTO_GOOGLE_LOGIN_RULES_KEY]: sanitizedAutoGoogleLoginRules,
       [SCREENSHOT_SETTINGS_KEY]: sanitizedScreenshotSettings,
       [PINNED_SHORTCUTS_KEY]: sanitizedPinnedShortcuts,
+      [CUSTOM_SEARCH_ENGINES_KEY]: sanitizedCustomSearchEngines,
       [CUSTOM_CODE_RULES_KEY]: sanitizedCustomCodeRules,
     }),
   ]);
@@ -1774,6 +1824,10 @@ async function handleFileChosen() {
     const pinnedShortcuts = /** @type {string[]} */ (
       data.pinnedShortcuts || []
     );
+    const customSearchEngines =
+      /** @type {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} */ (
+        data.customSearchEngines || []
+      );
 
     // Handle bright mode settings - support both old and new format
     let brightModeSettings = data.brightModeSettings;
@@ -1803,6 +1857,7 @@ async function handleFileChosen() {
       autoGoogleLoginRules,
       screenshotSettings,
       pinnedShortcuts,
+      customSearchEngines,
     );
     showToast('Options imported successfully.', 'success');
   } catch (error) {

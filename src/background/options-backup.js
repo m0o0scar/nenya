@@ -39,6 +39,7 @@ const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
 const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
+const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
 
 const OPTION_KEYS = [
   ROOT_FOLDER_SETTINGS_KEY,
@@ -56,6 +57,7 @@ const OPTION_KEYS = [
   AUTO_GOOGLE_LOGIN_RULES_KEY,
   SCREENSHOT_SETTINGS_KEY,
   PINNED_SHORTCUTS_KEY,
+  CUSTOM_SEARCH_ENGINES_KEY,
 ];
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
@@ -263,6 +265,7 @@ async function buildBackupPayload() {
       autoSave: false,
     },
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
+    customSearchEngines: stored?.[CUSTOM_SEARCH_ENGINES_KEY] || [],
   };
 
   return clone(payload);
@@ -346,6 +349,7 @@ async function applyBackupPayload(payload) {
       autoSave: false,
     },
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
+    [CUSTOM_SEARCH_ENGINES_KEY]: payload.customSearchEngines || [],
   };
 
   await chrome.storage.local.set(updates);
