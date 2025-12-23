@@ -300,3 +300,8 @@ if (document.readyState === 'loading') {
 } else {
   void initCustomSearchEngines();
 }
+
+document.addEventListener(
+  'nenya-options-restored',
+  () => void initCustomSearchEngines(),
+);

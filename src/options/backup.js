@@ -201,6 +201,9 @@ async function runAction(messageType, successMessage) {
     }
     if (response.ok) {
       showToast(successMessage, 'success');
+      if (messageType === OPTIONS_BACKUP_MESSAGES.RESTORE_NOW) {
+        document.dispatchEvent(new CustomEvent('nenya-options-restored'));
+      }
     } else {
       const message =
         (Array.isArray(response.errors) && response.errors[0]) ||
