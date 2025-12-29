@@ -1048,18 +1048,7 @@ document.addEventListener('click', (event) => {
  * @returns {Promise<void>}
  */
 async function initChatPage() {
-  // Get chat page tab ID and current tab info first
-  await getChatPageTabId();
-  await getCurrentTabInfo();
-
-  await loadSelectedProviders();
-  updateSelectedProvidersDisplay();
-  await updateTabsInfoDisplay();
-
-  // Open LLM tabs if providers are already selected
-  if (selectedProviders.size > 0 && sessionId) {
-    await openLLMTabs();
-  }
+  // --- UI Initialization (runs first) ---
 
   // Set emoji icons for buttons
   const editPromptsButton = document.getElementById('editPromptsButton');
@@ -1080,6 +1069,21 @@ async function initChatPage() {
   // Focus the textarea
   if (promptTextarea) {
     promptTextarea.focus();
+  }
+
+  // --- Asynchronous operations (run in the background) ---
+
+  // Get chat page tab ID and current tab info first
+  await getChatPageTabId();
+  await getCurrentTabInfo();
+
+  await loadSelectedProviders();
+  updateSelectedProvidersDisplay();
+  await updateTabsInfoDisplay();
+
+  // Open LLM tabs if providers are already selected
+  if (selectedProviders.size > 0 && sessionId) {
+    await openLLMTabs();
   }
 }
 
