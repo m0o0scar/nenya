@@ -227,6 +227,41 @@
   }
 
   /**
+   * Enhance the prompt editor with keyboard shortcuts and updated placeholder
+   * @param {HTMLElement} editor
+   * @param {string | undefined} sendButtonSelector
+   * @returns {void}
+   */
+  function initPromptEditor(editor, sendButtonSelector) {
+    if (editor.dataset.nenyaEnhanced) return;
+    editor.dataset.nenyaEnhanced = 'true';
+
+    // Update placeholder for textareas
+    if (editor instanceof HTMLTextAreaElement) {
+      editor.placeholder =
+        'Type your prompt... (Enter to send, Shift+Enter for new line)';
+    } else {
+      // For contenteditable divs, we can't set a placeholder directly.
+      // We can try setting the title attribute as a tooltip.
+      editor.title = 'Enter to send, Shift+Enter for new line';
+    }
+
+    editor.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (sendButtonSelector) {
+          const sendButton = /** @type {HTMLElement | null} */ (
+            document.querySelector(sendButtonSelector)
+          );
+          if (sendButton) {
+            sendButton.click();
+          }
+        }
+      }
+    });
+  }
+
+  /**
    * Main message handler
    */
   chrome.runtime.onMessage.addListener(async (message) => {
@@ -240,11 +275,17 @@
     }
 
     // Wait for editor to be ready
-    const editor = await waitForElement('[contenteditable="true"]', 10000);
+    const editor = await waitForElement(
+      '[contenteditable="true"], textarea',
+      10000,
+    );
     if (!editor) {
       console.warn('[llmPageInjector] Timed out waiting for prompt editor');
       return;
     }
+
+    // Enhance the editor
+    initPromptEditor(editor, sendButtonSelector);
 
     // 1. Attach local files (screenshots, PDFs, etc.)
     if (files && files.length > 0) {
