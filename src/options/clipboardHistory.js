@@ -1,7 +1,7 @@
 /**
  * @typedef {import('../background/clipboardHistory.js').ClipboardItem} ClipboardItem
  */
-
+dayjs.extend(window.dayjs_plugin_relativeTime);
 function initializeClipboardHistory() {
   const clipboardHistoryList = document.getElementById('clipboardHistoryList');
   const clearClipboardHistoryButton = document.getElementById('clearClipboardHistoryButton');
