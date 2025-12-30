@@ -55,6 +55,7 @@ import {
   convertSplitUrlForRestore,
 } from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
+import { addClipboardItem } from './clipboardHistory.js';
 
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
@@ -2257,6 +2258,10 @@ async function openOrReuseLLMTabs(currentTab, selectedLLMProviders, contents) {
 // ============================================================================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'addClipboardItem') {
+    void addClipboardItem(message.data);
+    return;
+  }
   if (!message || typeof message.type !== 'string') {
     return false;
   }
