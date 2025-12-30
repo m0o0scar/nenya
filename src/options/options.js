@@ -19,6 +19,7 @@ import './screenshots.js';
 import './autoGoogleLogin.js';
 import './customSearchEngines.js';
 import './debug.js';
+import './clipboardHistory.js';
 
 /**
  * Navigation functionality for the options page

@@ -592,6 +592,10 @@
           <span class="nav-icon text-lg">🐛</span>
           <span>Debug</span>
         </a>
+        <a href="#clipboard-history-heading" class="nav-item nav-link" data-section="clipboard-history-heading">
+          <span class="nav-icon text-lg">📋</span>
+          <span>Clipboard History</span>
+        </a>
       </nav>
     </aside>
 
@@ -1620,6 +1624,22 @@
                   <button id="llmPromptDeleteButton" class="nenya-btn nenya-btn-danger" type="button">Delete</button>
                 </div>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Clipboard History Section -->
+        <section class="section-content" data-section="clipboard-history-heading" id="section-clipboard-history">
+          <div class="animate-in">
+            <div class="section-header">
+              <h1 id="clipboard-history-heading" class="section-title">Clipboard History</h1>
+              <p class="section-description">Review and manage items you've recently copied.</p>
+            </div>
+            <div class="options-card">
+              <div class="flex justify-end mb-4">
+                <button id="clearClipboardHistoryButton" class="nenya-btn nenya-btn-danger" type="button">Clear All</button>
+              </div>
+              <div id="clipboardHistoryList" class="space-y-3"></div>
             </div>
           </div>
         </section>
