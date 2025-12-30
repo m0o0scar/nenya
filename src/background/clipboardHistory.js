@@ -14,8 +14,11 @@ export async function addClipboardItem(newItem) {
   try {
     const { clipboardHistory = [] } = await chrome.storage.local.get('clipboardHistory');
 
-    // Add the new item to the beginning of the array
-    const updatedHistory = [newItem, ...clipboardHistory];
+    // Remove any existing item with the same text to avoid duplicates
+    const filteredHistory = clipboardHistory.filter(item => item.text !== newItem.text);
+
+    // Add the new or updated item to the beginning of the array
+    const updatedHistory = [newItem, ...filteredHistory];
 
     // Keep only the latest 20 items
     if (updatedHistory.length > 20) {
