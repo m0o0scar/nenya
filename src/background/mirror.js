@@ -1406,15 +1406,65 @@ async function fetchRaindropStructure(tokens) {
     raindropRequest('/collections/childrens', tokens),
   ]);
 
-  const groups = Array.isArray(userResponse?.user?.groups)
-    ? userResponse.user.groups
-    : [];
-  const rootCollections = Array.isArray(rootResponse?.items)
-    ? rootResponse.items
-    : [];
-  const childCollections = Array.isArray(childResponse?.items)
-    ? childResponse.items
-    : [];
+  const allCollections = [
+    ...(Array.isArray(rootResponse?.items) ? rootResponse.items : []),
+    ...(Array.isArray(childResponse?.items) ? childResponse.items : []),
+  ];
+
+  const collectionsById = new Map(
+    allCollections.map((coll) => [coll._id, coll]),
+  );
+  const childrenByParentId = new Map();
+  allCollections.forEach((coll) => {
+    const parentId = coll.parent?.$id;
+    if (parentId) {
+      if (!childrenByParentId.has(parentId)) {
+        childrenByParentId.set(parentId, []);
+      }
+      childrenByParentId.get(parentId).push(coll._id);
+    }
+  });
+
+  const noSyncCollectionIds = new Set();
+  allCollections.forEach((coll) => {
+    if (coll.title.includes('[no sync]')) {
+      noSyncCollectionIds.add(coll._id);
+    }
+  });
+
+  const collectionsToExclude = new Set(noSyncCollectionIds);
+  const queue = [...noSyncCollectionIds];
+
+  while (queue.length > 0) {
+    const currentId = queue.shift();
+    const children = childrenByParentId.get(currentId);
+    if (children) {
+      children.forEach((childId) => {
+        if (!collectionsToExclude.has(childId)) {
+          collectionsToExclude.add(childId);
+          queue.push(childId);
+        }
+      });
+    }
+  }
+
+  const filterExcluded = (coll) => !collectionsToExclude.has(coll._id);
+
+  const rootCollections = (
+    Array.isArray(rootResponse?.items) ? rootResponse.items : []
+  ).filter(filterExcluded);
+  const childCollections = (
+    Array.isArray(childResponse?.items) ? childResponse.items : []
+  ).filter(filterExcluded);
+
+  const groups = (
+    Array.isArray(userResponse?.user?.groups) ? userResponse.user.groups : []
+  ).map((group) => ({
+    ...group,
+    collections: group.collections.filter(
+      (id) => !collectionsToExclude.has(id),
+    ),
+  }));
 
   return { groups, rootCollections, childCollections };
 }
