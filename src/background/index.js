@@ -2290,22 +2290,24 @@ async function handleSendToLLM(providerId, currentTab) {
       return;
     }
 
-    // 3. Capture screenshot
+    // 3. Capture screenshot if the tab has a valid URL
     let files = [];
-    try {
-      const dataUrl = await chrome.tabs.captureVisibleTab(
-        currentTab.windowId,
-        { format: 'jpeg', quality: 80 },
-      );
-      if (dataUrl) {
-        files.push({
-          name: 'screenshot.jpg',
-          type: 'image/jpeg',
-          dataUrl,
-        });
+    if (currentTab.url && (currentTab.url.startsWith('http://') || currentTab.url.startsWith('https://'))) {
+      try {
+        const dataUrl = await chrome.tabs.captureVisibleTab(
+          currentTab.windowId,
+          { format: 'jpeg', quality: 80 },
+        );
+        if (dataUrl) {
+          files.push({
+            name: 'screenshot.jpg',
+            type: 'image/jpeg',
+            dataUrl,
+          });
+        }
+      } catch (error) {
+        console.warn('[background] Failed to capture screenshot:', error);
       }
-    } catch (error) {
-      console.warn('[background] Failed to capture screenshot:', error);
     }
 
     // 4. Inject content into the new tab
