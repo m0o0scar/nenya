@@ -2279,18 +2279,7 @@ async function handleSendToLLM(providerId, currentTab) {
       return;
     }
 
-    // 2. Open new tab for the LLM provider
-    const newTab = await chrome.tabs.create({
-      url: providerMeta.url,
-      active: true, // Make the new tab active
-    });
-
-    if (!newTab.id) {
-      console.warn('[background] Could not create new tab for LLM provider');
-      return;
-    }
-
-    // 3. Capture screenshot if the tab has a valid URL
+    // 2. Capture screenshot if the tab has a valid URL
     let files = [];
     if (currentTab.url && (currentTab.url.startsWith('http://') || currentTab.url.startsWith('https://'))) {
       try {
@@ -2308,6 +2297,17 @@ async function handleSendToLLM(providerId, currentTab) {
       } catch (error) {
         console.warn('[background] Failed to capture screenshot:', error);
       }
+    }
+
+    // 3. Open new tab for the LLM provider
+    const newTab = await chrome.tabs.create({
+      url: providerMeta.url,
+      active: true, // Make the new tab active
+    });
+
+    if (!newTab.id) {
+      console.warn('[background] Could not create new tab for LLM provider');
+      return;
     }
 
     // 4. Inject content into the new tab
