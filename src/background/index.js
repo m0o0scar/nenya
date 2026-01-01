@@ -69,6 +69,7 @@ const CONTEXT_MENU_ENCRYPT_AND_SAVE_ID = 'nenya-encrypt-unsorted';
 const CONTEXT_MENU_SPLIT_TABS_ID = 'nenya-split-tabs';
 const CONTEXT_MENU_UNSPLIT_TABS_ID = 'nenya-unsplit-tabs';
 const CONTEXT_MENU_OPEN_IN_POPUP_ID = 'nenya-open-in-popup';
+const CONTEXT_MENU_SEND_TO_LLM_PARENT_ID = 'nenya-send-to-llm-parent';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -2253,6 +2254,79 @@ async function openOrReuseLLMTabs(currentTab, selectedLLMProviders, contents) {
   }
 }
 
+/**
+ * Handle sending page content to an LLM provider from the context menu.
+ * @param {string} providerId
+ * @param {chrome.tabs.Tab} currentTab
+ * @returns {Promise<void>}
+ */
+async function handleSendToLLM(providerId, currentTab) {
+  try {
+    if (!currentTab.id) {
+      return;
+    }
+
+    // 1. Collect page content
+    const contents = await collectPageContentFromTabs([currentTab.id]);
+    if (!contents || contents.length === 0) {
+      console.warn('[background] No content collected from tab');
+      return;
+    }
+
+    const providerMeta = LLM_PROVIDER_META[providerId];
+    if (!providerMeta) {
+      console.warn(`[background] No metadata found for LLM provider: ${providerId}`);
+      return;
+    }
+
+    // 2. Open new tab for the LLM provider
+    const newTab = await chrome.tabs.create({
+      url: providerMeta.url,
+      active: true, // Make the new tab active
+    });
+
+    if (!newTab.id) {
+      console.warn('[background] Could not create new tab for LLM provider');
+      return;
+    }
+
+    // 3. Capture screenshot
+    let files = [];
+    try {
+      const dataUrl = await chrome.tabs.captureVisibleTab(
+        currentTab.windowId,
+        { format: 'jpeg', quality: 80 },
+      );
+      if (dataUrl) {
+        files.push({
+          name: 'screenshot.jpg',
+          type: 'image/jpeg',
+          dataUrl,
+        });
+      }
+    } catch (error) {
+      console.warn('[background] Failed to capture screenshot:', error);
+    }
+
+    // 4. Inject content into the new tab
+    const ok = await injectLLMPageInjector(newTab.id);
+    if (ok) {
+      // Small delay to ensure script is settled
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await chrome.tabs.sendMessage(newTab.id, {
+        type: 'inject-llm-data',
+        tabs: contents,
+        promptContent: '', // No prompt content from context menu
+        files: files,
+        // IMPORTANT: Omit sendButtonSelector to prevent auto-sending
+      });
+    }
+  } catch (error) {
+    console.error(`[background] Error in handleSendToLLM:`, error);
+  }
+}
+
 // ============================================================================
 // MESSAGE LISTENER
 // ============================================================================
@@ -3382,6 +3456,24 @@ function setupContextMenus() {
         }
       },
     );
+
+    // Create parent menu for sending to LLM
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
+      title: 'Send Page Content to LLM',
+      contexts: ['page'],
+    });
+
+    // Create child menus for each LLM provider
+    for (const providerId in LLM_PROVIDER_META) {
+      const provider = LLM_PROVIDER_META[providerId];
+      chrome.contextMenus.create({
+        id: `send-to-llm-${providerId}`,
+        parentId: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
+        title: provider.name,
+        contexts: ['page'],
+      });
+    }
   });
 }
 
@@ -3499,6 +3591,16 @@ if (chrome.contextMenus) {
 
     if (info.menuItemId === CONTEXT_MENU_OPEN_IN_POPUP_ID) {
       void handleOpenInPopup();
+    }
+
+    if (
+      typeof info.menuItemId === 'string' &&
+      info.menuItemId.startsWith('send-to-llm-')
+    ) {
+      const providerId = info.menuItemId.replace('send-to-llm-', '');
+      if (tab) {
+        void handleSendToLLM(providerId, tab);
+      }
     }
   });
 }
