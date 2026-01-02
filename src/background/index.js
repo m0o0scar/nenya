@@ -56,7 +56,15 @@ import {
 } from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
+import {
+  getLockedTitle,
+  setLockedTitle,
+  removeLockedTitle,
+  rebuildFromOpenTabs,
+} from './page-title-lock.js';
 
+const CONTEXT_MENU_LOCK_PAGE_TITLE_ID = 'nenya-lock-page-title';
+const CONTEXT_MENU_UNLOCK_PAGE_TITLE_ID = 'nenya-unlock-page-title';
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
@@ -711,6 +719,29 @@ function buildFriendlyEncryptedTitle() {
 }
 
 /**
+ * Shows or hides the 'Unlock Page Title' context menu item based on whether the
+ * tab has a locked title.
+ * @param {number | undefined} tabId
+ */
+async function updateTitleLockContextMenuVisibility(tabId) {
+  if (!chrome.contextMenus || typeof tabId !== 'number') {
+    return;
+  }
+  try {
+    const lockedTitle = await getLockedTitle(tabId);
+    const isLocked = lockedTitle !== null;
+    await chrome.contextMenus.update(CONTEXT_MENU_UNLOCK_PAGE_TITLE_ID, {
+      visible: isLocked,
+    });
+     await chrome.contextMenus.update(CONTEXT_MENU_LOCK_PAGE_TITLE_ID, {
+      visible: !isLocked,
+    });
+  } catch (error) {
+    // Suppress errors during context menu updates
+  }
+}
+
+/**
  * Prompt the user for an encryption password in the provided tab.
  * @param {number | null} tabId
  * @returns {Promise<{ password: string, error?: string }>}
@@ -1020,6 +1051,7 @@ function handleLifecycleEvent(trigger) {
   void scheduleMirrorAlarm();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
+  void rebuildFromOpenTabs();
   // Delay startup pull to avoid race condition with network initialization
   if (trigger === 'startup') {
     setTimeout(() => {
@@ -1437,6 +1469,7 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 // Clean up when tabs close
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  void removeLockedTitle(tabId);
   // Remove split page URL from storage if this was a split page tab
   // Since the tab is already removed when onRemoved fires, we check all open tabs
   // and remove any URLs from storage that are no longer open
@@ -1585,6 +1618,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   if (changeInfo.status === 'complete' && tab) {
     void updateContextMenuVisibility(tab);
+    void updateTitleLockContextMenuVisibility(tab.id);
   }
 });
 
@@ -2334,6 +2368,20 @@ async function handleSendToLLM(providerId, currentTab) {
 // ============================================================================
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message?.type === 'GET_LOCKED_TITLE') {
+    const tabId = sender.tab?.id;
+    if (typeof tabId === 'number') {
+      getLockedTitle(tabId).then(title => {
+        sendResponse({ title: title ?? null });
+      }).catch(error => {
+        console.warn('[background] Failed to get locked title:', error);
+        sendResponse({ title: null });
+      });
+      return true; // Keep the message channel open for the async response
+    }
+    sendResponse({ title: null });
+    return;
+  }
   if (message.action === 'addClipboardItem') {
     void addClipboardItem(message.data);
     return;
@@ -3476,11 +3524,60 @@ function setupContextMenus() {
         contexts: ['page'],
       });
     }
+
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_LOCK_PAGE_TITLE_ID,
+      title: 'Lock Page Title',
+      contexts: ['page'],
+    });
+
+    chrome.contextMenus.create({
+      id: CONTEXT_MENU_UNLOCK_PAGE_TITLE_ID,
+      title: 'Unlock Page Title',
+      contexts: ['page'],
+      visible: false, // Initially hidden
+    });
   });
 }
 
 if (chrome.contextMenus) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+    if (info.menuItemId === CONTEXT_MENU_LOCK_PAGE_TITLE_ID) {
+      if (tab && tab.id) {
+        // Prompt for the title
+        try {
+          const results = await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: (currentTitle) => {
+              const newTitle = window.prompt('Enter custom title to lock:', currentTitle);
+              return newTitle;
+            },
+            args: [tab.title || ''],
+            world: 'MAIN',
+          });
+
+          const userTitle = results?.[0]?.result;
+          if (userTitle && userTitle.trim()) {
+            const trimmedTitle = userTitle.trim();
+            await setLockedTitle(tab.id, trimmedTitle);
+            await chrome.tabs.sendMessage(tab.id, { type: 'APPLY_TITLE_LOCK', title: trimmedTitle });
+            await updateTitleLockContextMenuVisibility(tab.id);
+          }
+        } catch (error) {
+          console.error('[page-title-lock] Failed to prompt for title:', error);
+        }
+      }
+      return;
+    }
+
+    if (info.menuItemId === CONTEXT_MENU_UNLOCK_PAGE_TITLE_ID) {
+      if (tab && tab.id) {
+        await removeLockedTitle(tab.id);
+        await chrome.tabs.sendMessage(tab.id, { type: 'CLEAR_TITLE_LOCK' });
+        await updateTitleLockContextMenuVisibility(tab.id);
+      }
+      return;
+    }
     if (info.menuItemId === CONTEXT_MENU_ENCRYPT_AND_SAVE_ID) {
       const targetUrl =
         typeof info.linkUrl === 'string' && info.linkUrl

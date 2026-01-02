@@ -14,6 +14,7 @@ import {
 } from './mirror.js';
 import { processUrl } from '../shared/urlProcessor.js';
 import { convertSplitUrlForSave, convertSplitUrlForRestore } from '../shared/splitUrl.js';
+import { MARK, setLockedTitle } from './page-title-lock.js';
 
 /**
  * @typedef {Object} ProjectTabDescriptor
@@ -1630,6 +1631,9 @@ async function applyProjectRestore(entries, options) {
       });
       if (tab && typeof tab.id === 'number') {
         createdEntries.push({ tab, entry });
+        if (entry.title) {
+          void setLockedTitle(tab.id, entry.title);
+        }
         outcome.created += 1;
         if (entry.pinned) {
           pinnedOffset += 1;
@@ -1934,8 +1938,11 @@ async function resolveProjectTabs(descriptors) {
       // Final URL (already converted, but processUrl might have changed it, so check again)
       const finalUrl = convertSplitUrlForSave(processedUrl);
 
-      const title =
+      let title =
         typeof tab?.title === 'string' ? tab.title : descriptor.title;
+      if (title.startsWith(MARK)) {
+        title = title.slice(MARK.length);
+      }
       results.push({
         id: descriptor.id,
         windowId: Number.isFinite(tab?.windowId)

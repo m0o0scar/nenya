@@ -79,7 +79,8 @@
         "src/contentScript/darkMode.js",
         "src/contentScript/bright-mode.js",
         "src/contentScript/block-elements.js",
-        "src/contentScript/custom-js-css.js"
+        "src/contentScript/custom-js-css.js",
+        "src/contentScript/page-title-lock.js"
       ],
       "run_at": "document_start"
     },
