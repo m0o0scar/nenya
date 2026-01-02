@@ -114,7 +114,7 @@
  */
 
 export const MIRROR_ALARM_NAME = 'nenya-raindrop-mirror-pull';
-export const MIRROR_PULL_INTERVAL_MINUTES = 10;
+export const MIRROR_PULL_INTERVAL_MINUTES = 60;
 
 // Export functions needed by projects.js and index.js
 export {
@@ -144,8 +144,6 @@ import {
 const PROVIDER_ID = 'raindrop';
 const STORAGE_KEY_TOKENS = 'cloudAuthTokens';
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
-const LOCAL_KEY_OLDEST_ITEM = 'OLDEST_RAINDROP_ITEM';
-const LOCAL_KEY_OLDEST_DELETED = 'OLDEST_DELETED_RAINDROP_ITEM';
 const ITEM_BOOKMARK_MAP_KEY = 'raindropItemBookmarkMap';
 const DEFAULT_PARENT_FOLDER_ID = '1';
 const DEFAULT_ROOT_FOLDER_NAME = 'Raindrop';
@@ -1332,39 +1330,150 @@ function escapeSearchValue(value) {
 }
 
 /**
+ * Format the current date and time for the bookmark folder title.
+ * @returns {string}
+ */
+function getTimestampForFolderName() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+  return `${year}/${month}/${day} ${hours}:${minutes}`;
+}
+
+/**
+ * A simple delay utility.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Execute the hourly full pull with retry logic.
+ * @param {string} trigger
+ * @returns {Promise<{ stats: MirrorStats, rootFolderId: string }>}
+ */
+async function performHourlyFullPull(trigger) {
+  const MAX_RETRIES = 3;
+  const RETRY_DELAY_MS = 60 * 1000; // 1 minute
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const timestamp = getTimestampForFolderName();
+    const newRootFolderName = `Raindrop - ${timestamp}`;
+    let newRootFolderId = null;
+
+    try {
+      const stats = createEmptyStats();
+      const tokens = await loadValidProviderTokens();
+      if (!tokens) {
+        throw new Error(
+          'No Raindrop connection found. Connect in Options to enable syncing.',
+        );
+      }
+
+      const settingsData = await loadRootFolderSettings();
+      const parentId = await ensureParentFolderAvailable(settingsData);
+
+      // Create a new temporary root folder for this pull
+      const newRootFolder = await bookmarksCreate({
+        parentId,
+        title: newRootFolderName,
+      });
+      newRootFolderId = newRootFolder.id;
+      stats.foldersCreated += 1;
+
+      // Fetch all remote data
+      const remoteData = await fetchRaindropStructure(tokens);
+
+      // Build the new structure inside the temporary folder
+      const index = await buildBookmarkIndex(newRootFolderId);
+      const { collectionFolderMap } = await synchronizeFolderTree(
+        remoteData,
+        newRootFolderId,
+        index,
+        stats,
+      );
+
+      // Fetch and create all bookmarks
+      const allCollections = [
+        ...remoteData.rootCollections,
+        ...remoteData.childCollections,
+      ];
+      for (const collection of allCollections) {
+        const targetFolderId = collectionFolderMap.get(collection._id);
+        if (!targetFolderId) continue;
+
+        let page = 0;
+        while (true) {
+          const items = await fetchRaindropItems(tokens, collection._id, page);
+          if (!items || items.length === 0) break;
+
+          for (const item of items) {
+            const url = typeof item.link === 'string' ? item.link : '';
+            if (!url) continue;
+
+            const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
+            await bookmarksCreate({
+              parentId: targetFolderId,
+              title: bookmarkTitle,
+              url,
+            });
+            stats.bookmarksCreated += 1;
+          }
+          page++;
+          await delay(500); // Delay between pages to respect rate limits
+        }
+      }
+
+      // If successful, remove old Raindrop folders
+      const children = await bookmarksGetChildren(parentId);
+      for (const child of children) {
+        if (
+          !child.url &&
+          (child.title.startsWith('Raindrop - ') ||
+            child.title === 'Raindrop') &&
+          child.id !== newRootFolderId
+        ) {
+          await bookmarksRemoveTree(child.id);
+          stats.foldersRemoved++;
+        }
+      }
+
+      return { stats, rootFolderId: newRootFolderId };
+    } catch (error) {
+      // If pull fails, delete the temporary folder
+      if (newRootFolderId) {
+        try {
+          await bookmarksRemoveTree(newRootFolderId);
+        } catch (cleanupError) {
+          console.error('Failed to cleanup temporary folder after error:', cleanupError);
+        }
+      }
+
+      if (attempt < MAX_RETRIES) {
+        console.warn(`Pull attempt ${attempt} failed. Retrying in 1 minute...`, error);
+        await delay(RETRY_DELAY_MS);
+      } else {
+        throw new Error(`Pull failed after ${MAX_RETRIES} attempts: ${error.message}`);
+      }
+    }
+  }
+  // This part should be unreachable, but typescript needs a return path.
+  throw new Error('Pull process failed unexpectedly.');
+}
+
+
+/**
  * Execute the mirror pull steps.
  * @param {string} trigger
  * @returns {Promise<{ stats: MirrorStats, rootFolderId: string }>}
  */
 async function performMirrorPull(trigger) {
-  const stats = createEmptyStats();
-
-  const tokens = await loadValidProviderTokens();
-  if (!tokens) {
-    throw new Error(
-      'No Raindrop connection found. Connect in Options to enable syncing.',
-    );
-  }
-
-  const remoteData = await fetchRaindropStructure(tokens);
-  const settingsData = await loadRootFolderSettings();
-  const mirrorContext = await ensureMirrorStructure(
-    remoteData,
-    settingsData,
-    stats,
-  );
-
-  if (settingsData.didMutate) {
-    await persistRootFolderSettings(settingsData);
-  }
-
-  await processDeletedItems(tokens, mirrorContext, stats);
-  await processUpdatedItems(tokens, mirrorContext, stats);
-
-  return {
-    stats,
-    rootFolderId: mirrorContext.rootFolderId,
-  };
+  return performHourlyFullPull(trigger);
 }
 
 /**
@@ -2446,151 +2555,6 @@ async function enforceFolderOrder(orderByParent, index, stats) {
       .map((id) => index.folders.get(id))
       .filter((entry) => entry !== undefined);
     index.childrenByParent.set(parentId, updatedChildren);
-  }
-}
-
-/**
- * Process deleted Raindrop items and remove corresponding bookmarks.
- * @param {StoredProviderTokens} tokens
- * @param {MirrorContext} context
- * @param {MirrorStats} stats
- * @returns {Promise<void>}
- */
-async function processDeletedItems(tokens, context, stats) {
-  const threshold = await readLocalNumber(LOCAL_KEY_OLDEST_DELETED, 0);
-  let newestProcessed = 0;
-  let page = 0;
-  let shouldContinue = true;
-
-  while (shouldContinue) {
-    const items = await fetchRaindropItems(tokens, -99, page);
-
-    if (!items || items.length === 0) {
-      break;
-    }
-
-    let stoppedByThreshold = false;
-
-    for (const item of items) {
-      const lastUpdate = parseRaindropTimestamp(
-        item?.lastUpdate ?? item?.created,
-      );
-      if (threshold > 0 && lastUpdate > 0 && lastUpdate <= threshold) {
-        shouldContinue = false;
-        stoppedByThreshold = true;
-        break;
-      }
-
-      if (lastUpdate > 0) {
-        newestProcessed = Math.max(newestProcessed, lastUpdate);
-      }
-
-      const url = typeof item?.link === 'string' ? item.link : '';
-      const itemId = extractItemId(item);
-
-      await removeBookmarksForItem(itemId, url, context, stats);
-    }
-
-    if (stoppedByThreshold || !shouldContinue) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  if (newestProcessed > 0) {
-    await writeLocalNumber(LOCAL_KEY_OLDEST_DELETED, newestProcessed);
-  }
-}
-
-/**
- * Process new or updated Raindrop items and mirror them as bookmarks.
- * @param {StoredProviderTokens} tokens
- * @param {MirrorContext} context
- * @param {MirrorStats} stats
- * @returns {Promise<void>}
- */
-async function processUpdatedItems(tokens, context, stats) {
-  const threshold = await readLocalNumber(LOCAL_KEY_OLDEST_ITEM, 0);
-  let newestProcessed = 0;
-  let page = 0;
-  let shouldContinue = true;
-
-  while (shouldContinue) {
-    const items = await fetchRaindropItems(tokens, 0, page);
-
-    if (!items || items.length === 0) {
-      break;
-    }
-
-    let stoppedByThreshold = false;
-
-    for (const item of items) {
-      const lastUpdate = parseRaindropTimestamp(
-        item?.lastUpdate ?? item?.created,
-      );
-      if (threshold > 0 && lastUpdate > 0 && lastUpdate <= threshold) {
-        shouldContinue = false;
-        stoppedByThreshold = true;
-        break;
-      }
-
-      if (lastUpdate > 0) {
-        newestProcessed = Math.max(newestProcessed, lastUpdate);
-      }
-
-      const url = typeof item?.link === 'string' ? item.link : '';
-      if (!url) {
-        continue;
-      }
-
-      const collectionId = extractCollectionId(item);
-      let targetFolderId;
-
-      if (collectionId === -1) {
-        targetFolderId = context.unsortedFolderId;
-      } else if (typeof collectionId === 'number') {
-        targetFolderId = context.collectionFolderMap.get(collectionId);
-      }
-
-      if (!targetFolderId) {
-        continue;
-      }
-
-      const bookmarkTitle = normalizeBookmarkTitle(item?.title, url);
-      const itemId = extractItemId(item);
-
-      try {
-        await upsertBookmark(
-          tokens,
-          itemId,
-          url,
-          bookmarkTitle,
-          targetFolderId,
-          context,
-          stats,
-          collectionId,
-        );
-      } catch (error) {
-        console.error(
-          '[mirror] Failed to upsert bookmark:',
-          url,
-          '(error:',
-          error instanceof Error ? error.message : String(error),
-          ')',
-        );
-      }
-    }
-
-    if (stoppedByThreshold || !shouldContinue) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  if (newestProcessed > 0) {
-    await writeLocalNumber(LOCAL_KEY_OLDEST_ITEM, newestProcessed);
   }
 }
 
