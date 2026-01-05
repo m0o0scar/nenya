@@ -11,6 +11,7 @@ import {
 import {
   SAVE_PROJECT_MESSAGE,
   LIST_PROJECTS_MESSAGE,
+  listSavedProjects,
   GET_CACHED_PROJECTS_MESSAGE,
   ADD_PROJECT_TABS_MESSAGE,
   REPLACE_PROJECT_ITEMS_MESSAGE,
@@ -3400,7 +3401,7 @@ async function setupContextMenus() {
     });
 
     // Dynamically populate projects for "Add to" and "Replace" submenus
-    const projectsResult = await handleListProjectsMessage();
+    const projectsResult = await listSavedProjects();
     if (projectsResult.ok && projectsResult.projects.length > 0) {
       for (const project of projectsResult.projects) {
         await chrome.contextMenus.create({

@@ -1275,7 +1275,7 @@ export async function restoreProjectTabs(projectId, projectTitle) {
  * List the saved projects (collections in the Saved projects group).
  * @returns {Promise<{ ok: boolean, projects?: SavedProjectDescriptor[], error?: string }>}
  */
-export async function listSavedProjects() {
+async function listSavedProjects() {
   let tokens;
   try {
     tokens = await loadValidProviderTokens();
