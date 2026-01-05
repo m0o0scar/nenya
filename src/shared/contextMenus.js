@@ -169,7 +169,14 @@ async function createCopyMenu() {
  */
 async function createRaindropMenu() {
   const pageContexts = ['page', 'frame', 'selection', 'editable', 'image'];
-  const allContexts = ['page', 'frame', 'selection', 'editable', 'image', 'link'];
+  const allContexts = [
+    'page',
+    'frame',
+    'selection',
+    'editable',
+    'image',
+    'link',
+  ];
 
   await createMenuItem({
     id: PARENT_MENU_IDS.RAINDROP,
@@ -462,16 +469,22 @@ export async function updateProjectSubmenus() {
     // Remove empty placeholders
     try {
       await new Promise((resolve) => {
-        chrome.contextMenus.remove(`${DYNAMIC_PREFIXES.ADD_PROJECT}empty`, () => {
-          chrome.runtime.lastError;
-          resolve();
-        });
+        chrome.contextMenus.remove(
+          `${DYNAMIC_PREFIXES.ADD_PROJECT}empty`,
+          () => {
+            chrome.runtime.lastError;
+            resolve();
+          },
+        );
       });
       await new Promise((resolve) => {
-        chrome.contextMenus.remove(`${DYNAMIC_PREFIXES.REPLACE_PROJECT}empty`, () => {
-          chrome.runtime.lastError;
-          resolve();
-        });
+        chrome.contextMenus.remove(
+          `${DYNAMIC_PREFIXES.REPLACE_PROJECT}empty`,
+          () => {
+            chrome.runtime.lastError;
+            resolve();
+          },
+        );
       });
     } catch {
       // Ignore
@@ -479,7 +492,8 @@ export async function updateProjectSubmenus() {
 
     for (const project of projects) {
       const projectId = Number(project.id);
-      const title = typeof project.title === 'string' ? project.title : 'Untitled';
+      const title =
+        typeof project.title === 'string' ? project.title : 'Untitled';
 
       await createMenuItem({
         id: `${DYNAMIC_PREFIXES.ADD_PROJECT}${projectId}`,
@@ -508,24 +522,26 @@ export async function updateRunCodeSubmenu(url) {
     return;
   }
 
+  // Get all rules first to know which menu items might exist
+  const allRules = await getRunCodeInPageRules();
   const matchingRules = await getMatchingCodeRules(url);
 
-  // Remove existing code menu items
-  const existingIds = [];
-  for (let i = 0; i < 100; i++) {
-    existingIds.push(`${DYNAMIC_PREFIXES.RUN_CODE}${i}`);
-  }
-
-  for (const id of existingIds) {
-    try {
-      await new Promise((resolve) => {
-        chrome.contextMenus.remove(id, () => {
-          chrome.runtime.lastError;
-          resolve();
+  // Remove existing code menu items by their actual rule IDs
+  for (const rule of allRules) {
+    if (rule.id) {
+      try {
+        await new Promise((resolve) => {
+          chrome.contextMenus.remove(
+            `${DYNAMIC_PREFIXES.RUN_CODE}${rule.id}`,
+            () => {
+              chrome.runtime.lastError; // Clear error
+              resolve();
+            },
+          );
         });
-      });
-    } catch {
-      // Ignore
+      } catch {
+        // Ignore errors for non-existent items
+      }
     }
   }
 
@@ -565,13 +581,13 @@ export async function updateRunCodeSubmenu(url) {
   for (let i = 0; i < matchingRules.length; i++) {
     const rule = matchingRules[i];
     // Use rule title if available, fall back to pattern
-    const ruleTitle = typeof rule.title === 'string' && rule.title.trim()
-      ? rule.title.trim()
-      : rule.pattern;
+    const ruleTitle =
+      typeof rule.title === 'string' && rule.title.trim()
+        ? rule.title.trim()
+        : rule.pattern;
     // Truncate if too long
-    const title = ruleTitle.length > 40
-      ? ruleTitle.substring(0, 37) + '...'
-      : ruleTitle;
+    const title =
+      ruleTitle.length > 40 ? ruleTitle.substring(0, 37) + '...' : ruleTitle;
 
     await createMenuItem({
       id: `${DYNAMIC_PREFIXES.RUN_CODE}${rule.id}`,
@@ -603,7 +619,10 @@ export async function updateSplitMenuVisibility(tab) {
       visible: isSplitPage,
     });
   } catch (error) {
-    console.warn('[contextMenu] Failed to update split menu visibility:', error);
+    console.warn(
+      '[contextMenu] Failed to update split menu visibility:',
+      error,
+    );
   }
 }
 
@@ -622,7 +641,10 @@ export async function updateScreenshotMenuVisibility(hasMultipleTabs) {
       visible: !hasMultipleTabs,
     });
   } catch (error) {
-    console.warn('[contextMenu] Failed to update screenshot visibility:', error);
+    console.warn(
+      '[contextMenu] Failed to update screenshot visibility:',
+      error,
+    );
   }
 }
 
@@ -644,7 +666,10 @@ export async function setupContextMenus() {
     chrome.contextMenus.removeAll(async () => {
       const error = chrome.runtime.lastError;
       if (error) {
-        console.warn('[contextMenu] Failed to clear existing items:', error.message);
+        console.warn(
+          '[contextMenu] Failed to clear existing items:',
+          error.message,
+        );
       }
 
       try {
@@ -709,14 +734,18 @@ export function parseProjectMenuItem(menuItemId) {
   }
 
   if (menuItemId.startsWith(DYNAMIC_PREFIXES.ADD_PROJECT)) {
-    const projectId = Number(menuItemId.replace(DYNAMIC_PREFIXES.ADD_PROJECT, ''));
+    const projectId = Number(
+      menuItemId.replace(DYNAMIC_PREFIXES.ADD_PROJECT, ''),
+    );
     if (Number.isFinite(projectId) && projectId > 0) {
       return { type: 'add', projectId };
     }
   }
 
   if (menuItemId.startsWith(DYNAMIC_PREFIXES.REPLACE_PROJECT)) {
-    const projectId = Number(menuItemId.replace(DYNAMIC_PREFIXES.REPLACE_PROJECT, ''));
+    const projectId = Number(
+      menuItemId.replace(DYNAMIC_PREFIXES.REPLACE_PROJECT, ''),
+    );
     if (Number.isFinite(projectId) && projectId > 0) {
       return { type: 'replace', projectId };
     }
@@ -786,4 +815,3 @@ export function getCopyFormatType(menuItemId) {
       return null;
   }
 }
-
