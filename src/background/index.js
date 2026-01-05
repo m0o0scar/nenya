@@ -40,9 +40,29 @@ import { saveTabsAsProject } from './projects.js';
 import {
   setupClipboardContextMenus,
   handleClipboardContextMenuClick,
-  updateClipboardContextMenuVisibility,
   handleClipboardCommand,
+  handleMultiTabCopy,
+  handleScreenshotCopy,
+  setCopySuccessBadge,
+  setCopyFailureBadge,
 } from './clipboard.js';
+import {
+  setupContextMenus as setupCentralizedContextMenus,
+  updateProjectSubmenus,
+  updateRunCodeSubmenu,
+  updateSplitMenuVisibility,
+  updateScreenshotMenuVisibility,
+  COPY_MENU_IDS,
+  RAINDROP_MENU_IDS,
+  OTHER_MENU_IDS,
+  PARENT_MENU_IDS,
+  isCopyMenuItem,
+  isRaindropMenuItem,
+  parseProjectMenuItem,
+  parseRunCodeMenuItem,
+  parseLLMMenuItem,
+  getCopyFormatType,
+} from '../shared/contextMenus.js';
 import { initializeTabSnapshots } from './tab-snapshots.js';
 import {
   LLM_PROVIDER_META,
@@ -62,14 +82,6 @@ const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
-const CONTEXT_MENU_SAVE_PAGE_ID = 'nenya-save-unsorted-page';
-const CONTEXT_MENU_SAVE_LINK_ID = 'nenya-save-unsorted-link';
-const CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID = 'nenya-save-clipboard-link';
-const CONTEXT_MENU_ENCRYPT_AND_SAVE_ID = 'nenya-encrypt-unsorted';
-const CONTEXT_MENU_SPLIT_TABS_ID = 'nenya-split-tabs';
-const CONTEXT_MENU_UNSPLIT_TABS_ID = 'nenya-unsplit-tabs';
-const CONTEXT_MENU_OPEN_IN_POPUP_ID = 'nenya-open-in-popup';
-const CONTEXT_MENU_SEND_TO_LLM_PARENT_ID = 'nenya-send-to-llm-parent';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -1379,8 +1391,20 @@ void initializeAutoReloadFeature().catch((error) => {
   console.error('[auto-reload] Initialization failed:', error);
 });
 
-chrome.tabs.onHighlighted.addListener(() => {
-  void updateClipboardContextMenuVisibility();
+chrome.tabs.onHighlighted.addListener(async () => {
+  try {
+    const tabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    const hasMultipleTabs = tabs && tabs.length > 1;
+    await updateScreenshotMenuVisibility(hasMultipleTabs);
+  } catch (error) {
+    console.warn(
+      '[contextMenu] Failed to update screenshot visibility:',
+      error,
+    );
+  }
 });
 
 // Update context menu visibility when tabs change
@@ -1742,10 +1766,25 @@ async function collectPageContentFromTabs(tabIds) {
     }
     try {
       const content = await collectPageContent(tabId);
-      return content || { tabId, title: '', url: '', content: '(failed to collect content)' };
+      return (
+        content || {
+          tabId,
+          title: '',
+          url: '',
+          content: '(failed to collect content)',
+        }
+      );
     } catch (error) {
-      console.error(`[background] Error collecting content from tab ${tabId}:`, error);
-      return { tabId, title: '', url: '', content: `(error: ${error.message})` };
+      console.error(
+        `[background] Error collecting content from tab ${tabId}:`,
+        error,
+      );
+      return {
+        tabId,
+        title: '',
+        url: '',
+        content: `(error: ${error.message})`,
+      };
     }
   });
 
@@ -2275,13 +2314,19 @@ async function handleSendToLLM(providerId, currentTab) {
 
     const providerMeta = LLM_PROVIDER_META[providerId];
     if (!providerMeta) {
-      console.warn(`[background] No metadata found for LLM provider: ${providerId}`);
+      console.warn(
+        `[background] No metadata found for LLM provider: ${providerId}`,
+      );
       return;
     }
 
     // 2. Capture screenshot if the tab has a valid URL
     let files = [];
-    if (currentTab.url && (currentTab.url.startsWith('http://') || currentTab.url.startsWith('https://'))) {
+    if (
+      currentTab.url &&
+      (currentTab.url.startsWith('http://') ||
+        currentTab.url.startsWith('https://'))
+    ) {
       try {
         const dataUrl = await chrome.tabs.captureVisibleTab(
           currentTab.windowId,
@@ -3299,23 +3344,30 @@ async function handleUnsplitTabsContextMenu(tab) {
 }
 
 /**
- * Update context menu visibility based on current tab
+ * Update context menu visibility based on current tab.
+ * Uses the centralized context menu module for updates.
  * @param {chrome.tabs.Tab} tab - The current tab
  * @returns {Promise<void>}
  */
 async function updateContextMenuVisibility(tab) {
   if (!chrome.contextMenus) return;
 
-  const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-  const isSplitPage = tab && tab.url && tab.url.startsWith(splitBaseUrl);
-
   try {
-    await chrome.contextMenus.update(CONTEXT_MENU_SPLIT_TABS_ID, {
-      visible: Boolean(!isSplitPage),
+    // Update split/unsplit menu visibility
+    await updateSplitMenuVisibility(tab);
+
+    // Update Run Code menu based on current URL
+    if (tab && tab.url) {
+      await updateRunCodeSubmenu(tab.url);
+    }
+
+    // Update screenshot visibility based on tab selection
+    const highlightedTabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
     });
-    await chrome.contextMenus.update(CONTEXT_MENU_UNSPLIT_TABS_ID, {
-      visible: Boolean(isSplitPage),
-    });
+    const hasMultipleTabs = highlightedTabs && highlightedTabs.length > 1;
+    await updateScreenshotMenuVisibility(hasMultipleTabs);
   } catch (error) {
     console.warn('Failed to update context menu visibility:', error);
   }
@@ -3323,6 +3375,7 @@ async function updateContextMenuVisibility(tab) {
 
 /**
  * Ensure extension context menu entries exist.
+ * Uses the centralized context menu module for hierarchical menus.
  * @returns {void}
  */
 function setupContextMenus() {
@@ -3330,158 +3383,96 @@ function setupContextMenus() {
     return;
   }
 
-  chrome.contextMenus.removeAll(() => {
-    const error = chrome.runtime.lastError;
-    if (error) {
-      console.warn(
-        '[contextMenu] Failed to clear existing items:',
-        error.message,
-      );
-    }
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_PAGE_ID,
-        title: 'Save to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register page item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_LINK_ID,
-        title: 'Save link to Raindrop Unsorted',
-        contexts: ['link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register link item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_ENCRYPT_AND_SAVE_ID,
-        title: 'Encrypt & Save to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image', 'link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register encrypt item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID,
-        title: 'Save link in clipboard to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image', 'link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register clipboard save item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SPLIT_TABS_ID,
-        title: 'Split tabs',
-        contexts: ['page'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register split tabs item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_UNSPLIT_TABS_ID,
-        title: 'Unsplit tabs',
-        contexts: ['page'],
-        visible: false, // Initially hidden, will be shown on split pages
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register unsplit tabs item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_OPEN_IN_POPUP_ID,
-        title: 'Open in popup',
-        contexts: ['page'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register open in popup item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    // Create parent menu for sending to LLM
-    chrome.contextMenus.create({
-      id: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
-      title: 'Send Page Content to LLM',
-      contexts: ['page'],
-    });
-
-    // Create child menus for each LLM provider
-    for (const providerId in LLM_PROVIDER_META) {
-      const provider = LLM_PROVIDER_META[providerId];
-      chrome.contextMenus.create({
-        id: `send-to-llm-${providerId}`,
-        parentId: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
-        title: provider.name,
-        contexts: ['page'],
-      });
-    }
+  // Use the centralized context menu setup
+  void setupCentralizedContextMenus().catch((error) => {
+    console.error('[contextMenu] Failed to setup context menus:', error);
   });
 }
 
 if (chrome.contextMenus) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === CONTEXT_MENU_ENCRYPT_AND_SAVE_ID) {
+    const menuItemId = String(info.menuItemId);
+
+    // ========================================================================
+    // COPY MENU HANDLERS
+    // ========================================================================
+    if (isCopyMenuItem(menuItemId)) {
+      const formatType = getCopyFormatType(menuItemId);
+      if (formatType && tab) {
+        void handleCopyContextMenuClick(formatType, tab);
+      }
+      return;
+    }
+
+    // ========================================================================
+    // RAINDROP MENU HANDLERS
+    // ========================================================================
+
+    // Save current page to unsorted
+    if (menuItemId === RAINDROP_MENU_IDS.SAVE_PAGE) {
+      const url = typeof info.pageUrl === 'string' ? info.pageUrl : '';
+      if (!url) {
+        return;
+      }
+      const convertedUrl = convertSplitUrlForSave(url);
+      const normalizedUrl = normalizeHttpUrl(convertedUrl);
+      if (!normalizedUrl) {
+        return;
+      }
+      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
+      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
+      const title = await promptForTitle(tab?.id, originalTitle);
+      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
+        console.error('[contextMenu] Failed to save page:', error);
+      });
+      return;
+    }
+
+    // Save link to unsorted
+    if (menuItemId === RAINDROP_MENU_IDS.SAVE_LINK) {
+      const url = typeof info.linkUrl === 'string' ? info.linkUrl : '';
+      if (!url) {
+        return;
+      }
+      const convertedUrl = convertSplitUrlForSave(url);
+      const normalizedUrl = normalizeHttpUrl(convertedUrl);
+      if (!normalizedUrl) {
+        return;
+      }
+      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
+      const selection =
+        typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
+      const originalTitle =
+        selection || (typeof tab?.title === 'string' ? tab.title : '');
+      const title = await promptForTitle(tab?.id, originalTitle);
+      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
+        console.error('[contextMenu] Failed to save link:', error);
+      });
+      return;
+    }
+
+    // Save clipboard link to unsorted
+    if (menuItemId === RAINDROP_MENU_IDS.SAVE_CLIPBOARD) {
+      void (async () => {
+        try {
+          const clipboardResult = await readClipboardFromTab();
+          if (clipboardResult.error) {
+            console.error(
+              '[contextMenu] Failed to read clipboard:',
+              clipboardResult.error,
+            );
+            return;
+          }
+          await handleSaveClipboardUrlToUnsorted(clipboardResult.text || '');
+        } catch (error) {
+          console.error('[contextMenu] Failed to save clipboard link:', error);
+        }
+      })();
+      return;
+    }
+
+    // Encrypt & save to unsorted
+    if (menuItemId === RAINDROP_MENU_IDS.ENCRYPT_SAVE) {
       const targetUrl =
         typeof info.linkUrl === 'string' && info.linkUrl
           ? info.linkUrl
@@ -3510,102 +3501,382 @@ if (chrome.contextMenus) {
       return;
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_PAGE_ID) {
-      const url = typeof info.pageUrl === 'string' ? info.pageUrl : '';
-      if (!url) {
-        return;
-      }
-      // Convert split page URLs to nenya.local format before normalization
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
-      }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save page:', error);
+    // Create new project
+    if (menuItemId === RAINDROP_MENU_IDS.CREATE_PROJECT) {
+      void handleCreateProjectFromContextMenu(tab);
+      return;
+    }
+
+    // Pull from Raindrop
+    if (menuItemId === RAINDROP_MENU_IDS.PULL) {
+      void runMirrorPull('manual').catch((error) => {
+        console.warn('[contextMenu] Pull failed:', error);
       });
       return;
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_LINK_ID) {
-      const url = typeof info.linkUrl === 'string' ? info.linkUrl : '';
-      if (!url) {
-        return;
+    // ========================================================================
+    // PROJECT SUBMENU HANDLERS
+    // ========================================================================
+    const projectMenuItem = parseProjectMenuItem(menuItemId);
+    if (projectMenuItem) {
+      if (projectMenuItem.type === 'add') {
+        void handleAddToProjectFromContextMenu(projectMenuItem.projectId, tab);
+      } else if (projectMenuItem.type === 'replace') {
+        void handleReplaceProjectFromContextMenu(
+          projectMenuItem.projectId,
+          tab,
+        );
       }
-      // Convert split page URLs to nenya.local format before normalization
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
-      }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const selection =
-        typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
-      const originalTitle =
-        selection || (typeof tab?.title === 'string' ? tab.title : '');
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save link:', error);
-      });
       return;
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID) {
-      void (async () => {
-        try {
-          const clipboardResult = await readClipboardFromTab();
-          if (clipboardResult.error) {
-            console.error(
-              '[contextMenu] Failed to read clipboard:',
-              clipboardResult.error,
-            );
-            return;
-          }
-          await handleSaveClipboardUrlToUnsorted(clipboardResult.text || '');
-        } catch (error) {
-          console.error('[contextMenu] Failed to save clipboard link:', error);
-        }
-      })();
+    // ========================================================================
+    // RUN CODE MENU HANDLERS
+    // ========================================================================
+    const runCodeMenuItem = parseRunCodeMenuItem(menuItemId);
+    if (runCodeMenuItem) {
+      void handleRunCodeFromContextMenu(runCodeMenuItem.ruleId, tab);
       return;
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SPLIT_TABS_ID) {
+    // ========================================================================
+    // SEND TO LLM MENU HANDLERS
+    // ========================================================================
+    const llmMenuItem = parseLLMMenuItem(menuItemId);
+    if (llmMenuItem) {
+      if (tab) {
+        void handleSendToLLM(llmMenuItem.providerId, tab);
+      }
+      return;
+    }
+
+    // ========================================================================
+    // OTHER MENU HANDLERS
+    // ========================================================================
+
+    // Split tabs
+    if (menuItemId === OTHER_MENU_IDS.SPLIT_TABS) {
       if (tab) {
         void handleSplitTabsContextMenu(tab);
       }
       return;
     }
 
-    if (info.menuItemId === CONTEXT_MENU_UNSPLIT_TABS_ID) {
+    // Unsplit tabs
+    if (menuItemId === OTHER_MENU_IDS.UNSPLIT_TABS) {
       if (tab) {
         void handleUnsplitTabsContextMenu(tab);
       }
       return;
     }
 
-    // Handle clipboard context menu clicks
+    // Open in popup
+    if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
+      void handleOpenInPopup();
+      return;
+    }
+
+    // ========================================================================
+    // BACKWARDS COMPATIBILITY - Handle old menu IDs
+    // ========================================================================
+    // Handle clipboard context menu clicks (legacy)
     if (tab) {
       void handleClipboardContextMenuClick(info, tab);
     }
-
-    if (info.menuItemId === CONTEXT_MENU_OPEN_IN_POPUP_ID) {
-      void handleOpenInPopup();
-    }
-
-    if (
-      typeof info.menuItemId === 'string' &&
-      info.menuItemId.startsWith('send-to-llm-')
-    ) {
-      const providerId = info.menuItemId.replace('send-to-llm-', '');
-      if (tab) {
-        void handleSendToLLM(providerId, tab);
-      }
-    }
   });
 }
+
+// ============================================================================
+// CONTEXT MENU HELPER FUNCTIONS
+// ============================================================================
+
+/**
+ * Handle copy context menu click.
+ * @param {'title' | 'title-url' | 'title-dash-url' | 'markdown-link' | 'screenshot'} formatType
+ * @param {chrome.tabs.Tab} tab
+ * @returns {Promise<void>}
+ */
+async function handleCopyContextMenuClick(formatType, tab) {
+  try {
+    // Get highlighted tabs first, then fall back to active tab
+    let tabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    if (!tabs || tabs.length === 0) {
+      tabs = await chrome.tabs.query({ currentWindow: true, active: true });
+    }
+
+    if (!tabs || tabs.length === 0) {
+      setCopyFailureBadge();
+      return;
+    }
+
+    let success = false;
+
+    if (formatType === 'screenshot') {
+      // Screenshot only works with single tab
+      if (tabs.length === 1 && typeof tabs[0].id === 'number') {
+        success = await handleScreenshotCopy(tabs[0].id);
+      }
+    } else {
+      success = await handleMultiTabCopy(formatType, tabs);
+    }
+
+    // Set badge based on result
+    if (success) {
+      setCopySuccessBadge();
+    } else {
+      setCopyFailureBadge();
+    }
+  } catch (error) {
+    console.error('[contextMenu] Copy operation failed:', error);
+    setCopyFailureBadge();
+  }
+}
+
+/**
+ * Handle create new project from context menu.
+ * @param {chrome.tabs.Tab} [tab]
+ * @returns {Promise<void>}
+ */
+async function handleCreateProjectFromContextMenu(tab) {
+  try {
+    // Get highlighted tabs for project
+    let tabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    if (!tabs || tabs.length === 0) {
+      tabs = await chrome.tabs.query({ currentWindow: true, active: true });
+    }
+
+    if (!tabs || tabs.length === 0) {
+      return;
+    }
+
+    // Prompt for project name
+    const projectName = await promptForProjectName(tab?.id);
+    if (!projectName) {
+      return;
+    }
+
+    // Convert tabs to project tab descriptors
+    const tabDescriptors = tabs
+      .filter((t) => t && typeof t.id === 'number' && t.url)
+      .map((t) => ({
+        id: t.id,
+        windowId: t.windowId || -1,
+        index: t.index || 0,
+        groupId: t.groupId || -1,
+        pinned: Boolean(t.pinned),
+        url: t.url || '',
+        title: t.title || '',
+      }));
+
+    await saveTabsAsProject(projectName, tabDescriptors);
+
+    // Refresh project submenus after creating a new project
+    void updateProjectSubmenus();
+  } catch (error) {
+    console.error('[contextMenu] Failed to create project:', error);
+  }
+}
+
+/**
+ * Handle add current page to project from context menu.
+ * @param {number} projectId
+ * @param {chrome.tabs.Tab} [tab]
+ * @returns {Promise<void>}
+ */
+async function handleAddToProjectFromContextMenu(projectId, tab) {
+  try {
+    // Get highlighted tabs
+    let tabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    if (!tabs || tabs.length === 0) {
+      tabs = await chrome.tabs.query({ currentWindow: true, active: true });
+    }
+
+    if (!tabs || tabs.length === 0) {
+      return;
+    }
+
+    // Convert tabs to project tab descriptors
+    const tabDescriptors = tabs
+      .filter((t) => t && typeof t.id === 'number' && t.url)
+      .map((t) => ({
+        id: t.id,
+        windowId: t.windowId || -1,
+        index: t.index || 0,
+        groupId: t.groupId || -1,
+        pinned: Boolean(t.pinned),
+        url: t.url || '',
+        title: t.title || '',
+      }));
+
+    // Import addTabsToProject
+    const { addTabsToProject } = await import('./projects.js');
+    await addTabsToProject(projectId, tabDescriptors);
+  } catch (error) {
+    console.error('[contextMenu] Failed to add to project:', error);
+  }
+}
+
+/**
+ * Handle replace project items from context menu.
+ * @param {number} projectId
+ * @param {chrome.tabs.Tab} [tab]
+ * @returns {Promise<void>}
+ */
+async function handleReplaceProjectFromContextMenu(projectId, tab) {
+  try {
+    // Get highlighted tabs
+    let tabs = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    if (!tabs || tabs.length === 0) {
+      tabs = await chrome.tabs.query({ currentWindow: true, active: true });
+    }
+
+    if (!tabs || tabs.length === 0) {
+      return;
+    }
+
+    // Convert tabs to project tab descriptors
+    const tabDescriptors = tabs
+      .filter((t) => t && typeof t.id === 'number' && t.url)
+      .map((t) => ({
+        id: t.id,
+        windowId: t.windowId || -1,
+        index: t.index || 0,
+        groupId: t.groupId || -1,
+        pinned: Boolean(t.pinned),
+        url: t.url || '',
+        title: t.title || '',
+      }));
+
+    // Import replaceProjectItems
+    const { replaceProjectItems } = await import('./projects.js');
+    await replaceProjectItems(projectId, tabDescriptors);
+  } catch (error) {
+    console.error('[contextMenu] Failed to replace project:', error);
+  }
+}
+
+/**
+ * Handle run code snippet from context menu.
+ * @param {string} ruleId
+ * @param {chrome.tabs.Tab} [tab]
+ * @returns {Promise<void>}
+ */
+async function handleRunCodeFromContextMenu(ruleId, tab) {
+  if (!tab || typeof tab.id !== 'number') {
+    return;
+  }
+
+  try {
+    // Load the "run code in page" rules
+    const result = await chrome.storage.local.get('runCodeInPageRules');
+    const rules = Array.isArray(result.runCodeInPageRules)
+      ? result.runCodeInPageRules
+      : [];
+    const rule = rules.find((r) => r.id === ruleId);
+
+    if (!rule) {
+      console.warn('[contextMenu] Code rule not found:', ruleId);
+      return;
+    }
+
+    // Inject code if present (using MAIN world to bypass CSP)
+    if (rule.code && rule.code.trim()) {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (jsCode) => {
+          try {
+            (0, eval)(jsCode);
+          } catch (error) {
+            console.error('[Nenya RunCode] Script execution error:', error);
+          }
+        },
+        args: [rule.code],
+      });
+    }
+  } catch (error) {
+    console.error('[contextMenu] Failed to run code:', error);
+  }
+}
+
+/**
+ * Prompt user for project name.
+ * @param {number} [tabId]
+ * @returns {Promise<string | null>}
+ */
+async function promptForProjectName(tabId) {
+  if (typeof tabId !== 'number') {
+    return 'New Project';
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        return window.prompt('Enter project name:', 'New Project');
+      },
+    });
+
+    if (results && results[0] && results[0].result) {
+      return String(results[0].result).trim() || null;
+    }
+    return null;
+  } catch (error) {
+    console.warn('[contextMenu] Failed to prompt for project name:', error);
+    return 'New Project';
+  }
+}
+
+// ============================================================================
+// STORAGE CHANGE LISTENERS FOR CONTEXT MENU UPDATES
+// ============================================================================
+
+/**
+ * Listen for storage changes to update context menus dynamically.
+ */
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== 'local') {
+    return;
+  }
+
+  // Update project submenus when cached projects change
+  if (changes.cachedProjects) {
+    void updateProjectSubmenus().catch((error) => {
+      console.warn('[contextMenu] Failed to update project submenus:', error);
+    });
+  }
+
+  // Update code submenus when "run code in page" rules change
+  if (changes.runCodeInPageRules) {
+    // We need to update for the current tab's URL
+    void (async () => {
+      try {
+        const tabs = await chrome.tabs.query({
+          active: true,
+          currentWindow: true,
+        });
+        if (tabs && tabs[0] && tabs[0].url) {
+          await updateRunCodeSubmenu(tabs[0].url);
+        }
+      } catch (error) {
+        console.warn('[contextMenu] Failed to update code submenus:', error);
+      }
+    })();
+  }
+});
 
 // ============================================================================
 // URL PROCESSING ON TAB OPEN

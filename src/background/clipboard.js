@@ -11,7 +11,8 @@ import { processUrl } from '../shared/urlProcessor.js';
 import { transformTitle } from '../shared/titleTransform.js';
 
 /**
- * Context menu IDs for clipboard operations.
+ * @deprecated Use COPY_MENU_IDS from shared/contextMenus.js instead.
+ * Context menu IDs for clipboard operations (kept for backwards compatibility).
  */
 export const CLIPBOARD_CONTEXT_MENU_IDS = {
   COPY_TITLE: 'nenya-copy-title',
@@ -19,6 +20,17 @@ export const CLIPBOARD_CONTEXT_MENU_IDS = {
   COPY_TITLE_DASH_URL: 'nenya-copy-title-dash-url',
   COPY_MARKDOWN_LINK: 'nenya-copy-markdown-link',
   COPY_SCREENSHOT: 'nenya-copy-screenshot',
+};
+
+/**
+ * New context menu IDs matching the centralized contextMenus.js.
+ */
+const NEW_COPY_MENU_IDS = {
+  TITLE: 'nenya-copy-title',
+  TITLE_URL: 'nenya-copy-title-url',
+  TITLE_DASH_URL: 'nenya-copy-title-dash-url',
+  MARKDOWN_LINK: 'nenya-copy-markdown-link',
+  SCREENSHOT: 'nenya-copy-screenshot',
 };
 
 /**
@@ -124,7 +136,7 @@ function getNotificationIconUrl() {
   }
 }
 
-function setCopySuccessBadge() {
+export function setCopySuccessBadge() {
   try {
     setActionBadge('📋', '#00FF00', 2000);
   } catch (error) {
@@ -132,7 +144,7 @@ function setCopySuccessBadge() {
   }
 }
 
-function setCopyFailureBadge() {
+export function setCopyFailureBadge() {
   try {
     setActionBadge('❌', '#ffffff', 2000);
   } catch (error) {
@@ -253,7 +265,7 @@ function formatMarkdownLink(tabData) {
  * @param {chrome.tabs.Tab[]} tabs - Array of tabs to process.
  * @returns {Promise<boolean>} - True if successful, false otherwise.
  */
-async function handleMultiTabCopy(formatType, tabs) {
+export async function handleMultiTabCopy(formatType, tabs) {
   const tabData = await getTabData(tabs);
 
   if (tabData.length === 0) {
@@ -431,7 +443,7 @@ async function copyImageViaTab(tabId, dataUrl, originalTabId) {
  * @param {number} tabId - The ID of the tab to capture.
  * @returns {Promise<boolean>} - True if successful, false otherwise.
  */
-async function handleScreenshotCopy(tabId) {
+export async function handleScreenshotCopy(tabId) {
   const dataUrl = await captureTabScreenshot(tabId);
 
   if (!dataUrl) {
@@ -532,136 +544,13 @@ async function handleScreenshotCopy(tabId) {
 }
 
 /**
- * Setup clipboard context menu items.
+ * @deprecated Context menus are now created centrally in shared/contextMenus.js
+ * This function is kept for backwards compatibility but does nothing.
  * @returns {void}
  */
 export function setupClipboardContextMenus() {
-  if (!chrome.contextMenus) {
-    console.warn('[clipboard] Context menus not available');
-    return;
-  }
-
-  // Title only format
-  chrome.contextMenus.create(
-    {
-      id: CLIPBOARD_CONTEXT_MENU_IDS.COPY_TITLE,
-      title: 'Copy Title',
-      contexts: [
-        'page',
-        'frame',
-        'selection',
-        'editable',
-        'link',
-        'image',
-        'all',
-      ],
-    },
-    (error) => {
-      if (error) {
-        console.warn('[clipboard] Failed to create Title context menu:', error);
-      }
-    },
-  );
-
-  // Title\nURL format
-  chrome.contextMenus.create(
-    {
-      id: CLIPBOARD_CONTEXT_MENU_IDS.COPY_TITLE_URL,
-      title: 'Copy Title\\nURL',
-      contexts: [
-        'page',
-        'frame',
-        'selection',
-        'editable',
-        'link',
-        'image',
-        'all',
-      ],
-    },
-    (error) => {
-      if (error) {
-        console.warn(
-          '[clipboard] Failed to create Title\\nURL context menu:',
-          error,
-        );
-      }
-    },
-  );
-
-  // Title - URL format
-  chrome.contextMenus.create(
-    {
-      id: CLIPBOARD_CONTEXT_MENU_IDS.COPY_TITLE_DASH_URL,
-      title: 'Copy Title - URL',
-      contexts: [
-        'page',
-        'frame',
-        'selection',
-        'editable',
-        'link',
-        'image',
-        'all',
-      ],
-    },
-    (error) => {
-      if (error) {
-        console.warn(
-          '[clipboard] Failed to create Title - URL context menu:',
-          error,
-        );
-      }
-    },
-  );
-
-  // Markdown link format
-  chrome.contextMenus.create(
-    {
-      id: CLIPBOARD_CONTEXT_MENU_IDS.COPY_MARKDOWN_LINK,
-      title: 'Copy [Title](URL)',
-      contexts: [
-        'page',
-        'frame',
-        'selection',
-        'editable',
-        'link',
-        'image',
-        'all',
-      ],
-    },
-    (error) => {
-      if (error) {
-        console.warn(
-          '[clipboard] Failed to create Markdown link context menu:',
-          error,
-        );
-      }
-    },
-  );
-
-  // Screenshot (only for single tab)
-  chrome.contextMenus.create(
-    {
-      id: CLIPBOARD_CONTEXT_MENU_IDS.COPY_SCREENSHOT,
-      title: 'Copy Screenshot',
-      contexts: [
-        'page',
-        'frame',
-        'selection',
-        'editable',
-        'link',
-        'image',
-        'all',
-      ],
-    },
-    (error) => {
-      if (error) {
-        console.warn(
-          '[clipboard] Failed to create Screenshot context menu:',
-          error,
-        );
-      }
-    },
-  );
+  // Context menus are now created centrally in shared/contextMenus.js
+  // This function is kept for backwards compatibility
 }
 
 /**
