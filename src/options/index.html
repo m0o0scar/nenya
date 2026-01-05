@@ -810,7 +810,8 @@
         </section>
 
         <!-- Custom Search Engines Section -->
-        <section class="section-content" data-section="custom-search-engines-heading" id="section-custom-search-engines">
+        <section class="section-content" data-section="custom-search-engines-heading"
+          id="section-custom-search-engines">
           <div class="animate-in">
             <div class="section-header">
               <h1 id="custom-search-engines-heading" class="section-title">Custom Search Engines</h1>
@@ -821,7 +822,9 @@
               <div class="flex items-center justify-between mb-4">
                 <div>
                   <h3 class="text-lg font-bold">Your Search Engines</h3>
-                  <p class="text-sm text-base-content/60 mt-1">Type <code class="bg-base-300 px-1 rounded">shortcut query</code> in the popup search to use a custom engine.</p>
+                  <p class="text-sm text-base-content/60 mt-1">Type <code
+                      class="bg-base-300 px-1 rounded">shortcut query</code> in the popup search to use a custom engine.
+                  </p>
                 </div>
                 <button id="addSearchEngineBtn" class="nenya-btn nenya-btn-vibrant" type="button">
                   Add Search Engine
@@ -1319,7 +1322,7 @@
                 <div>
                   <label class="form-label">JavaScript Code</label>
                   <div id="runCodeJSInput" class="border border-base-300 rounded-xl overflow-hidden"
-                    style="height: 300px;"></div>
+                    style="height: 500px;"></div>
                 </div>
                 <p id="runCodeFormError" class="text-sm text-error" hidden></p>
                 <div class="flex gap-3">
@@ -1689,7 +1692,8 @@
             </div>
             <div class="options-card">
               <div class="flex justify-end mb-4">
-                <button id="clearClipboardHistoryButton" class="nenya-btn nenya-btn-danger" type="button">Clear All</button>
+                <button id="clearClipboardHistoryButton" class="nenya-btn nenya-btn-danger" type="button">Clear
+                  All</button>
               </div>
               <div id="clipboardHistoryList" class="space-y-3"></div>
             </div>
@@ -1745,17 +1749,21 @@
       <form id="searchEngineForm" class="space-y-4">
         <div>
           <label class="form-label">Name</label>
-          <input id="engineName" class="nenya-input" type="text" autocomplete="off" placeholder="E.g., DuckDuckGo" required>
+          <input id="engineName" class="nenya-input" type="text" autocomplete="off" placeholder="E.g., DuckDuckGo"
+            required>
         </div>
         <div>
           <label class="form-label">Shortcut</label>
           <input id="engineShortcut" class="nenya-input" type="text" autocomplete="off" placeholder="E.g., dd" required>
-          <p class="text-sm text-base-content/60 mt-1">Type this shortcut followed by a space and your query in the popup search.</p>
+          <p class="text-sm text-base-content/60 mt-1">Type this shortcut followed by a space and your query in the
+            popup search.</p>
         </div>
         <div>
           <label class="form-label">Search URL</label>
-          <input id="engineUrl" class="nenya-input font-mono text-sm" type="text" autocomplete="off" placeholder="https://duckduckgo.com/?q=%s" required>
-          <p class="text-sm text-base-content/60 mt-1">Use <code class="bg-base-300 px-1 rounded">%s</code> as a placeholder for the search query.</p>
+          <input id="engineUrl" class="nenya-input font-mono text-sm" type="text" autocomplete="off"
+            placeholder="https://duckduckgo.com/?q=%s" required>
+          <p class="text-sm text-base-content/60 mt-1">Use <code class="bg-base-300 px-1 rounded">%s</code> as a
+            placeholder for the search query.</p>
         </div>
         <div id="searchEngineError" class="text-sm text-error hidden"></div>
         <div class="modal-action">
