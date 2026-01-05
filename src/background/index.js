@@ -25,6 +25,8 @@ import {
   handleDeleteProjectMessage,
   handleRestoreProjectTabsMessage,
   handleSearchProjectsMessage,
+  addTabsToProject,
+  replaceProjectItems,
 } from './projects.js';
 import {
   initializeOptionsBackupService,
@@ -38,8 +40,6 @@ import {
 } from './auto-reload.js';
 import { saveTabsAsProject } from './projects.js';
 import {
-  setupClipboardContextMenus,
-  handleClipboardContextMenuClick,
   updateClipboardContextMenuVisibility,
   handleClipboardCommand,
 } from './clipboard.js';
@@ -1015,8 +1015,7 @@ async function scheduleMirrorAlarm() {
  * @returns {void}
  */
 function handleLifecycleEvent(trigger) {
-  setupContextMenus();
-  setupClipboardContextMenus();
+  void setupContextMenus();
   void scheduleMirrorAlarm();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
@@ -3325,284 +3324,288 @@ async function updateContextMenuVisibility(tab) {
  * Ensure extension context menu entries exist.
  * @returns {void}
  */
-function setupContextMenus() {
+async function setupContextMenus() {
   if (!chrome.contextMenus) {
     return;
   }
+  try {
+    await chrome.contextMenus.removeAll();
 
-  chrome.contextMenus.removeAll(() => {
-    const error = chrome.runtime.lastError;
-    if (error) {
-      console.warn(
-        '[contextMenu] Failed to clear existing items:',
-        error.message,
-      );
-    }
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_PAGE_ID,
-        title: 'Save to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register page item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_LINK_ID,
-        title: 'Save link to Raindrop Unsorted',
-        contexts: ['link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register link item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_ENCRYPT_AND_SAVE_ID,
-        title: 'Encrypt & Save to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image', 'link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register encrypt item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID,
-        title: 'Save link in clipboard to Raindrop Unsorted',
-        contexts: ['page', 'frame', 'selection', 'editable', 'image', 'link'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register clipboard save item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_SPLIT_TABS_ID,
-        title: 'Split tabs',
-        contexts: ['page'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register split tabs item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_UNSPLIT_TABS_ID,
-        title: 'Unsplit tabs',
-        contexts: ['page'],
-        visible: false, // Initially hidden, will be shown on split pages
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register unsplit tabs item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    chrome.contextMenus.create(
-      {
-        id: CONTEXT_MENU_OPEN_IN_POPUP_ID,
-        title: 'Open in popup',
-        contexts: ['page'],
-      },
-      () => {
-        const createError = chrome.runtime.lastError;
-        if (createError) {
-          console.warn(
-            '[contextMenu] Failed to register open in popup item:',
-            createError.message,
-          );
-        }
-      },
-    );
-
-    // Create parent menu for sending to LLM
-    chrome.contextMenus.create({
-      id: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
-      title: 'Send Page Content to LLM',
-      contexts: ['page'],
+    // 1. Copy Menu
+    const copyParentId = await chrome.contextMenus.create({
+      id: 'copy-parent',
+      title: 'Copy',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'copy-title',
+      parentId: copyParentId,
+      title: 'Title',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'copy-title-url-newline',
+      parentId: copyParentId,
+      title: 'Title\\nURL',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'copy-title-url-dash',
+      parentId: copyParentId,
+      title: 'Title - URL',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'copy-markdown',
+      parentId: copyParentId,
+      title: '[Title](URL)',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'copy-screenshot',
+      parentId: copyParentId,
+      title: 'Screenshot',
+      contexts: ['all'],
     });
 
-    // Create child menus for each LLM provider
-    for (const providerId in LLM_PROVIDER_META) {
-      const provider = LLM_PROVIDER_META[providerId];
-      chrome.contextMenus.create({
-        id: `send-to-llm-${providerId}`,
-        parentId: CONTEXT_MENU_SEND_TO_LLM_PARENT_ID,
-        title: provider.name,
-        contexts: ['page'],
+    // 2. Raindrop Menu
+    const raindropParentId = await chrome.contextMenus.create({
+      id: 'raindrop-parent',
+      title: 'Raindrop',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'raindrop-save-page',
+      parentId: raindropParentId,
+      title: 'Save to unsorted',
+      contexts: ['page', 'link'],
+    });
+    await chrome.contextMenus.create({
+      id: 'raindrop-save-clipboard',
+      parentId: raindropParentId,
+      title: 'Save link in clipboard to unsorted',
+      contexts: ['all'],
+    });
+    await chrome.contextMenus.create({
+      id: 'raindrop-encrypt-page',
+      parentId: raindropParentId,
+      title: 'Encrypt current page and save to unsorted',
+      contexts: ['all'],
+    });
+    const addToProjectId = await chrome.contextMenus.create({
+      id: 'raindrop-add-to-project',
+      parentId: raindropParentId,
+      title: 'Add current page to project',
+      contexts: ['all'],
+    });
+
+    // Dynamically populate projects for "Add to" and "Replace" submenus
+    const projectsResult = await handleListProjectsMessage();
+    if (projectsResult.ok && projectsResult.projects.length > 0) {
+      for (const project of projectsResult.projects) {
+        await chrome.contextMenus.create({
+          id: `raindrop-add-to-${project.id}`,
+          parentId: addToProjectId,
+          title: project.title,
+          contexts: ['all'],
+        });
+      }
+
+      // "Replace project with selected pages" submenu
+      const replaceProjectId = await chrome.contextMenus.create({
+        id: 'raindrop-replace-project',
+        parentId: raindropParentId,
+        title: 'Replace project with selected pages',
+        contexts: ['all'],
       });
+      for (const project of projectsResult.projects) {
+        await chrome.contextMenus.create({
+          id: `raindrop-replace-${project.id}`,
+          parentId: replaceProjectId,
+          title: project.title,
+          contexts: ['all'],
+        });
+      }
     }
-  });
+
+    await chrome.contextMenus.create({
+      id: 'raindrop-create-project',
+      parentId: raindropParentId,
+      title: 'Create new project',
+      contexts: ['all'],
+    });
+
+    await chrome.contextMenus.create({
+      id: 'raindrop-pull',
+      parentId: raindropParentId,
+      title: 'Pull from raindrop',
+      contexts: ['all'],
+    });
+
+    // 3. Send to LLM Menu
+    const llmParentId = await chrome.contextMenus.create({
+      id: 'llm-parent',
+      title: 'Send page content to LLM',
+      contexts: ['page'],
+    });
+    for (const providerId in LLM_PROVIDER_META) {
+      if (Object.hasOwnProperty.call(LLM_PROVIDER_META, providerId)) {
+        const provider = LLM_PROVIDER_META[providerId];
+        await chrome.contextMenus.create({
+          id: `llm-send-to-${providerId}`,
+          parentId: llmParentId,
+          title: provider.name,
+          contexts: ['page'],
+        });
+      }
+    }
+
+    // 4. Other actions
+    await chrome.contextMenus.create({
+      id: 'split-tabs',
+      title: 'Split tabs',
+      contexts: ['page'],
+    });
+    await chrome.contextMenus.create({
+      id: 'unsplit-tabs',
+      title: 'Unsplit tabs',
+      contexts: ['page'],
+      visible: false,
+    });
+    await chrome.contextMenus.create({
+      id: 'open-in-popup',
+      title: 'Open in popup',
+      contexts: ['page'],
+    });
+  } catch (error) {
+    console.error('Failed to create context menus:', error);
+  }
 }
 
 if (chrome.contextMenus) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-    if (info.menuItemId === CONTEXT_MENU_ENCRYPT_AND_SAVE_ID) {
-      const targetUrl =
-        typeof info.linkUrl === 'string' && info.linkUrl
-          ? info.linkUrl
-          : typeof info.pageUrl === 'string'
-          ? info.pageUrl
-          : '';
-      if (!targetUrl) {
-        return;
+    const menuItemId = info.menuItemId;
+
+    // Handle Copy actions
+    if (menuItemId.startsWith('copy-')) {
+      let command = '';
+      switch (menuItemId) {
+        case 'copy-title':
+          command = 'copy-title';
+          break;
+        case 'copy-title-url-newline':
+          command = 'copy-title-url';
+          break;
+        case 'copy-title-url-dash':
+          command = 'copy-title-dash-url';
+          break;
+        case 'copy-markdown':
+          command = 'copy-markdown-link';
+          break;
+        case 'copy-screenshot':
+          command = 'copy-screenshot';
+          break;
       }
-
-      const selectionText =
-        typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
-      const tabId = typeof tab?.id === 'number' ? tab.id : null;
-      const title =
-        selectionText || (typeof tab?.title === 'string' ? tab.title : '');
-
-      void handleEncryptAndSave({
-        rawUrl: targetUrl,
-        title,
-        selectionText,
-        tabId,
-        notifyOnError: true,
-      }).catch((error) => {
-        console.error('[contextMenu] Encrypt & save failed:', error);
-      });
-      return;
+      if (command) {
+        await handleClipboardCommand(command);
+      }
     }
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_PAGE_ID) {
-      const url = typeof info.pageUrl === 'string' ? info.pageUrl : '';
-      if (!url) {
-        return;
-      }
-      // Convert split page URLs to nenya.local format before normalization
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
-      }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save page:', error);
-      });
-      return;
-    }
+    // Handle Raindrop actions
+    if (menuItemId.startsWith('raindrop-')) {
+      switch (menuItemId) {
+        case 'raindrop-save-page':
+          {
+            const rawUrl = info.linkUrl || tab?.url;
+            if (rawUrl) {
+                const title = await promptForTitle(tab.id, info.selectionText || tab.title || '');
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_LINK_ID) {
-      const url = typeof info.linkUrl === 'string' ? info.linkUrl : '';
-      if (!url) {
-        return;
-      }
-      // Convert split page URLs to nenya.local format before normalization
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
-      }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const selection =
-        typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
-      const originalTitle =
-        selection || (typeof tab?.title === 'string' ? tab.title : '');
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save link:', error);
-      });
-      return;
-    }
+                // Process URL before saving
+                const convertedUrl = convertSplitUrlForSave(rawUrl);
+                const normalizedUrl = normalizeHttpUrl(convertedUrl);
+                if (!normalizedUrl) {
+                void pushNotification('raindrop-save-page', 'Save failed', 'Invalid URL cannot be saved.');
+                break;
+                }
+                const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
 
-    if (info.menuItemId === CONTEXT_MENU_SAVE_CLIPBOARD_LINK_ID) {
-      void (async () => {
-        try {
-          const clipboardResult = await readClipboardFromTab();
-          if (clipboardResult.error) {
-            console.error(
-              '[contextMenu] Failed to read clipboard:',
-              clipboardResult.error,
-            );
-            return;
+                await saveUrlsToUnsorted([{ url: processedUrl, title }], { skipUrlProcessing: true });
+            }
           }
-          await handleSaveClipboardUrlToUnsorted(clipboardResult.text || '');
-        } catch (error) {
-          console.error('[contextMenu] Failed to save clipboard link:', error);
+          break;
+        case 'raindrop-save-clipboard':
+          const clipboardText = await readClipboardFromTab();
+          if (clipboardText.text) {
+            await handleSaveClipboardUrlToUnsorted(clipboardText.text);
+          }
+          break;
+        case 'raindrop-encrypt-page':
+          {
+            const urlToEncrypt = info.linkUrl || tab?.url;
+            if (urlToEncrypt) {
+              await handleEncryptAndSave({
+                rawUrl: urlToEncrypt,
+                title: tab?.title,
+                selectionText: info.selectionText,
+                tabId: tab?.id,
+              });
+            }
+          }
+          break;
+        case 'raindrop-pull':
+          runMirrorPull('manual');
+          break;
+        case 'raindrop-create-project':
+          {
+            const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
+            if (tabs.length > 0 && tabs[0]?.id) {
+                const projectName = await promptForTitle(tabs[0].id, 'New Project');
+                if (projectName) {
+                    await saveTabsAsProject(projectName, tabs);
+                }
+            }
+          }
+          break;
+        default:
+          if (menuItemId.startsWith('raindrop-add-to-')) {
+            const projectId = menuItemId.replace('raindrop-add-to-', '');
+            if (tab) {
+              await addTabsToProject(projectId, [tab]);
+            }
+          } else if (menuItemId.startsWith('raindrop-replace-')) {
+            const projectId = menuItemId.replace('raindrop-replace-', '');
+            const tabs = await chrome.tabs.query({ currentWindow: true, highlighted: true });
+            if (tabs.length > 0) {
+              await replaceProjectItems(projectId, tabs);
+            }
+          }
+          break;
+      }
+    }
+
+    // Handle Send to LLM actions
+    if (menuItemId.startsWith('llm-send-to-')) {
+      const providerId = menuItemId.replace('llm-send-to-', '');
+      if (tab) {
+        await handleSendToLLM(providerId, tab);
+      }
+    }
+
+    // Handle other actions
+    switch (menuItemId) {
+      case 'split-tabs':
+        if (tab) {
+          await handleSplitTabsContextMenu(tab);
         }
-      })();
-      return;
-    }
-
-    if (info.menuItemId === CONTEXT_MENU_SPLIT_TABS_ID) {
-      if (tab) {
-        void handleSplitTabsContextMenu(tab);
-      }
-      return;
-    }
-
-    if (info.menuItemId === CONTEXT_MENU_UNSPLIT_TABS_ID) {
-      if (tab) {
-        void handleUnsplitTabsContextMenu(tab);
-      }
-      return;
-    }
-
-    // Handle clipboard context menu clicks
-    if (tab) {
-      void handleClipboardContextMenuClick(info, tab);
-    }
-
-    if (info.menuItemId === CONTEXT_MENU_OPEN_IN_POPUP_ID) {
-      void handleOpenInPopup();
-    }
-
-    if (
-      typeof info.menuItemId === 'string' &&
-      info.menuItemId.startsWith('send-to-llm-')
-    ) {
-      const providerId = info.menuItemId.replace('send-to-llm-', '');
-      if (tab) {
-        void handleSendToLLM(providerId, tab);
-      }
+        break;
+      case 'unsplit-tabs':
+        if (tab) {
+          await handleUnsplitTabsContextMenu(tab);
+        }
+        break;
+      case 'open-in-popup':
+        handleOpenInPopup();
+        break;
     }
   });
 }
