@@ -569,6 +569,10 @@
           <span class="nav-icon text-lg">💻</span>
           <span>Custom JS CSS</span>
         </a>
+        <a href="#run-code-in-page-heading" class="nav-item nav-link" data-section="run-code-in-page-heading">
+          <span class="nav-icon text-lg">🚀</span>
+          <span>Run code in page</span>
+        </a>
 
         <div class="nav-group-title">Automation</div>
         <a href="#url-process-rules-heading" class="nav-item nav-link" data-section="url-process-rules-heading">
@@ -1283,6 +1287,53 @@
                   </div>
                 </dl>
               </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Run Code in Page Section -->
+        <section class="section-content" data-section="run-code-in-page-heading" id="section-runcode">
+          <div class="animate-in">
+            <div class="section-header">
+              <h1 id="run-code-in-page-heading" class="section-title">Run code in page</h1>
+              <p class="section-description">Manage snippets to run manually in the popup.</p>
+            </div>
+
+            <div class="options-card mb-6">
+              <form id="runCodeRuleForm" class="space-y-4" novalidate>
+                <div>
+                  <label class="form-label">Title</label>
+                  <input id="runCodeTitleInput" class="nenya-input" type="text" autocomplete="off"
+                    placeholder="e.g. download images" required>
+                </div>
+                <div>
+                  <label class="form-label">URL Patterns</label>
+                  <div id="runCodePatternsChips" class="flex flex-wrap gap-2 mb-2"></div>
+                  <div class="flex items-center gap-2">
+                    <input id="runCodePatternInput" class="nenya-input font-mono text-sm flex-1" type="text"
+                      autocomplete="off" placeholder="https://example.com/*">
+                    <button id="runCodeAddPatternBtn" type="button" class="btn btn-sm btn-outline">Add</button>
+                  </div>
+                  <p id="runCodePatternError" class="text-xs text-error mt-1" hidden></p>
+                </div>
+                <div>
+                  <label class="form-label">JavaScript Code</label>
+                  <div id="runCodeJSInput" class="border border-base-300 rounded-xl overflow-hidden"
+                    style="height: 300px;"></div>
+                </div>
+                <p id="runCodeFormError" class="text-sm text-error" hidden></p>
+                <div class="flex gap-3">
+                  <button id="runCodeSaveButton" class="nenya-btn nenya-btn-vibrant" type="submit">Add Rule</button>
+                  <button id="runCodeCancelEditButton" class="nenya-btn nenya-btn-secondary" type="button"
+                    hidden>Cancel</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="options-card">
+              <h3 class="text-xs font-bold text-base-content/40 uppercase tracking-wider mb-4">Saved Rules</h3>
+              <div id="runCodeRulesEmpty" class="empty-state">No rules yet. Add one above to start.</div>
+              <div id="runCodeRulesList" class="space-y-3" role="list"></div>
             </div>
           </div>
         </section>

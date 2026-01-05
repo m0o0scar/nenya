@@ -12,6 +12,7 @@ import './highlightText.js';
 import './videoEnhancements.js';
 import './blockElements.js';
 import './customCode.js';
+import './runCodeInPage.js';
 import './llmPrompts.js';
 import './urlProcessRules.js';
 import './titleTransformRules.js';
