@@ -122,6 +122,17 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 /**
+ * @typedef {Object} RunCodeInPageRuleSettings
+ * @property {string} id
+ * @property {string} title
+ * @property {string[]} patterns
+ * @property {string} code
+ * @property {boolean | undefined} disabled
+ * @property {string} [createdAt]
+ * @property {string} [updatedAt]
+ */
+
+/**
  * @typedef {Object} LLMPromptSettings
  * @property {string} id
  * @property {string} name
@@ -205,6 +216,7 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  * @property {VideoEnhancementRuleSettings[]} videoEnhancementRules
  * @property {BlockElementRuleSettings[]} blockElementRules
  * @property {CustomCodeRuleSettings[]} customCodeRules
+ * @property {RunCodeInPageRuleSettings[]} runCodeInPageRules
  * @property {LLMPromptSettings[]} llmPrompts
  * @property {UrlProcessRuleSettings[]} urlProcessRules
  * @property {TitleTransformRuleSettings[]} titleTransformRules
@@ -229,6 +241,7 @@ const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
 const VIDEO_ENHANCEMENT_RULES_KEY = 'videoEnhancementRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
+const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
 const URL_PROCESS_RULES_KEY = 'urlProcessRules';
 const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
@@ -830,6 +843,65 @@ function normalizeCustomCodeRules(value) {
 }
 
 /**
+ * Normalize run code in page rules from storage or input.
+ * @param {unknown} value
+ * @returns {RunCodeInPageRuleSettings[]}
+ */
+function normalizeRunCodeInPageRules(value) {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+
+    /** @type {RunCodeInPageRuleSettings[]} */
+    const sanitized = [];
+
+    value.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') {
+            return;
+        }
+        const raw =
+            /** @type {{ id?: unknown, title?: unknown, patterns?: unknown, code?: unknown, disabled?: unknown, createdAt?: unknown, updatedAt?: unknown }} */
+            (entry);
+
+        const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+        if (!title) {
+            return;
+        }
+
+        const patterns = Array.isArray(raw.patterns) ?
+            raw.patterns.filter(p => typeof p === 'string' && p.trim() && isValidUrlPattern(p)) :
+            [];
+
+        const code = typeof raw.code === 'string' ? raw.code : '';
+
+        const id =
+            typeof raw.id === 'string' && raw.id.trim() ?
+            raw.id.trim() :
+            generateRuleId();
+
+        /** @type {RunCodeInPageRuleSettings} */
+        const normalized = {
+            id,
+            title,
+            patterns,
+            code,
+            disabled: !!raw.disabled,
+        };
+
+        if (typeof raw.createdAt === 'string') {
+            normalized.createdAt = raw.createdAt;
+        }
+        if (typeof raw.updatedAt === 'string') {
+            normalized.updatedAt = raw.updatedAt;
+        }
+
+        sanitized.push(normalized);
+    });
+
+    return sanitized.sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
  * Normalize LLM prompts from storage or input.
  * @param {unknown} value
  * @returns {LLMPromptSettings[]}
@@ -1385,7 +1457,7 @@ function normalizePreferences(value) {
 
 /**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[] }>}
+ * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRuleSettings[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[] }>}
  */
 async function readCurrentOptions() {
   const [
@@ -1397,6 +1469,7 @@ async function readCurrentOptions() {
     videoEnhancementRules,
     blockElementResp,
     customCodeResp,
+    runCodeInPageResp,
     llmPromptsResp,
     urlProcessRulesResp,
     titleTransformRulesResp,
@@ -1412,6 +1485,7 @@ async function readCurrentOptions() {
     loadVideoEnhancementRules(),
     chrome.storage.local.get(BLOCK_ELEMENT_RULES_KEY),
     chrome.storage.local.get(CUSTOM_CODE_RULES_KEY),
+    chrome.storage.local.get(RUN_CODE_IN_PAGE_RULES_KEY),
     loadLLMPrompts(),
     loadUrlProcessRules(),
     loadTitleTransformRules(),
@@ -1473,6 +1547,10 @@ async function readCurrentOptions() {
     customCodeResp?.[CUSTOM_CODE_RULES_KEY],
   );
 
+  const runCodeInPageRules = normalizeRunCodeInPageRules(
+    runCodeInPageResp?.[RUN_CODE_IN_PAGE_RULES_KEY],
+  );
+
   const llmPrompts = normalizeLLMPrompts(llmPromptsResp);
 
   const urlProcessRules = normalizeUrlProcessRules(urlProcessRulesResp);
@@ -1509,6 +1587,7 @@ async function readCurrentOptions() {
     videoEnhancementRules,
     blockElementRules,
     customCodeRules,
+    runCodeInPageRules,
     llmPrompts,
     urlProcessRules,
     titleTransformRules,
@@ -1555,6 +1634,7 @@ async function handleExportClick() {
       videoEnhancementRules,
       blockElementRules,
       customCodeRules,
+      runCodeInPageRules,
       llmPrompts,
       urlProcessRules,
       titleTransformRules,
@@ -1576,6 +1656,7 @@ async function handleExportClick() {
         videoEnhancementRules,
         blockElementRules,
         customCodeRules,
+        runCodeInPageRules,
         llmPrompts,
         urlProcessRules,
         titleTransformRules,
@@ -1611,6 +1692,7 @@ async function handleExportClick() {
  * @param {VideoEnhancementRuleSettings[]} videoEnhancementRules
  * @param {BlockElementRuleSettings[]} blockElementRules
  * @param {CustomCodeRuleSettings[]} customCodeRules
+ * @param {RunCodeInPageRuleSettings[]} runCodeInPageRules
  * @param {LLMPromptSettings[]} llmPrompts
  * @param {UrlProcessRuleSettings[]} urlProcessRules
  * @param {AutoGoogleLoginRuleSettings[]} autoGoogleLoginRules
@@ -1628,6 +1710,7 @@ async function applyImportedOptions(
   videoEnhancementRules,
   blockElementRules,
   customCodeRules,
+  runCodeInPageRules,
   llmPrompts,
   urlProcessRules,
   titleTransformRules,
@@ -1693,6 +1776,10 @@ async function applyImportedOptions(
     customCodeRules || [],
   );
 
+  const sanitizedRunCodeInPageRules = normalizeRunCodeInPageRules(
+    runCodeInPageRules || [],
+  );
+
   const sanitizedLLMPrompts = normalizeLLMPrompts(llmPrompts || []);
 
   const sanitizedUrlProcessRules = normalizeUrlProcessRules(
@@ -1756,6 +1843,7 @@ async function applyImportedOptions(
       [PINNED_SHORTCUTS_KEY]: sanitizedPinnedShortcuts,
       [CUSTOM_SEARCH_ENGINES_KEY]: sanitizedCustomSearchEngines,
       [CUSTOM_CODE_RULES_KEY]: sanitizedCustomCodeRules,
+      [RUN_CODE_IN_PAGE_RULES_KEY]: sanitizedRunCodeInPageRules,
     }),
   ]);
 }
@@ -1806,6 +1894,9 @@ async function handleFileChosen() {
     const customCodeRules = /** @type {CustomCodeRuleSettings[]} */ (
       data.customCodeRules || []
     );
+    const runCodeInPageRules = /** @type {RunCodeInPageRuleSettings[]} */ (
+      data.runCodeInPageRules || []
+    );
     const llmPrompts = /** @type {LLMPromptSettings[]} */ (
       data.llmPrompts || []
     );
@@ -1851,6 +1942,7 @@ async function handleFileChosen() {
       videoEnhancementRules,
       blockElementRules,
       customCodeRules,
+      runCodeInPageRules,
       llmPrompts,
       urlProcessRules,
       titleTransformRules,
