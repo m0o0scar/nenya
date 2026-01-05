@@ -155,19 +155,16 @@ function normalizeRules(value) {
       }
 
       const patterns = Array.isArray(raw.patterns)
-        ? raw.patterns.filter(p => typeof p === 'string' && p.trim())
+        ? raw.patterns.filter(p => {
+            if (typeof p !== 'string' || !p.trim()) return false;
+            try {
+                new URLPattern(p);
+                return true;
+            } catch {
+                return false;
+            }
+        })
         : [];
-
-      if (patterns.some(p => {
-        try {
-          new URLPattern(p);
-          return false;
-        } catch {
-          return true;
-        }
-      })) {
-        return;
-      }
 
       const code = typeof raw.code === 'string' ? raw.code : '';
 

@@ -869,7 +869,15 @@ function normalizeRunCodeInPageRules(value) {
         }
 
         const patterns = Array.isArray(raw.patterns) ?
-            raw.patterns.filter(p => typeof p === 'string' && p.trim() && isValidUrlPattern(p)) :
+            raw.patterns.filter(p => {
+                if (typeof p !== 'string' || !p.trim()) return false;
+                try {
+                    new URLPattern(p);
+                    return true;
+                } catch {
+                    return false;
+                }
+            }) :
             [];
 
         const code = typeof raw.code === 'string' ? raw.code : '';

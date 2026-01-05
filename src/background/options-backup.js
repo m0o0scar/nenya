@@ -33,6 +33,7 @@ const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
 const VIDEO_ENHANCEMENT_RULES_KEY = 'videoEnhancementRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
+const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
 const URL_PROCESS_RULES_KEY = 'urlProcessRules';
 const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
@@ -51,6 +52,7 @@ const OPTION_KEYS = [
   VIDEO_ENHANCEMENT_RULES_KEY,
   BLOCK_ELEMENT_RULES_KEY,
   CUSTOM_CODE_RULES_KEY,
+  RUN_CODE_IN_PAGE_RULES_KEY,
   LLM_PROMPTS_KEY,
   URL_PROCESS_RULES_KEY,
   TITLE_TRANSFORM_RULES_KEY,
@@ -111,6 +113,7 @@ let initialized = false;
  * @property {any[]} videoEnhancementRules
  * @property {any[]} blockElementRules
  * @property {any[]} customCodeRules
+ * @property {any[]} runCodeInPageRules
  * @property {any[]} llmPrompts
  * @property {any[]} urlProcessRules
  * @property {any[]} titleTransformRules
@@ -257,6 +260,7 @@ async function buildBackupPayload() {
     videoEnhancementRules: stored?.[VIDEO_ENHANCEMENT_RULES_KEY] || [],
     blockElementRules: stored?.[BLOCK_ELEMENT_RULES_KEY] || [],
     customCodeRules: stored?.[CUSTOM_CODE_RULES_KEY] || [],
+    runCodeInPageRules: stored?.[RUN_CODE_IN_PAGE_RULES_KEY] || [],
     llmPrompts: stored?.[LLM_PROMPTS_KEY] || [],
     urlProcessRules: stored?.[URL_PROCESS_RULES_KEY] || [],
     titleTransformRules: stored?.[TITLE_TRANSFORM_RULES_KEY] || [],
@@ -341,6 +345,7 @@ async function applyBackupPayload(payload) {
     [VIDEO_ENHANCEMENT_RULES_KEY]: payload.videoEnhancementRules || [],
     [BLOCK_ELEMENT_RULES_KEY]: payload.blockElementRules || [],
     [CUSTOM_CODE_RULES_KEY]: payload.customCodeRules || [],
+    [RUN_CODE_IN_PAGE_RULES_KEY]: payload.runCodeInPageRules || [],
     [LLM_PROMPTS_KEY]: payload.llmPrompts || [],
     [URL_PROCESS_RULES_KEY]: payload.urlProcessRules || [],
     [TITLE_TRANSFORM_RULES_KEY]: payload.titleTransformRules || [],
@@ -704,6 +709,7 @@ export async function resetOptionsToDefaults() {
     [VIDEO_ENHANCEMENT_RULES_KEY]: [],
     [BLOCK_ELEMENT_RULES_KEY]: [],
     [CUSTOM_CODE_RULES_KEY]: [],
+    [RUN_CODE_IN_PAGE_RULES_KEY]: [],
     [LLM_PROMPTS_KEY]: [],
     [URL_PROCESS_RULES_KEY]: [],
     [TITLE_TRANSFORM_RULES_KEY]: [],
