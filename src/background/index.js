@@ -3799,7 +3799,9 @@ async function handleRunCodeFromContextMenu(ruleId, tab) {
         world: 'MAIN',
         func: (jsCode) => {
           try {
-            (0, eval)(jsCode);
+            // Wrap code in async IIFE to prevent global pollution and support await
+            const wrappedCode = `(async function() {\n${jsCode}\n})();`;
+            (0, eval)(wrappedCode);
           } catch (error) {
             console.error('[Nenya RunCode] Script execution error:', error);
           }
