@@ -209,7 +209,7 @@ async function createRaindropMenu() {
   await createMenuItem({
     id: RAINDROP_MENU_IDS.ENCRYPT_SAVE,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Encrypt & save to unsorted',
+    title: 'Encrypt && Save to Unsorted',
     contexts: allContexts,
   });
 
