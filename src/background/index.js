@@ -76,6 +76,11 @@ import {
 } from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
+import {
+  initRenameTab,
+  handleRenameTab,
+  getCustomTabTitles,
+} from './rename-tab.js';
 
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
@@ -617,6 +622,24 @@ chrome.commands.onCommand.addListener((command) => {
   }
   if (command === 'open-in-popup') {
     void handleOpenInPopup();
+    return;
+  }
+
+  if (command === 'rename-tab') {
+    void (async () => {
+      try {
+        const tabs = await chrome.tabs.query({
+          currentWindow: true,
+          active: true,
+        });
+        const activeTab = tabs && tabs[0];
+        if (activeTab && typeof activeTab.id === 'number') {
+          await handleRenameTab(activeTab.id);
+        }
+      } catch (error) {
+        console.warn('[commands] Rename tab failed:', error);
+      }
+    })();
     return;
   }
 });
@@ -1390,6 +1413,9 @@ initializeOptionsBackupService();
 void initializeAutoReloadFeature().catch((error) => {
   console.error('[auto-reload] Initialization failed:', error);
 });
+
+// Initialize rename tab functionality
+initRenameTab();
 
 chrome.tabs.onHighlighted.addListener(async () => {
   try {
@@ -2422,6 +2448,28 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     } else {
       sendResponse({ tabId: null });
     }
+    return true;
+  }
+
+  // Handle rename tab messages
+  if (message.type === 'renameTab:getTabId') {
+    if (sender.tab) {
+      sendResponse({ tabId: sender.tab.id });
+    } else {
+      sendResponse({ tabId: null });
+    }
+    return true;
+  }
+
+  if (message.type === 'renameTab:rename') {
+    const tabId = typeof message.tabId === 'number' ? message.tabId : null;
+    if (tabId !== null) {
+      void handleRenameTab(tabId).then((result) => {
+        sendResponse(result);
+      });
+      return true;
+    }
+    sendResponse({ success: false, error: 'Invalid tab ID' });
     return true;
   }
 
@@ -3574,6 +3622,14 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Rename tab
+    if (menuItemId === OTHER_MENU_IDS.RENAME_TAB) {
+      if (tab && typeof tab.id === 'number') {
+        void handleRenameTab(tab.id);
+      }
       return;
     }
 
