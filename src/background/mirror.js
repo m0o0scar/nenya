@@ -1397,12 +1397,8 @@ async function performHourlyFullPull(trigger) {
 
       // Build the new structure inside the temporary folder
       const index = await buildBookmarkIndex(newRootFolderId);
-      const { collectionFolderMap } = await synchronizeFolderTree(
-        remoteData,
-        newRootFolderId,
-        index,
-        stats,
-      );
+      const { collectionFolderMap, unsortedFolderId } =
+        await synchronizeFolderTree(remoteData, newRootFolderId, index, stats);
 
       // Fetch and create all bookmarks
       const allCollections = [
@@ -1425,6 +1421,30 @@ async function performHourlyFullPull(trigger) {
             const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
             await bookmarksCreate({
               parentId: targetFolderId,
+              title: bookmarkTitle,
+              url,
+            });
+            stats.bookmarksCreated += 1;
+          }
+          page++;
+          await delay(500); // Delay between pages to respect rate limits
+        }
+      }
+
+      // Sync Unsorted items
+      if (unsortedFolderId) {
+        let page = 0;
+        while (true) {
+          const items = await fetchRaindropItems(tokens, -1, page);
+          if (!items || items.length === 0) break;
+
+          for (const item of items) {
+            const url = typeof item.link === 'string' ? item.link : '';
+            if (!url) continue;
+
+            const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
+            await bookmarksCreate({
+              parentId: unsortedFolderId,
               title: bookmarkTitle,
               url,
             });
