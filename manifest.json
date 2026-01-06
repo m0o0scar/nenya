@@ -79,8 +79,7 @@
         "src/contentScript/darkMode.js",
         "src/contentScript/bright-mode.js",
         "src/contentScript/block-elements.js",
-        "src/contentScript/custom-js-css.js",
-        "src/contentScript/rename-tab.js"
+        "src/contentScript/custom-js-css.js"
       ],
       "run_at": "document_start"
     },
@@ -190,9 +189,6 @@
     },
     "open-in-popup": {
       "description": "↗️ Open in popup"
-    },
-    "rename-tab": {
-      "description": "✏️ Rename tab"
     }
   }
 }

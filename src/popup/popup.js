@@ -120,11 +120,6 @@ const SHORTCUT_CONFIG = {
     tooltip: 'Open in popup',
     handler: () => handleOpenInPopup(),
   },
-  renameTab: {
-    emoji: '✏️',
-    tooltip: 'Rename tab',
-    handler: () => void handleRenameTab(),
-  },
   openOptions: {
     emoji: '⚙️',
     tooltip: 'Open options',
@@ -223,38 +218,6 @@ async function handleOpenInPopup() {
         3000,
         statusMessage,
       );
-    }
-  }
-}
-
-/**
- * Handle rename tab action
- * @returns {Promise<void>}
- */
-async function handleRenameTab() {
-  try {
-    const tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-    const activeTab = tabs && tabs[0];
-    
-    if (!activeTab || typeof activeTab.id !== 'number') {
-      if (statusMessage) {
-        concludeStatus('Unable to get active tab.', 'error', 3000, statusMessage);
-      }
-      return;
-    }
-    
-    // Send message to background to handle rename
-    await chrome.runtime.sendMessage({
-      type: 'renameTab:rename',
-      tabId: activeTab.id,
-    });
-    
-    // Close popup after triggering rename
-    window.close();
-  } catch (error) {
-    console.error('[popup] Error renaming tab:', error);
-    if (statusMessage) {
-      concludeStatus('Unable to rename tab.', 'error', 3000, statusMessage);
     }
   }
 }
