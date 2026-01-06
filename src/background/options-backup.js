@@ -13,6 +13,34 @@ import {
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
+/**
+ * Encode a string as Base64, safely handling Unicode characters.
+ * @param {string} str
+ * @returns {string}
+ */
+function encode(str) {
+  // btoa can't handle Unicode characters directly.
+  // We first URI-encode the string to get a UTF-8 representation,
+  // then unescape to create a "binary" string that btoa can process.
+  return btoa(unescape(encodeURIComponent(str)));
+}
+
+/**
+ * Decode a Base64 string, safely handling Unicode characters.
+ * @param {string} str
+ * @returns {string}
+ */
+function decode(str) {
+  try {
+    // Revert the encoding process: atob to get the "binary" string,
+    // then escape and decodeURIComponent to reconstruct the original Unicode string.
+    return decodeURIComponent(escape(atob(str)));
+  } catch (error) {
+    // Return empty string on failure, allowing fallback to legacy format.
+    return '';
+  }
+}
+
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / options backup';
 const LEGACY_BACKUP_COLLECTION_TITLE = 'Options backup';
@@ -548,12 +576,23 @@ async function loadChunks(tokens, collectionId) {
   );
 
   try {
-    /** @type {OptionsBackupPayload} */
+    // First, try to parse directly for backward compatibility with old backups.
     const payload = JSON.parse(joined);
     return { payload, lastModified };
-  } catch (error) {
-    console.warn('[options-backup] Failed to parse backup payload:', error);
-    return { payload: null, lastModified };
+  } catch (e) {
+    // If direct parsing fails, assume it's a new, encoded backup.
+    try {
+      const decoded = decode(joined);
+      if (!decoded) {
+        // This can happen if atob fails on a non-base64 string that also wasn't valid JSON.
+        throw new Error('Decoded string is empty or invalid.');
+      }
+      const payload = JSON.parse(decoded);
+      return { payload, lastModified };
+    } catch (error) {
+      console.warn('[options-backup] Failed to parse backup payload:', error);
+      return { payload: null, lastModified };
+    }
   }
 }
 
@@ -579,7 +618,9 @@ export async function runManualBackup() {
     const collectionId = await ensureBackupCollection(tokens);
     const payload = await buildBackupPayload();
     const serialized = JSON.stringify(payload);
-    const chunks = chunkString(serialized, BACKUP_CHUNK_SIZE);
+    // Encode the serialized payload to prevent corruption of special characters.
+    const encoded = encode(serialized);
+    const chunks = chunkString(encoded, BACKUP_CHUNK_SIZE);
     await saveChunks(tokens, collectionId, chunks);
 
     const state = await updateState((draft) => {
