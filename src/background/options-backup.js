@@ -101,6 +101,13 @@ let initialized = false;
  */
 
 /**
+ * @typedef {Object} StoredProviderTokens
+ * @property {string} accessToken
+ * @property {string} refreshToken
+ * @property {number} expiresAt
+ */
+
+/**
  * @typedef {Object} OptionsBackupPayload
  * @property {number} version
  * @property {number} savedAt
@@ -120,6 +127,7 @@ let initialized = false;
  * @property {any[]} autoGoogleLoginRules
  * @property {any} screenshotSettings
  * @property {any[]} pinnedShortcuts
+ * @property {any[]} customSearchEngines
  */
 
 /**
@@ -259,8 +267,12 @@ async function buildBackupPayload() {
     highlightTextRules: stored?.[HIGHLIGHT_TEXT_RULES_KEY] || [],
     videoEnhancementRules: stored?.[VIDEO_ENHANCEMENT_RULES_KEY] || [],
     blockElementRules: stored?.[BLOCK_ELEMENT_RULES_KEY] || [],
-    customCodeRules: stored?.[CUSTOM_CODE_RULES_KEY] || [],
-    runCodeInPageRules: stored?.[RUN_CODE_IN_PAGE_RULES_KEY] || [],
+    customCodeRules: encodeCustomCodeRules(
+      stored?.[CUSTOM_CODE_RULES_KEY] || [],
+    ),
+    runCodeInPageRules: encodeRunCodeInPageRules(
+      stored?.[RUN_CODE_IN_PAGE_RULES_KEY] || [],
+    ),
     llmPrompts: stored?.[LLM_PROMPTS_KEY] || [],
     urlProcessRules: stored?.[URL_PROCESS_RULES_KEY] || [],
     titleTransformRules: stored?.[TITLE_TRANSFORM_RULES_KEY] || [],
@@ -344,8 +356,12 @@ async function applyBackupPayload(payload) {
     [HIGHLIGHT_TEXT_RULES_KEY]: migratedHighlightRules,
     [VIDEO_ENHANCEMENT_RULES_KEY]: payload.videoEnhancementRules || [],
     [BLOCK_ELEMENT_RULES_KEY]: payload.blockElementRules || [],
-    [CUSTOM_CODE_RULES_KEY]: payload.customCodeRules || [],
-    [RUN_CODE_IN_PAGE_RULES_KEY]: payload.runCodeInPageRules || [],
+    [CUSTOM_CODE_RULES_KEY]: decodeCustomCodeRules(
+      payload.customCodeRules || [],
+    ),
+    [RUN_CODE_IN_PAGE_RULES_KEY]: decodeRunCodeInPageRules(
+      payload.runCodeInPageRules || [],
+    ),
     [LLM_PROMPTS_KEY]: payload.llmPrompts || [],
     [URL_PROCESS_RULES_KEY]: payload.urlProcessRules || [],
     [TITLE_TRANSFORM_RULES_KEY]: payload.titleTransformRules || [],
@@ -358,6 +374,131 @@ async function applyBackupPayload(payload) {
   };
 
   await chrome.storage.local.set(updates);
+}
+
+/**
+ * Encode a string to Base64 to preserve special characters.
+ * @param {string} str
+ * @returns {string}
+ */
+function encodeCodeContent(str) {
+  if (!str) {
+    return str;
+  }
+  try {
+    return btoa(
+      encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, (match, p1) =>
+        String.fromCharCode(parseInt(p1, 16)),
+      ),
+    );
+  } catch (error) {
+    console.warn('[options-backup] Failed to encode code content:', error);
+    return str;
+  }
+}
+
+/**
+ * Decode a Base64 string back to original content.
+ * @param {string} str
+ * @returns {string}
+ */
+function decodeCodeContent(str) {
+  if (!str) {
+    return str;
+  }
+  try {
+    return decodeURIComponent(
+      atob(str)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join(''),
+    );
+  } catch (error) {
+    console.warn('[options-backup] Failed to decode code content:', error);
+    return str;
+  }
+}
+
+/**
+ * Encode code content in custom code rules.
+ * @param {any[]} rules
+ * @returns {any[]}
+ */
+function encodeCustomCodeRules(rules) {
+  if (!Array.isArray(rules)) {
+    return rules;
+  }
+  return rules.map((rule) => {
+    if (!rule || typeof rule !== 'object') {
+      return rule;
+    }
+    return {
+      ...rule,
+      css: rule.css ? encodeCodeContent(rule.css) : rule.css,
+      js: rule.js ? encodeCodeContent(rule.js) : rule.js,
+    };
+  });
+}
+
+/**
+ * Decode code content in custom code rules.
+ * @param {any[]} rules
+ * @returns {any[]}
+ */
+function decodeCustomCodeRules(rules) {
+  if (!Array.isArray(rules)) {
+    return rules;
+  }
+  return rules.map((rule) => {
+    if (!rule || typeof rule !== 'object') {
+      return rule;
+    }
+    return {
+      ...rule,
+      css: rule.css ? decodeCodeContent(rule.css) : rule.css,
+      js: rule.js ? decodeCodeContent(rule.js) : rule.js,
+    };
+  });
+}
+
+/**
+ * Encode code content in run code in page rules.
+ * @param {any[]} rules
+ * @returns {any[]}
+ */
+function encodeRunCodeInPageRules(rules) {
+  if (!Array.isArray(rules)) {
+    return rules;
+  }
+  return rules.map((rule) => {
+    if (!rule || typeof rule !== 'object') {
+      return rule;
+    }
+    return {
+      ...rule,
+      code: rule.code ? encodeCodeContent(rule.code) : rule.code,
+    };
+  });
+}
+
+/**
+ * Decode code content in run code in page rules.
+ * @param {any[]} rules
+ * @returns {any[]}
+ */
+function decodeRunCodeInPageRules(rules) {
+  if (!Array.isArray(rules)) {
+    return rules;
+  }
+  return rules.map((rule) => {
+    if (!rule || typeof rule !== 'object') {
+      return rule;
+    }
+    return {
+      ...rule,
+      code: rule.code ? decodeCodeContent(rule.code) : rule.code,
+    };
+  });
 }
 
 /**
