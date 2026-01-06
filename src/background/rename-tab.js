@@ -64,10 +64,41 @@ export async function setCustomTabTitle(url, tabId, title) {
   
   await saveCustomTabTitles(filtered);
   
-  // Notify content script to update
+  console.log('[RenameTab] Saved custom title:', { url, tabId, title });
+  
+  // Force update the title in the tab using scripting API (run in MAIN world to directly affect page)
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: (newTitle) => {
+        console.log('[RenameTab] Setting title via scripting API:', newTitle);
+        // Set title element directly
+        let titleEl = document.querySelector('title');
+        if (titleEl) {
+          titleEl.textContent = newTitle;
+        } else {
+          const newTitleEl = document.createElement('title');
+          newTitleEl.textContent = newTitle;
+          const head = document.head || document.querySelector('head') || document.documentElement;
+          head.appendChild(newTitleEl);
+          titleEl = newTitleEl;
+        }
+        console.log('[RenameTab] Title element after set:', titleEl?.textContent);
+        console.log('[RenameTab] document.title after set:', document.title);
+      },
+      args: [title],
+    });
+    console.log('[RenameTab] Scripting API executed successfully for tabId:', tabId);
+  } catch (error) {
+    console.warn('[RenameTab] Failed to set title via scripting:', error);
+  }
+  
+  // Also notify content script to update its state
   try {
     await chrome.tabs.sendMessage(tabId, {
       type: 'renameTab:titleUpdated',
+      title,
     });
   } catch (error) {
     // Tab might not have content script loaded yet, ignore
@@ -90,7 +121,7 @@ export async function removeCustomTabTitle(url, tabId) {
   
   await saveCustomTabTitles(filtered);
   
-  // Notify content script to update
+  // Notify content script to update (it will restore normal behavior)
   if (tabId) {
     try {
       await chrome.tabs.sendMessage(tabId, {
