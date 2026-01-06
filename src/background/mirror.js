@@ -1362,8 +1362,13 @@ async function performHourlyFullPull(trigger) {
   const RETRY_DELAY_MS = 60 * 1000; // 1 minute
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const settingsDataForName = await loadRootFolderSettings();
+    const baseName = normalizeFolderTitle(
+      settingsDataForName.settings.rootFolderName,
+      DEFAULT_ROOT_FOLDER_NAME,
+    );
     const timestamp = getTimestampForFolderName();
-    const newRootFolderName = `Raindrop - ${timestamp}`;
+    const newRootFolderName = `${baseName} - ${timestamp}`;
     let newRootFolderId = null;
 
     try {
@@ -1375,7 +1380,8 @@ async function performHourlyFullPull(trigger) {
         );
       }
 
-      const settingsData = await loadRootFolderSettings();
+      // Use the settings loaded at the start of the attempt
+      const settingsData = settingsDataForName;
       const parentId = await ensureParentFolderAvailable(settingsData);
 
       // Create a new temporary root folder for this pull
@@ -1434,8 +1440,8 @@ async function performHourlyFullPull(trigger) {
       for (const child of children) {
         if (
           !child.url &&
-          (child.title.startsWith('Raindrop - ') ||
-            child.title === 'Raindrop') &&
+          (child.title.startsWith(`${baseName} - `) ||
+            child.title === baseName) &&
           child.id !== newRootFolderId
         ) {
           await bookmarksRemoveTree(child.id);

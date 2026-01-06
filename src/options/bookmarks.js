@@ -119,9 +119,6 @@ const rootFolderNameInput = /** @type {HTMLInputElement | null} */ (
 const rootFolderSaveButton = /** @type {HTMLButtonElement | null} */ (
   document.getElementById('rootFolderSaveButton')
 );
-const resetMirrorButton = /** @type {HTMLButtonElement | null} */ (
-  document.getElementById('resetMirrorButton')
-);
 const pullMirrorButton = /** @type {HTMLButtonElement | null} */ (
   document.getElementById('pullMirrorButton')
 );
@@ -1015,7 +1012,7 @@ async function runMirrorAction(actionType, pendingMessage) {
     return;
   }
 
-  const buttons = [resetMirrorButton, pullMirrorButton];
+  const buttons = [pullMirrorButton];
   buttons.forEach((button) => {
     if (button) {
       button.disabled = true;
@@ -1062,19 +1059,12 @@ async function runMirrorAction(actionType, pendingMessage) {
  * @returns {Promise<void>}
  */
 async function handlePullMirrorClick() {
-  await runMirrorAction('mirror:pull', 'Pulling latest Raindrop data...');
-}
-
-/**
- * Reset mirror state and trigger a fresh pull.
- * @returns {Promise<void>}
- */
-async function handleResetMirrorClick() {
   await runMirrorAction(
     'mirror:resetPull',
     'Resetting mirror and pulling fresh data...',
   );
 }
+
 
 /** @type {boolean} */
 let isRefreshingTokens = false;
@@ -1202,11 +1192,6 @@ function renderProviderState() {
   connectButton.hidden = !hasSelection;
   disconnectButton.hidden = !hasSelection || !storedTokens;
   connectButton.textContent = storedTokens ? 'Reconnect' : 'Connect';
-  if (resetMirrorButton) {
-    const shouldShow = hasSelection && Boolean(storedTokens);
-    resetMirrorButton.hidden = !shouldShow;
-    resetMirrorButton.disabled = !shouldShow;
-  }
   if (pullMirrorButton) {
     const shouldShow = hasSelection && Boolean(storedTokens);
     pullMirrorButton.hidden = !shouldShow;
@@ -1405,11 +1390,6 @@ async function init() {
   if (rootFolderNameInput) {
     rootFolderNameInput.addEventListener('change', () => {
       void handleRootFolderNameChange();
-    });
-  }
-  if (resetMirrorButton) {
-    resetMirrorButton.addEventListener('click', () => {
-      void handleResetMirrorClick();
     });
   }
   if (pullMirrorButton) {
