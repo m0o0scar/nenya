@@ -1362,8 +1362,13 @@ async function performHourlyFullPull(trigger) {
   const RETRY_DELAY_MS = 60 * 1000; // 1 minute
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    const settingsDataForName = await loadRootFolderSettings();
+    const baseName = normalizeFolderTitle(
+      settingsDataForName.settings.rootFolderName,
+      DEFAULT_ROOT_FOLDER_NAME,
+    );
     const timestamp = getTimestampForFolderName();
-    const newRootFolderName = `Raindrop - ${timestamp}`;
+    const newRootFolderName = `${baseName} - ${timestamp}`;
     let newRootFolderId = null;
 
     try {
@@ -1375,7 +1380,8 @@ async function performHourlyFullPull(trigger) {
         );
       }
 
-      const settingsData = await loadRootFolderSettings();
+      // Use the settings loaded at the start of the attempt
+      const settingsData = settingsDataForName;
       const parentId = await ensureParentFolderAvailable(settingsData);
 
       // Create a new temporary root folder for this pull
@@ -1391,12 +1397,8 @@ async function performHourlyFullPull(trigger) {
 
       // Build the new structure inside the temporary folder
       const index = await buildBookmarkIndex(newRootFolderId);
-      const { collectionFolderMap } = await synchronizeFolderTree(
-        remoteData,
-        newRootFolderId,
-        index,
-        stats,
-      );
+      const { collectionFolderMap, unsortedFolderId } =
+        await synchronizeFolderTree(remoteData, newRootFolderId, index, stats);
 
       // Fetch and create all bookmarks
       const allCollections = [
@@ -1429,13 +1431,37 @@ async function performHourlyFullPull(trigger) {
         }
       }
 
+      // Sync Unsorted items
+      if (unsortedFolderId) {
+        let page = 0;
+        while (true) {
+          const items = await fetchRaindropItems(tokens, -1, page);
+          if (!items || items.length === 0) break;
+
+          for (const item of items) {
+            const url = typeof item.link === 'string' ? item.link : '';
+            if (!url) continue;
+
+            const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
+            await bookmarksCreate({
+              parentId: unsortedFolderId,
+              title: bookmarkTitle,
+              url,
+            });
+            stats.bookmarksCreated += 1;
+          }
+          page++;
+          await delay(500); // Delay between pages to respect rate limits
+        }
+      }
+
       // If successful, remove old Raindrop folders
       const children = await bookmarksGetChildren(parentId);
       for (const child of children) {
         if (
           !child.url &&
-          (child.title.startsWith('Raindrop - ') ||
-            child.title === 'Raindrop') &&
+          (child.title.startsWith(`${baseName} - `) ||
+            child.title === baseName) &&
           child.id !== newRootFolderId
         ) {
           await bookmarksRemoveTree(child.id);
