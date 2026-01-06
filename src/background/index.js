@@ -1022,8 +1022,19 @@ async function handleEncryptAndSave(options) {
   }
 
   const generatedTitle = buildFriendlyEncryptedTitle();
+  let coverUrl = ENCRYPT_COVER_URL;
+  try {
+    if (coverUrl.includes('picsum.photos')) {
+      const response = await fetch(coverUrl);
+      if (response.ok && response.url) {
+        coverUrl = response.url;
+      }
+    }
+  } catch (error) {
+    console.warn('[encrypt-save] Failed to resolve cover URL redirect:', error);
+  }
   const saveResult = await saveUrlsToUnsorted(
-    [{ url: encryptedUrl, title: generatedTitle, cover: ENCRYPT_COVER_URL }],
+    [{ url: encryptedUrl, title: generatedTitle, cover: coverUrl }],
     { pleaseParse: false, skipUrlProcessing: true, keepEntryTitle: true },
   );
   return {
