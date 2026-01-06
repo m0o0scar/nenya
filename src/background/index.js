@@ -91,7 +91,7 @@ const OPEN_LLM_TABS_MESSAGE = 'open-llm-tabs';
 const CLOSE_LLM_TABS_MESSAGE = 'close-llm-tabs';
 const SWITCH_LLM_PROVIDER_MESSAGE = 'switch-llm-provider';
 const ENCRYPT_SERVICE_URL = 'https://oh-auth.vercel.app/secret/encrypt';
-const ENCRYPT_COVER_URL = 'https://oh-auth.vercel.app/img/secret-bear-2.png';
+const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
 
 // ============================================================================
 // KEYBOARD SHORTCUTS (COMMANDS)
