@@ -23,6 +23,7 @@
   async function injectModalAndStyles(shadowRoot) {
     const daisyUiHref = chrome.runtime.getURL('src/libs/daisyui@5.css');
     const daisyUiThemesHref = chrome.runtime.getURL('src/libs/daisyui@5-themes.css');
+    const tailwindHref = chrome.runtime.getURL('src/libs/tailwindcss@4.js');
 
     const loadCss = (href) => new Promise(resolve => {
         const link = document.createElement('link');
@@ -32,10 +33,17 @@
         shadowRoot.appendChild(link);
     });
 
-    // Wait for both stylesheets to load before adding the modal HTML
+    const loadJs = (src) => new Promise(resolve => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = resolve;
+        shadowRoot.appendChild(script);
+    });
+
     await Promise.all([
         loadCss(daisyUiHref),
-        loadCss(daisyUiThemesHref)
+        loadCss(daisyUiThemesHref),
+        loadJs(tailwindHref)
     ]);
 
     const modalContainer = document.createElement('div');
@@ -81,7 +89,6 @@
     const host = createModalHost();
     const shadowRoot = host.attachShadow({ mode: 'open' });
 
-    // This now waits for CSS to be loaded
     await injectModalAndStyles(shadowRoot);
 
     const modal = shadowRoot.getElementById(MODAL_ID);
