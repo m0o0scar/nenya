@@ -1,6 +1,3 @@
-
-/* global chrome */
-
 /* global chrome */
 
 (function () {
@@ -23,45 +20,52 @@
     return host;
   }
 
-  function injectModalAndStyles(shadowRoot, originalTitle) {
-    // Inject styles
+  async function injectModalAndStyles(shadowRoot) {
     const daisyUiHref = chrome.runtime.getURL('src/libs/daisyui@5.css');
     const daisyUiThemesHref = chrome.runtime.getURL('src/libs/daisyui@5-themes.css');
 
-    shadowRoot.innerHTML = `
-      <link rel="stylesheet" href="${daisyUiHref}">
-      <link rel="stylesheet" href="${daisyUiThemesHref}">
-      <div data-theme="light">
-        <dialog id="${MODAL_ID}" class="modal">
-          <div class="modal-box">
-            <h3 class="font-bold text-lg">Save to Unsorted</h3>
-            <div class="py-4 space-y-4">
-              <div class="form-control w-full">
-                <label class="label">
-                  <span class="label-text">Title</span>
-                </label>
-                <input id="${MODAL_ID}-title-input" type="text" value="${escape(originalTitle)}" placeholder="Enter title" class="input input-bordered w-full" />
-              </div>
-              <div class="form-control">
-                <label class="label cursor-pointer justify-start gap-4">
-                  <input id="${MODAL_ID}-screenshot-checkbox" type="checkbox" class="checkbox" />
-                  <span class="label-text">Attach Screenshot</span>
-                </label>
-              </div>
+    const loadCss = (href) => new Promise(resolve => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.onload = resolve;
+        shadowRoot.appendChild(link);
+    });
+
+    // Wait for both stylesheets to load before adding the modal HTML
+    await Promise.all([
+        loadCss(daisyUiHref),
+        loadCss(daisyUiThemesHref)
+    ]);
+
+    const modalContainer = document.createElement('div');
+    modalContainer.setAttribute('data-theme', 'light');
+    modalContainer.innerHTML = `
+      <dialog id="${MODAL_ID}" class="modal">
+        <div class="modal-box">
+          <h3 class="font-bold text-lg">Save to Unsorted</h3>
+          <div class="py-4 space-y-4">
+            <div class="form-control w-full">
+              <label class="label">
+                <span class="label-text">Title</span>
+              </label>
+              <input id="${MODAL_ID}-title-input" type="text" placeholder="Enter title" class="input input-bordered w-full" />
             </div>
-            <div class="modal-action">
-              <button id="${MODAL_ID}-cancel-button" class="btn">Cancel</button>
-              <button id="${MODAL_ID}-save-button" class="btn btn-primary">Save</button>
+            <div class="form-control">
+              <label class="label cursor-pointer justify-start gap-4">
+                <input id="${MODAL_ID}-screenshot-checkbox" type="checkbox" class="checkbox" />
+                <span class="label-text">Attach Screenshot</span>
+              </label>
             </div>
           </div>
-        </dialog>
-      </div>
+          <div class="modal-action">
+            <button id="${MODAL_ID}-cancel-button" class="btn">Cancel</button>
+            <button id="${MODAL_ID}-save-button" class="btn btn-primary">Save</button>
+          </div>
+        </div>
+      </dialog>
     `;
-
-    // Function to escape HTML attributes
-    function escape(str) {
-        return str.replace(/"/g, '&quot;');
-    }
+    shadowRoot.appendChild(modalContainer);
   }
 
   function cleanup() {
@@ -73,10 +77,12 @@
     chrome.runtime.onMessage.removeListener(messageListener);
   }
 
-  function showModal(originalTitle) {
+  async function showModal(originalTitle) {
     const host = createModalHost();
     const shadowRoot = host.attachShadow({ mode: 'open' });
-    injectModalAndStyles(shadowRoot, originalTitle);
+
+    // This now waits for CSS to be loaded
+    await injectModalAndStyles(shadowRoot);
 
     const modal = shadowRoot.getElementById(MODAL_ID);
     const titleInput = shadowRoot.getElementById(`${MODAL_ID}-title-input`);
@@ -88,6 +94,8 @@
       cleanup();
       return;
     }
+
+    titleInput.value = originalTitle;
 
     const onSave = () => {
       chrome.runtime.sendMessage({
@@ -106,13 +114,12 @@
     cancelButton.addEventListener('click', onCancel, { once: true });
     modal.addEventListener('close', cleanup, { once: true });
 
-    // DaisyUI requires the modal to be open to be shown
-    setTimeout(() => modal.showModal(), 0);
+    modal.showModal();
   }
 
   const messageListener = (message, sender, sendResponse) => {
     if (message.type === 'showSaveToUnsortedModal') {
-      showModal(message.title);
+      void showModal(message.title);
       sendResponse({ success: true });
     }
     return true;
