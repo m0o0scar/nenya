@@ -1875,44 +1875,56 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
 
       // Otherwise, check for custom search engine shortcut
       if (query) {
-        // Try to parse as "<shortcut> <query>"
-        const spaceIndex = query.indexOf(' ');
-        if (spaceIndex > 0) {
-          const potentialShortcut = query.substring(0, spaceIndex);
-          const searchQuery = query.substring(spaceIndex + 1).trim();
+        try {
+          const engines = await getCustomSearchEngines();
+          let engineFound = false;
 
-          if (searchQuery) {
-            // Check if this matches a custom search engine
-            try {
-              const engines = await getCustomSearchEngines();
-              const matchedEngine = engines.find(
-                (engine) =>
-                  engine.shortcut.toLowerCase() ===
-                  potentialShortcut.toLowerCase(),
+          for (const engine of engines) {
+            const shortcut = engine.shortcut;
+            const lowerCaseQuery = query.toLowerCase();
+            const lowerCaseShortcut = shortcut.toLowerCase();
+            let searchQuery = '';
+
+            // Prefix: "ss query"
+            if (lowerCaseQuery.startsWith(lowerCaseShortcut + ' ')) {
+              searchQuery = query.substring(shortcut.length + 1).trim();
+            }
+            // Suffix: "query ss"
+            else if (lowerCaseQuery.endsWith(' ' + lowerCaseShortcut)) {
+              searchQuery = query
+                .substring(0, query.length - shortcut.length - 1)
+                .trim();
+            }
+
+            if (searchQuery) {
+              const searchUrl = engine.searchUrl.replace(
+                '%s',
+                encodeURIComponent(searchQuery),
               );
-
-              if (matchedEngine) {
-                // Use custom search engine
-                const searchUrl = matchedEngine.searchUrl.replace(
-                  '%s',
-                  encodeURIComponent(searchQuery),
-                );
-                chrome.tabs.create({ url: searchUrl });
-                window.close();
-                return;
-              }
-            } catch (error) {
-              console.error('[popup] Failed to load custom search engines:', error);
+              chrome.tabs.create({ url: searchUrl });
+              window.close();
+              engineFound = true;
+              break;
             }
           }
-        }
 
-        // Fall back to Google search
-        const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
-          query,
-        )}`;
-        chrome.tabs.create({ url: searchUrl });
-        window.close();
+          if (!engineFound) {
+            // Fall back to Google search
+            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+              query,
+            )}`;
+            chrome.tabs.create({ url: searchUrl });
+            window.close();
+          }
+        } catch (error) {
+          console.error('[popup] Failed to execute search:', error);
+          // Fallback in case of any error during custom search logic
+          const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+            query,
+          )}`;
+          chrome.tabs.create({ url: searchUrl });
+          window.close();
+        }
       }
     } else if (event.key === 'ArrowDown') {
       event.preventDefault();
