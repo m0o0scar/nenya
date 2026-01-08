@@ -85,6 +85,9 @@
  * @property {string} url
  * @property {string} [title]
  * @property {string} [cover]
+ * @property {boolean} [includeScreenshot]
+ * @property {number} [tabId]
+ * @property {number} [windowId]
  */
 
 /**
@@ -1100,6 +1103,9 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           typeof entry?.cover === 'string' && entry.cover.trim().length > 0
             ? entry.cover.trim()
             : undefined,
+        includeScreenshot: entry?.includeScreenshot,
+        tabId: entry?.tabId,
+        windowId: entry?.windowId,
       });
     }
 
@@ -1171,6 +1177,29 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         if (!response || typeof response !== 'object' || !response.item) {
           throw new Error(
             'Invalid response from Raindrop API: missing item field',
+          );
+        }
+
+        if (entry.includeScreenshot && entry.tabId && entry.windowId) {
+          await chrome.windows.update(entry.windowId, { focused: true });
+          await chrome.tabs.update(entry.tabId, { active: true });
+          const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
+            entry.windowId,
+            {
+              format: 'jpeg',
+              quality: 80,
+            },
+          );
+          const blob = await (await fetch(screenshotDataUrl)).blob();
+          const formData = new FormData();
+          formData.append('cover', blob, 'screenshot.jpg');
+          await raindropRequest(
+            `/raindrop/${response.item._id}/cover`,
+            tokens,
+            {
+              method: 'PUT',
+              body: formData,
+            },
           );
         }
 

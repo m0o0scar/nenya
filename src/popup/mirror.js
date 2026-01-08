@@ -235,6 +235,74 @@ export function formatStats(stats) {
  * @property {string} [title]
  */
 
+export async function showSaveToUnsortedDialog(tab) {
+  const modal = document.getElementById('saveToUnsortedModal');
+  const titleInput = document.getElementById('saveToUnsortedTitleInput');
+  const screenshotCheckbox = document.getElementById(
+    'saveToUnsortedScreenshotCheckbox',
+  );
+  const cancelButton = document.getElementById('saveToUnsortedCancelButton');
+  const confirmButton = document.getElementById('saveToUnsortedConfirmButton');
+
+  if (
+    !modal ||
+    !titleInput ||
+    !screenshotCheckbox ||
+    !cancelButton ||
+    !confirmButton
+  ) {
+    console.error('Save to unsorted dialog elements not found');
+    return;
+  }
+
+  titleInput.value = tab.title || '';
+  screenshotCheckbox.checked = false;
+
+  const handleConfirm = async () => {
+    const title = titleInput.value;
+    const includeScreenshot = screenshotCheckbox.checked;
+
+    const entries = [
+      {
+        url: tab.url,
+        title: title,
+        includeScreenshot: includeScreenshot,
+        tabId: tab.id,
+        windowId: tab.windowId,
+      },
+    ];
+
+    try {
+      const response = await sendRuntimeMessage({
+        type: 'mirror:saveToUnsorted',
+        entries,
+      });
+      handleSaveResponse(response, document.getElementById('statusMessage'));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      concludeStatus(message, 'error', 3000, document.getElementById('statusMessage'));
+    }
+    modal.close();
+  };
+
+  const handleCancel = () => {
+    modal.close();
+  };
+
+  confirmButton.addEventListener('click', handleConfirm, { once: true });
+  cancelButton.addEventListener('click', handleCancel, { once: true });
+  modal.addEventListener(
+    'close',
+    () => {
+      confirmButton.removeEventListener('click', handleConfirm);
+      cancelButton.removeEventListener('click', handleCancel);
+    },
+    { once: true },
+  );
+
+  modal.showModal();
+}
+
 /**
  * Handle the save to Unsorted action from the popup.
  * @param {HTMLElement} saveUnsortedButton
@@ -242,13 +310,6 @@ export function formatStats(stats) {
  * @returns {Promise<void>}
  */
 export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
-  if (!saveUnsortedButton) {
-    return;
-  }
-
-  /** @type {HTMLButtonElement} */ (saveUnsortedButton).disabled = true;
-  setStatus('Saving tabs to Unsorted...', 'info', statusMessage);
-
   try {
     const tabs = await collectSavableTabs();
     if (tabs.length === 0) {
@@ -261,39 +322,40 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
       return;
     }
 
+    // If there's only one tab, show the dialog
     if (tabs.length === 1 && tabs[0]) {
-      const tab = tabs[0];
-      const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-      const userTitle = window.prompt(
-        'Enter an optional title to save to unsorted collection',
-        originalTitle,
-      );
-
-      // If user clicks cancel, abort saving.
-      if (userTitle === null) {
-        concludeStatus('Save cancelled.', 'info', 3000, statusMessage);
-        return;
+      showSaveToUnsortedDialog(tabs[0]);
+    } else {
+      // If there are multiple tabs, save them directly without a dialog
+      if (saveUnsortedButton) {
+        /** @type {HTMLButtonElement} */ (saveUnsortedButton).disabled = true;
       }
-      tab.title = userTitle.trim() || originalTitle;
+      setStatus('Saving tabs to Unsorted...', 'info', statusMessage);
+      try {
+        const entries = buildSaveEntriesFromTabs(tabs);
+        if (entries.length === 0) {
+          concludeStatus(
+            'No valid tab URLs to save.',
+            'info',
+            3.0,
+            statusMessage,
+          );
+          return;
+        }
+        const response = await sendRuntimeMessage({
+          type: 'mirror:saveToUnsorted',
+          entries,
+        });
+        handleSaveResponse(response, statusMessage);
+      } finally {
+        if (saveUnsortedButton) {
+          /** @type {HTMLButtonElement} */ (saveUnsortedButton).disabled = false;
+        }
+      }
     }
-
-    const entries = buildSaveEntriesFromTabs(tabs);
-    if (entries.length === 0) {
-      concludeStatus('No valid tab URLs to save.', 'info', 3000, statusMessage);
-      return;
-    }
-
-    const response = await sendRuntimeMessage({
-      type: 'mirror:saveToUnsorted',
-      entries,
-    });
-
-    handleSaveResponse(response, statusMessage);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     concludeStatus(message, 'error', 3000, statusMessage);
-  } finally {
-    /** @type {HTMLButtonElement} */ (saveUnsortedButton).disabled = false;
   }
 }
 
