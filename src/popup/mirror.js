@@ -236,6 +236,59 @@ export function formatStats(stats) {
  */
 
 /**
+ * @typedef {Object} SaveToUnsortedUserInput
+ * @property {string} title
+ * @property {boolean} attachScreenshot
+ */
+
+/**
+ * Show a modal to get user input for saving a single tab.
+ * @param {string} originalTitle
+ * @returns {Promise<SaveToUnsortedUserInput | null>}
+ */
+function showSaveToUnsortedModal(originalTitle) {
+  return new Promise((resolve) => {
+    const modal = /** @type {HTMLDialogElement} */ (document.getElementById('saveToUnsortedModal'));
+    const titleInput = /** @type {HTMLInputElement} */ (document.getElementById('saveToUnsortedTitleInput'));
+    const screenshotCheckbox = /** @type {HTMLInputElement} */ (document.getElementById('saveToUnsortedScreenshotCheckbox'));
+    const cancelButton = /** @type {HTMLButtonElement} */ (document.getElementById('saveToUnsortedCancelButton'));
+    const saveButton = /** @type {HTMLButtonElement} */ (document.getElementById('saveToUnsortedSaveButton'));
+
+    if (!modal || !titleInput || !screenshotCheckbox || !cancelButton || !saveButton) {
+      resolve(null); // Fallback if modal elements are not found
+      return;
+    }
+
+    titleInput.value = originalTitle;
+    screenshotCheckbox.checked = false;
+
+    const cleanup = () => {
+      saveButton.removeEventListener('click', onSave);
+      cancelButton.removeEventListener('click', onCancel);
+      modal.close();
+    };
+
+    const onSave = () => {
+      resolve({
+        title: titleInput.value.trim(),
+        attachScreenshot: screenshotCheckbox.checked,
+      });
+      cleanup();
+    };
+
+    const onCancel = () => {
+      resolve(null);
+      cleanup();
+    };
+
+    saveButton.addEventListener('click', onSave);
+    cancelButton.addEventListener('click', onCancel);
+
+    modal.showModal();
+  });
+}
+
+/**
  * Handle the save to Unsorted action from the popup.
  * @param {HTMLElement} saveUnsortedButton
  * @param {HTMLElement} statusMessage
@@ -261,28 +314,48 @@ export async function handleSaveToUnsorted(saveUnsortedButton, statusMessage) {
       return;
     }
 
+    /** @type {SaveUnsortedEntry[]} */
+    const entries = [];
+
     if (tabs.length === 1 && tabs[0]) {
       const tab = tabs[0];
       const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-      const userTitle = window.prompt(
-        'Enter an optional title to save to unsorted collection',
-        originalTitle,
-      );
+      const userInput = await showSaveToUnsortedModal(originalTitle);
 
-      // If user clicks cancel, abort saving.
-      if (userTitle === null) {
+      if (userInput === null) {
         concludeStatus('Save cancelled.', 'info', 3000, statusMessage);
         return;
       }
-      tab.title = userTitle.trim() || originalTitle;
+
+      tab.title = userInput.title || originalTitle;
+
+      const entry = buildSaveEntriesFromTabs([tab])[0];
+      if (!entry) {
+        concludeStatus('No valid tab URLs to save.', 'info', 3000, statusMessage);
+        return;
+      }
+
+      if (userInput.attachScreenshot) {
+        setStatus('Capturing screenshot...', 'info', statusMessage);
+        const screenshotUrl = await chrome.tabs.captureVisibleTab(
+          /** @type {number} */ (tab.windowId),
+          { format: 'jpeg', quality: 90 },
+        );
+        entry.cover = screenshotUrl;
+      }
+      entries.push(entry);
+
+    } else {
+      // For multiple tabs, build entries without showing the modal
+      entries.push(...buildSaveEntriesFromTabs(tabs));
     }
 
-    const entries = buildSaveEntriesFromTabs(tabs);
     if (entries.length === 0) {
       concludeStatus('No valid tab URLs to save.', 'info', 3000, statusMessage);
       return;
     }
 
+    setStatus('Saving to Raindrop...', 'info', statusMessage);
     const response = await sendRuntimeMessage({
       type: 'mirror:saveToUnsorted',
       entries,

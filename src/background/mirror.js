@@ -1034,6 +1034,66 @@ export async function resetMirrorState(settingsData) {
 }
 
 /**
+ * Convert a data URL string to a Blob object.
+ * @param {string} dataUrl
+ * @returns {Blob | null}
+ */
+function dataURLtoBlob(dataUrl) {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+    return null;
+  }
+  const parts = dataUrl.split(',');
+  if (parts.length !== 2) {
+    return null;
+  }
+
+  const metaPart = parts[0];
+  const dataPart = parts[1];
+  if (!metaPart || !dataPart) {
+    return null;
+  }
+
+  const mimeMatch = metaPart.match(/:(.*?);/);
+  const mime = mimeMatch?.[1] ?? 'application/octet-stream';
+
+  try {
+    const byteString = atob(dataPart);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ab], { type: mime });
+  } catch (e) {
+    console.error('Failed to convert data URL to blob', e);
+    return null;
+  }
+}
+
+/**
+ * Upload a cover image for a Raindrop item.
+ * @param {StoredProviderTokens} tokens
+ * @param {number} raindropId
+ * @param {string} coverDataUrl
+ * @returns {Promise<void>}
+ */
+async function uploadRaindropCover(tokens, raindropId, coverDataUrl) {
+  const blob = dataURLtoBlob(coverDataUrl);
+  if (!blob) {
+    console.warn('[mirror] Failed to convert data URL to Blob for cover upload.');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('cover', blob, 'screenshot.jpg');
+
+  await raindropRequest(`/raindrop/${raindropId}/cover`, tokens, {
+    method: 'PUT',
+    body: formData,
+  });
+}
+
+/**
  * Save URLs to the Raindrop Unsorted collection and mirror them as bookmarks.
  * @param {SaveUnsortedEntry[]} entries
  * @param {{ pleaseParse?: boolean, skipUrlProcessing?: boolean, keepEntryTitle?: boolean }} [options]
@@ -1156,7 +1216,6 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           link: entry.url,
           collectionId: -1,
           ...(pleaseParse ? { pleaseParse: {} } : {}),
-          ...(entry.cover ? { cover: entry.cover } : {}),
           ...(entry.title ? { title: entry.title } : {}),
         };
 
@@ -1168,14 +1227,26 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           body: JSON.stringify(payload),
         });
 
-        if (!response || typeof response !== 'object' || !response.item) {
+        const item = response?.item;
+        if (!item || typeof item._id !== 'number') {
           throw new Error(
             'Invalid response from Raindrop API: missing item field',
           );
         }
 
-        const itemTitle =
-          typeof response.item.title === 'string' ? response.item.title : '';
+        // If a cover was provided, upload it now
+        if (entry.cover) {
+          try {
+            await uploadRaindropCover(tokens, item._id, entry.cover);
+          } catch (coverError) {
+            console.warn(
+              `[mirror] Failed to upload cover for ${entry.url}:`,
+              coverError,
+            );
+          }
+        }
+
+        const itemTitle = typeof item.title === 'string' ? item.title : '';
         const bookmarkTitle = normalizeBookmarkTitle(
           entry.title || itemTitle,
           entry.url,

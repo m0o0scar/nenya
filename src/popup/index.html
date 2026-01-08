@@ -117,6 +117,31 @@
     </article>
   </main>
 
+  <!-- Save to Unsorted Modal -->
+  <dialog id="saveToUnsortedModal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Save to Unsorted</h3>
+      <div class="py-4 space-y-4">
+        <div class="form-control w-full">
+          <label class="label">
+            <span class="label-text">Title</span>
+          </label>
+          <input id="saveToUnsortedTitleInput" type="text" placeholder="Enter title" class="input input-bordered w-full" />
+        </div>
+        <div class="form-control">
+          <label class="label cursor-pointer justify-start gap-4">
+            <input id="saveToUnsortedScreenshotCheckbox" type="checkbox" class="checkbox" />
+            <span class="label-text">Attach Screenshot</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button id="saveToUnsortedCancelButton" class="btn">Cancel</button>
+        <button id="saveToUnsortedSaveButton" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </dialog>
+
   <!-- status message -->
   <div id="statusMessage"
     class="fixed bottom-0 left-0 right-0 z-30 text-center p-2 text-sm text-base-content/80 bg-base-100/80 min-h-5 opacity-0 transition-opacity duration-300"
