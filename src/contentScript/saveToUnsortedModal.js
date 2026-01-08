@@ -18,6 +18,7 @@
     }
     const host = document.createElement('div');
     host.id = HOST_ID;
+    host.style.all = 'initial';
     document.body.appendChild(host);
     return host;
   }
