@@ -2427,6 +2427,48 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'saveToUnsortedFromModal') {
+    void (async () => {
+      try {
+        if (!sender.tab) {
+          throw new Error('No sender tab found');
+        }
+        const tab = sender.tab;
+        const { title, attachScreenshot } = message;
+
+        const url = typeof tab.url === 'string' ? tab.url : '';
+        if (!url) {
+          return;
+        }
+
+        const convertedUrl = convertSplitUrlForSave(url);
+        const normalizedUrl = normalizeHttpUrl(convertedUrl);
+        if (!normalizedUrl) {
+          return;
+        }
+
+        const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
+
+        const entry = { url: processedUrl, title };
+
+        if (attachScreenshot) {
+          const screenshotUrl = await chrome.tabs.captureVisibleTab(tab.windowId, {
+            format: 'jpeg',
+            quality: 90,
+          });
+          entry.cover = screenshotUrl;
+        }
+
+        await saveUrlsToUnsorted([entry]);
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('[background] Failed to save from modal:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === GET_CURRENT_TAB_ID_MESSAGE) {
     if (sender.tab) {
       sendResponse({ tabId: sender.tab.id });
@@ -3421,21 +3463,21 @@ if (chrome.contextMenus) {
 
     // Save current page to unsorted
     if (menuItemId === RAINDROP_MENU_IDS.SAVE_PAGE) {
-      const url = typeof info.pageUrl === 'string' ? info.pageUrl : '';
-      if (!url) {
+      if (!tab || !tab.id) {
         return;
       }
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['src/contentScript/saveToUnsortedModal.js'],
+        });
+        await chrome.tabs.sendMessage(tab.id, {
+          type: 'showSaveToUnsortedModal',
+          title: tab.title || '',
+        });
+      } catch (error) {
+        console.error('[contextMenu] Failed to show save to unsorted modal:', error);
       }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save page:', error);
-      });
       return;
     }
 
