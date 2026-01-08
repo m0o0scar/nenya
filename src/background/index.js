@@ -3302,6 +3302,7 @@ async function handleSaveToUnsortedRequest() {
         id: activeTab.id,
         url: activeTab.url,
         title: activeTab.title,
+        windowId: activeTab.windowId,
       },
     });
   } catch (error) {

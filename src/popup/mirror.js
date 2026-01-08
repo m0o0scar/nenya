@@ -268,6 +268,7 @@ export async function showSaveToUnsortedDialog(tab) {
         title: title,
         includeScreenshot: includeScreenshot,
         tabId: tab.id,
+        windowId: tab.windowId,
       },
     ];
 

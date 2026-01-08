@@ -87,6 +87,7 @@
  * @property {string} [cover]
  * @property {boolean} [includeScreenshot]
  * @property {number} [tabId]
+ * @property {number} [windowId]
  */
 
 /**
@@ -1104,6 +1105,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
             : undefined,
         includeScreenshot: entry?.includeScreenshot,
         tabId: entry?.tabId,
+        windowId: entry?.windowId,
       });
     }
 
@@ -1178,9 +1180,11 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           );
         }
 
-        if (entry.includeScreenshot) {
+        if (entry.includeScreenshot && entry.tabId && entry.windowId) {
+          await chrome.windows.update(entry.windowId, { focused: true });
+          await chrome.tabs.update(entry.tabId, { active: true });
           const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
-            entry.tabId,
+            entry.windowId,
             {
               format: 'jpeg',
               quality: 80,
