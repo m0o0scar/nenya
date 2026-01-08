@@ -84,6 +84,7 @@ let recordingTabId = null;
 let recorder = null;
 let recordedChunks = [];
 let blinkingInterval = null;
+let mediaStream = null;
 
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
@@ -739,35 +740,27 @@ function saveRecording() {
 /**
  * Start recording the current tab.
  */
-function startRecording() {
-  chrome.tabCapture.capture({ video: true, audio: true }, (stream) => {
-    if (chrome.runtime.lastError || !stream) {
-      console.error(chrome.runtime.lastError);
-      recordingState = 'idle';
-      return;
+function startRecording(stream) {
+  recordingState = 'recording';
+  recordedChunks = [];
+  recorder = new MediaRecorder(stream);
+
+  recorder.ondataavailable = (event) => {
+    if (event.data.size > 0) {
+      recordedChunks.push(event.data);
     }
+  };
 
-    recordingState = 'recording';
-    recordedChunks = [];
-    recorder = new MediaRecorder(stream);
+  recorder.onstop = () => {
+    saveRecording();
+  };
 
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        recordedChunks.push(event.data);
-      }
-    };
+  recorder.start();
+  startBlinking();
 
-    recorder.onstop = () => {
-      saveRecording();
-    };
-
-    recorder.start();
-    startBlinking();
-
-    stream.getVideoTracks()[0].onended = () => {
-      stopRecording();
-    };
-  });
+  stream.getVideoTracks()[0].onended = () => {
+    stopRecording();
+  };
 }
 
 /**
@@ -1104,19 +1097,29 @@ async function handleStartRecording(tab) {
   recordingState = 'countdown';
   recordingTabId = tab.id;
 
-  let count = 3;
-  const countdown = () => {
-    if (count > 0) {
-      chrome.action.setBadgeText({ text: String(count) });
-      count--;
-      countdownTimer = setTimeout(countdown, 1000);
-    } else {
-      chrome.action.setBadgeText({ text: '' });
-      startRecording();
+  chrome.tabCapture.capture({ video: true, audio: true }, (stream) => {
+    if (chrome.runtime.lastError || !stream) {
+      console.error(chrome.runtime.lastError);
+      recordingState = 'idle';
+      return;
     }
-  };
 
-  countdown();
+    mediaStream = stream;
+
+    let count = 3;
+    const countdown = () => {
+      if (count > 0) {
+        chrome.action.setBadgeText({ text: String(count) });
+        count--;
+        countdownTimer = setTimeout(countdown, 1000);
+      } else {
+        chrome.action.setBadgeText({ text: '' });
+        startRecording(stream);
+      }
+    };
+
+    countdown();
+  });
 }
 
 /**
