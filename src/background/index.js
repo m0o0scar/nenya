@@ -77,6 +77,14 @@ import {
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 
+// Screen recording state
+let recordingState = 'idle'; // 'idle', 'countdown', 'recording'
+let countdownTimer = null;
+let recordingTabId = null;
+let recorder = null;
+let recordedChunks = [];
+let blinkingInterval = null;
+
 const MANUAL_PULL_MESSAGE = 'mirror:pull';
 const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
@@ -582,6 +590,16 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
+chrome.action.onClicked.addListener((tab) => {
+  if (recordingState === 'countdown') {
+    clearTimeout(countdownTimer);
+    recordingState = 'idle';
+    chrome.action.setBadgeText({ text: '' });
+  } else if (recordingState === 'recording') {
+    stopRecording();
+  }
+});
+
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
@@ -681,6 +699,75 @@ function buildFriendlyEncryptedTitle() {
     return 'Encrypted Link';
   }
   return words.join(' ');
+}
+
+/**
+ * Stop recording and save the video.
+ */
+function stopRecording() {
+  if (recorder && recorder.state !== 'inactive') {
+    recorder.stop();
+  }
+  clearInterval(blinkingInterval);
+  chrome.action.setBadgeText({ text: '' });
+  recordingState = 'idle';
+}
+
+/**
+ * Save the recorded video to a file.
+ */
+function saveRecording() {
+  if (recordedChunks.length === 0) {
+    return;
+  }
+
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+
+  chrome.downloads.download(
+    {
+      url: url,
+      filename: `recording-${new Date().toISOString()}.webm`,
+      saveAs: true,
+    },
+    () => {
+      URL.revokeObjectURL(url);
+    },
+  );
+}
+
+/**
+ * Start recording the current tab.
+ */
+function startRecording() {
+  chrome.tabCapture.capture({ video: true, audio: true }, (stream) => {
+    if (chrome.runtime.lastError || !stream) {
+      console.error(chrome.runtime.lastError);
+      recordingState = 'idle';
+      return;
+    }
+
+    recordingState = 'recording';
+    recordedChunks = [];
+    recorder = new MediaRecorder(stream);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      saveRecording();
+    };
+
+    recorder.start();
+    startBlinking();
+
+    stream.getVideoTracks()[0].onended = () => {
+      stopRecording();
+    };
+  });
 }
 
 /**
@@ -991,6 +1078,45 @@ async function scheduleMirrorAlarm() {
   chrome.alarms.create(MIRROR_ALARM_NAME, {
     periodInMinutes: MIRROR_PULL_INTERVAL_MINUTES,
   });
+}
+
+/**
+ * Start blinking the recording icon.
+ */
+function startBlinking() {
+  let isVisible = true;
+  blinkingInterval = setInterval(() => {
+    chrome.action.setBadgeText({ text: isVisible ? '⏺️' : '' });
+    isVisible = !isVisible;
+  }, 1000);
+}
+
+/**
+ * Handle start recording context menu click.
+ * @param {chrome.tabs.Tab} tab - The current tab
+ * @returns {Promise<void>}
+ */
+async function handleStartRecording(tab) {
+  if (recordingState !== 'idle') {
+    return;
+  }
+
+  recordingState = 'countdown';
+  recordingTabId = tab.id;
+
+  let count = 3;
+  const countdown = () => {
+    if (count > 0) {
+      chrome.action.setBadgeText({ text: String(count) });
+      count--;
+      countdownTimer = setTimeout(countdown, 1000);
+    } else {
+      chrome.action.setBadgeText({ text: '' });
+      startRecording();
+    }
+  };
+
+  countdown();
 }
 
 /**
@@ -3574,6 +3700,13 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    if (menuItemId === OTHER_MENU_IDS.START_RECORDING) {
+      if (tab) {
+        void handleStartRecording(tab);
+      }
       return;
     }
 
