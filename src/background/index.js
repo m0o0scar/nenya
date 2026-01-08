@@ -82,6 +82,8 @@ const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
+const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
+  'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -180,48 +182,7 @@ chrome.commands.onCommand.addListener((command) => {
   }
 
   if (command === 'bookmarks-save-to-unsorted') {
-    void (async () => {
-      try {
-        /** @type {chrome.tabs.Tab[]} */
-        let tabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
-        if (!tabs || tabs.length === 0) {
-          tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-        }
-
-        if (tabs.length === 1 && tabs[0]) {
-          const tab = tabs[0];
-          const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-          const userTitle = await promptForTitle(tab.id, originalTitle);
-          tab.title = userTitle;
-        }
-
-        const seen = new Set();
-        /** @type {{ url: string, title?: string }[]} */
-        const entries = [];
-        tabs.forEach((tab) => {
-          const rawUrl = typeof tab.url === 'string' ? tab.url : '';
-          // Convert split page URLs to nenya.local format before normalization
-          const convertedUrl = convertSplitUrlForSave(rawUrl);
-          const normalized = normalizeHttpUrl(convertedUrl);
-          if (!normalized || seen.has(normalized)) {
-            return;
-          }
-          seen.add(normalized);
-          entries.push({
-            url: normalized,
-            title: typeof tab.title === 'string' ? tab.title : '',
-          });
-        });
-        if (entries.length > 0) {
-          await saveUrlsToUnsorted(entries);
-        }
-      } catch (error) {
-        console.warn('[commands] Save to Unsorted failed:', error);
-      }
-    })();
+    void handleSaveToUnsortedRequest();
     return;
   }
 
@@ -3317,6 +3278,47 @@ async function handleSplitTabsContextMenu(tab) {
  * @param {chrome.tabs.Tab} tab - The current tab (should be split page)
  * @returns {Promise<void>}
  */
+async function handleSaveToUnsortedRequest() {
+  try {
+    const tabs = await chrome.tabs.query({
+      currentWindow: true,
+      active: true,
+    });
+    const activeTab = tabs && tabs[0];
+    if (!activeTab) {
+      pushNotification(
+        'save-unsorted-request',
+        'Save to Unsorted',
+        'No active tab found.',
+      );
+      return;
+    }
+
+    await chrome.action.openPopup();
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    await chrome.runtime.sendMessage({
+      type: SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE,
+      tab: {
+        id: activeTab.id,
+        url: activeTab.url,
+        title: activeTab.title,
+      },
+    });
+  } catch (error) {
+    console.warn('[background] Save to Unsorted request failed:', error);
+    pushNotification(
+      'save-unsorted-request',
+      'Save to Unsorted',
+      'An unexpected error occurred.',
+    );
+  }
+}
+
+/**
+ * Handle unsplit tabs context menu click
+ * @param {chrome.tabs.Tab} tab - The current tab (should be split page)
+ * @returns {Promise<void>}
+ */
 async function handleUnsplitTabsContextMenu(tab) {
   try {
     if (!tab || typeof tab.id !== 'number') {
@@ -3421,21 +3423,7 @@ if (chrome.contextMenus) {
 
     // Save current page to unsorted
     if (menuItemId === RAINDROP_MENU_IDS.SAVE_PAGE) {
-      const url = typeof info.pageUrl === 'string' ? info.pageUrl : '';
-      if (!url) {
-        return;
-      }
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
-      if (!normalizedUrl) {
-        return;
-      }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-      const originalTitle = typeof tab?.title === 'string' ? tab.title : '';
-      const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
-        console.error('[contextMenu] Failed to save page:', error);
-      });
+      void handleSaveToUnsortedRequest();
       return;
     }
 

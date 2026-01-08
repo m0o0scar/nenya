@@ -10,6 +10,7 @@ import {
   handleEncryptAndSaveActive,
   handleSaveToUnsorted,
   handlePull,
+  showSaveToUnsortedDialog,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
 import { initializeProjects } from './projects.js';
@@ -1398,6 +1399,14 @@ async function handlePictureInPicture() {
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'sync' && changes.cloudAuthTokens) {
     void initializePopup();
+  }
+});
+
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.type === 'showSaveToUnsortedDialog') {
+    showSaveToUnsortedDialog(message.tab);
+    sendResponse({ ok: true });
+    return;
   }
 });
 
