@@ -940,11 +940,9 @@ export async function runMirrorPull(trigger) {
   }
 
   syncInProgress = true;
-  const badgeAnimation = animateActionBadge(ANIMATION_DOWN_SEQUENCE);
-  let finalBadge = '❌';
+  setActionBadge('PULL', '#4CAF50');
   try {
     const pullResult = await performMirrorPull(trigger);
-    finalBadge = '✅';
     void notifyMirrorPullSuccess(
       pullResult.stats,
       pullResult.rootFolderId,
@@ -957,7 +955,7 @@ export async function runMirrorPull(trigger) {
     void notifyMirrorPullFailure(message);
     return { ok: false, error: message };
   } finally {
-    concludeActionBadge(badgeAnimation, finalBadge);
+    setActionBadge('', '', 2000);
     syncInProgress = false;
   }
 }
@@ -975,13 +973,11 @@ export async function resetAndPull() {
   }
 
   syncInProgress = true;
-  const badgeAnimation = animateActionBadge(ANIMATION_DOWN_SEQUENCE);
-  let finalBadge = '❌';
+  setActionBadge('PULL', '#4CAF50');
   try {
     const settingsData = await loadRootFolderSettings();
     await resetMirrorState(settingsData);
     const pullResult = await performMirrorPull('reset');
-    finalBadge = '✅';
     void notifyMirrorPullSuccess(
       pullResult.stats,
       pullResult.rootFolderId,
@@ -994,7 +990,7 @@ export async function resetAndPull() {
     void notifyMirrorPullFailure(message);
     return { ok: false, error: message };
   } finally {
-    concludeActionBadge(badgeAnimation, finalBadge);
+    setActionBadge('', '', 2000);
     syncInProgress = false;
   }
 }
