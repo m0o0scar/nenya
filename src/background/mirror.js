@@ -929,6 +929,25 @@ export async function runMirrorPull(trigger) {
     };
   }
 
+  if (trigger === 'startup' || trigger === 'install') {
+    const COOLDOWN_MINUTES = 30;
+    const lastPullTimestamp = await readLocalNumber(
+      'raindropLastSuccessfulPull',
+      0,
+    );
+    const now = Date.now();
+    const minutesSinceLastPull = (now - lastPullTimestamp) / (1000 * 60);
+
+    if (minutesSinceLastPull < COOLDOWN_MINUTES) {
+      console.log(
+        `[mirror] Startup pull skipped due to cooldown. Last pull was ${minutesSinceLastPull.toFixed(
+          1,
+        )} minutes ago.`,
+      );
+      return { ok: true, stats: createEmptyStats() }; // Return success but with empty stats
+    }
+  }
+
   // Check if user is logged in before starting sync
   const tokens = await loadValidProviderTokens();
   if (!tokens) {
@@ -950,6 +969,7 @@ export async function runMirrorPull(trigger) {
       pullResult.rootFolderId,
       trigger,
     );
+    await writeLocalNumber('raindropLastSuccessfulPull', Date.now());
     return { ok: true, stats: pullResult.stats };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
