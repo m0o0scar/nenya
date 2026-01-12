@@ -929,7 +929,7 @@ export async function runMirrorPull(trigger) {
     };
   }
 
-  if (trigger === 'startup') {
+  if (trigger === 'startup' || trigger === 'install') {
     const COOLDOWN_MINUTES = 30;
     const lastPullTimestamp = await readLocalNumber(
       'raindropLastSuccessfulPull',
