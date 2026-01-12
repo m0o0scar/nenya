@@ -1005,11 +1005,6 @@ export async function resetAndPull() {
  * @returns {Promise<void>}
  */
 export async function resetMirrorState(settingsData) {
-  await chrome.storage.local.remove([
-    LOCAL_KEY_OLDEST_ITEM,
-    LOCAL_KEY_OLDEST_DELETED,
-  ]);
-
   const parentId = await ensureParentFolderAvailable(settingsData);
   const normalizedTitle = normalizeFolderTitle(
     settingsData.settings.rootFolderName,
