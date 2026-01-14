@@ -1458,6 +1458,7 @@ function wrapInternalUrl(url) {
 }
 
 const BROWSER_ID_WORDS = [
+  // Animals
   'Tiger',
   'Panda',
   'Eagle',
@@ -1468,11 +1469,35 @@ const BROWSER_ID_WORDS = [
   'Owl',
   'Bear',
   'Shark',
-  'Tokyo',
-  'Paris',
-  'London',
-  'Berlin',
-  'Oslo',
+  'Leopard',
+  'Falcon',
+  'Penguin',
+  'Rabbit',
+  'Otter',
+  'Raven',
+  'Lynx',
+  'Snake',
+  'Horse',
+  'Elephant',
+  'Moose',
+  'Giraffe',
+  'Zebra',
+  'Koala',
+  'Wombat',
+  'Peacock',
+  'Cheetah',
+  'Hawk',
+  'Viper',
+  'Cobra',
+  'Frog',
+  'Kangaroo',
+  'Coyote',
+  'Mole',
+  'Bison',
+  'Hedgehog',
+  'Platypus',
+
+  // Colors
   'Red',
   'Blue',
   'Green',
@@ -1483,6 +1508,134 @@ const BROWSER_ID_WORDS = [
   'Sapphire',
   'Ruby',
   'Onyx',
+  'Violet',
+  'Indigo',
+  'Crimson',
+  'Scarlet',
+  'Ivory',
+  'Teal',
+  'Cyan',
+  'Coral',
+  'Lilac',
+  'Rose',
+  'Charcoal',
+  'Bronze',
+  'Pearl',
+  'Jade',
+  'Turquoise',
+  'Azure',
+  'Lavender',
+  'Magenta',
+  'Sand',
+  'Obsidian',
+
+  // Cities
+  'Tokyo',
+  'Paris',
+  'London',
+  'Berlin',
+  'Oslo',
+  'Seoul',
+  'Sydney',
+  'Istanbul',
+  'Vienna',
+  'Rome',
+  'Madrid',
+  'Dublin',
+  'Moscow',
+  'Toronto',
+  'Prague',
+  'Venice',
+  'Zurich',
+  'Cairo',
+  'Lisbon',
+  'Dubai',
+  'Boston',
+  'Chicago',
+  'Munich',
+  'Budapest',
+  'Amsterdam',
+  'Athens',
+  'Stockholm',
+  'Helsinki',
+  'Brussels',
+  'Edinburgh',
+
+  // Famous People (first names or surnames for privacy)
+  'Newton',
+  'Tesla',
+  'Einstein',
+  'Curie',
+  'DaVinci',
+  'Hopper',
+  'Turing',
+  'Edison',
+  'Galileo',
+  'Ada',
+  'Elvis',
+  'Oprah',
+  'Cleo',
+  'Lincoln',
+  'Gandhi',
+  'Mozart',
+  'Bowie',
+  'Picasso',
+  'Nightingale',
+  'Aristotle',
+  'Bach',
+  'Hemingway',
+  'Jobs',
+  'Sagan',
+  'Amelia',
+  'Earhart',
+  'Mandela',
+  'Houdini',
+  'Grace',
+  'Marie',
+
+  // Common Objects
+  'Rocket',
+  'Comet',
+  'Anchor',
+  'Bridge',
+  'Compass',
+  'Lantern',
+  'Quill',
+  'Candle',
+  'Mirror',
+  'Globe',
+  'Pencil',
+  'Hammer',
+  'Anvil',
+  'Vase',
+  'Helmet',
+  'Book',
+  'Map',
+  'Clock',
+  'Bell',
+  'Flute',
+  'Violin',
+  'Crown',
+  'Key',
+  'Locket',
+  'Pinwheel',
+  'Coin',
+  'Scarf',
+  'Boot',
+  'Cup',
+  'Bottle',
+
+  // Misc
+  'Storm',
+  'Cloud',
+  'Drift',
+  'Blaze',
+  'Spark',
+  'Zenith',
+  'Echo',
+  'Nova',
+  'Bliss',
+  'Quest',
 ];
 
 /**
@@ -1593,9 +1746,7 @@ async function ensureNenyaSessionsCollection() {
         : [];
 
       const deviceCollection = childCollections.find(
-        (c) =>
-          c.title === browserId &&
-          c.parent?.$id === sessionsCollectionId,
+        (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
       );
 
       if (!deviceCollection) {
@@ -1701,8 +1852,10 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     });
 
     // 3. Batch create raindrops
-    console.log(`[mirror] Batching ${items.length} items to collection ${deviceCollectionId}`);
-    
+    console.log(
+      `[mirror] Batching ${items.length} items to collection ${deviceCollectionId}`,
+    );
+
     // Raindrop batch API limit is 100 items per request
     const CHUNK_SIZE = 100;
     for (let i = 0; i < items.length; i += CHUNK_SIZE) {
@@ -1716,7 +1869,9 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       });
     }
 
-    console.log(`[mirror] Session exported successfully to collection ${deviceCollectionId}`);
+    console.log(
+      `[mirror] Session exported successfully to collection ${deviceCollectionId}`,
+    );
   } catch (error) {
     console.warn('[mirror] Failed to export current session:', error);
   }
