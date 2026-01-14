@@ -7,6 +7,7 @@ import {
   ensureNenyaSessionsCollection,
   handleFetchSessions,
   handleRestoreSession,
+  handleFetchSessionDetails,
 } from './mirror.js';
 
 import {
@@ -66,7 +67,11 @@ const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
 const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
+const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
 const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
+const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
+const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
+const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -2178,6 +2183,77 @@ async function handleSendToLLM(providerId, currentTab) {
 // MESSAGE LISTENER
 // ============================================================================
 
+/**
+ * Restore a single window from its structured tree.
+ * @param {any[]} tree
+ * @returns {Promise<void>}
+ */
+async function restoreWindowFromTree(tree) {
+  const tabs = [];
+  // Flatten tree to get all tabs first to create the window
+  tree.forEach((node) => {
+    if (node.type === 'tab') {
+      tabs.push(node);
+    } else if (node.type === 'group') {
+      node.tabs.forEach((t) => tabs.push(t));
+    }
+  });
+
+  if (tabs.length === 0) return;
+
+  const firstTab = tabs[0];
+  const newWindow = await chrome.windows.create({
+    url: firstTab.url,
+    focused: true,
+  });
+
+  const windowId = newWindow.id;
+  if (windowId === undefined || !newWindow.tabs) return;
+
+  const firstCreatedTabId = newWindow.tabs[0].id;
+  if (firstCreatedTabId === undefined) return;
+
+  if (firstTab.pinned) {
+    await chrome.tabs.update(firstCreatedTabId, { pinned: true });
+  }
+
+  const createdTabs = [{ id: firstCreatedTabId, oldGroupId: firstTab.groupId }];
+
+  // Create remaining tabs
+  for (let i = 1; i < tabs.length; i++) {
+    const tabInfo = tabs[i];
+    const newTab = await chrome.tabs.create({
+      windowId,
+      url: tabInfo.url,
+      pinned: tabInfo.pinned,
+    });
+    if (newTab && newTab.id !== undefined) {
+      createdTabs.push({ id: newTab.id, oldGroupId: tabInfo.groupId });
+    }
+  }
+
+  // Restore groups in this window
+  for (const node of tree) {
+    if (node.type === 'group') {
+      const tabIdsInGroup = createdTabs
+        .filter((t) => t.oldGroupId === node.id)
+        .map((t) => t.id);
+
+      if (tabIdsInGroup.length > 0) {
+        const newGroupId = await chrome.tabs.group({
+          tabIds: /** @type {any} */ (tabIdsInGroup),
+          createProperties: { windowId },
+        });
+        await chrome.tabGroups.update(newGroupId, {
+          title: node.title,
+          color: node.color,
+          collapsed: node.collapsed,
+        });
+      }
+    }
+  }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'addClipboardItem') {
     void addClipboardItem(message.data);
@@ -2289,6 +2365,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === FETCH_SESSION_DETAILS_MESSAGE) {
+    const collectionId = Number(message.collectionId);
+    handleFetchSessionDetails(collectionId)
+      .then((result) => {
+        sendResponse({ ok: true, details: result });
+      })
+      .catch((error) => {
+        console.error('[background] Fetch session details failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+
   if (message.type === RESTORE_SESSION_MESSAGE) {
     const collectionId = Number(message.collectionId);
     if (!Number.isFinite(collectionId)) {
@@ -2303,6 +2392,78 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         console.error('[background] Restore session failed:', error);
         sendResponse({ ok: false, error: error.message });
       });
+    return true;
+  }
+
+  if (message.type === RESTORE_WINDOW_MESSAGE) {
+    const { tree } = message;
+    void (async () => {
+      try {
+        await restoreWindowFromTree(tree);
+        sendResponse({ ok: true });
+      } catch (error) {
+        console.error('[background] Restore window failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === RESTORE_GROUP_MESSAGE) {
+    const { group } = message;
+    void (async () => {
+      try {
+        const newWindow = await chrome.windows.create({ focused: true });
+        const windowId = newWindow.id;
+        if (windowId === undefined) throw new Error('Failed to create window');
+
+        const tabIds = [];
+        for (const tab of group.tabs) {
+          const newTab = await chrome.tabs.create({
+            windowId,
+            url: tab.url,
+            pinned: tab.pinned,
+          });
+          if (newTab && newTab.id !== undefined) {
+            tabIds.push(newTab.id);
+          }
+        }
+
+        // Remove the default blank tab
+        if (newWindow.tabs && newWindow.tabs[0] && newWindow.tabs[0].id !== undefined) {
+          await chrome.tabs.remove(newWindow.tabs[0].id);
+        }
+
+        if (tabIds.length > 0) {
+          const newGroupId = await chrome.tabs.group({
+            tabIds: /** @type {any} */ (tabIds),
+            createProperties: { windowId },
+          });
+          await chrome.tabGroups.update(newGroupId, {
+            title: group.title,
+            color: group.color,
+          });
+        }
+        sendResponse({ ok: true });
+      } catch (error) {
+        console.error('[background] Restore group failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  if (message.type === RESTORE_TAB_MESSAGE) {
+    const { url, pinned } = message;
+    void (async () => {
+      try {
+        await chrome.windows.create({ url, focused: true });
+        sendResponse({ ok: true });
+      } catch (error) {
+        console.error('[background] Restore tab failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
     return true;
   }
 

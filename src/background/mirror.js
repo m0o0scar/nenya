@@ -122,6 +122,7 @@ export {
   ensureNenyaSessionsCollection,
   handleFetchSessions,
   handleRestoreSession,
+  handleFetchSessionDetails,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -183,6 +184,128 @@ async function handleFetchSessions() {
       title: c.title,
       isCurrent: c.title === browserId,
     }));
+}
+
+/**
+ * Fetch detailed structure of a session.
+ * @param {number} collectionId
+ * @returns {Promise<any>}
+ */
+async function handleFetchSessionDetails(collectionId) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // 1. Fetch all items in the collection
+  const items = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await raindropRequest(
+      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+      tokens,
+    );
+    const pageItems = Array.isArray(response?.items) ? response.items : [];
+    items.push(...pageItems);
+
+    if (pageItems.length < FETCH_PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      page += 1;
+    }
+  }
+
+  if (items.length === 0) {
+    return { windows: [] };
+  }
+
+  // 2. Separate meta item from tabs
+  const metaItem = items.find(
+    (item) => item.link === 'https://nenya.local/meta',
+  );
+  const tabItems = items.filter(
+    (item) => item.link !== 'https://nenya.local/meta',
+  );
+
+  let metaData = { tabGroups: [] };
+  if (metaItem && metaItem.excerpt) {
+    try {
+      metaData = JSON.parse(metaItem.excerpt);
+    } catch (e) {
+      console.warn('[mirror] Failed to parse session meta data:', e);
+    }
+  }
+
+  // 3. Group tabs by windowId and then by groupId
+  const windowsMap = new Map();
+  tabItems.forEach((item) => {
+    let tabData = {};
+    if (item.excerpt) {
+      try {
+        tabData = JSON.parse(item.excerpt);
+      } catch (e) {
+        // Ignore
+      }
+    }
+    const windowId = tabData.windowId || 0;
+    if (!windowsMap.has(windowId)) {
+      windowsMap.set(windowId, {
+        id: windowId,
+        items: [], // list of all tab items in this window
+      });
+    }
+    windowsMap.get(windowId).items.push({
+      id: item._id,
+      url: unwrapInternalUrl(item.link),
+      title: item.title,
+      pinned: tabData.pinned || false,
+      index: tabData.index || 0,
+      groupId: tabData.tabGroupId,
+    });
+  });
+
+  const windows = Array.from(windowsMap.values()).map((win) => {
+    // Sort all tabs by index
+    win.items.sort((a, b) => a.index - b.index);
+
+    // Group tabs into groups or leave ungrouped
+    const tree = [];
+    const processedGroupIds = new Set();
+
+    win.items.forEach((tab) => {
+      if (tab.groupId !== undefined && tab.groupId !== -1) {
+        if (!processedGroupIds.has(tab.groupId)) {
+          const groupMeta = /** @type {any[]} */ (
+            metaData.tabGroups || []
+          ).find((g) => g.id === tab.groupId);
+          const groupTabs = win.items.filter((t) => t.groupId === tab.groupId);
+          tree.push({
+            type: 'group',
+            id: tab.groupId,
+            title: groupMeta?.title || 'Group',
+            color: groupMeta?.color || 'grey',
+            collapsed: groupMeta?.collapsed || false,
+            tabs: groupTabs,
+          });
+          processedGroupIds.add(tab.groupId);
+        }
+      } else {
+        tree.push({
+          type: 'tab',
+          ...tab,
+        });
+      }
+    });
+
+    return {
+      id: win.id,
+      tree,
+    };
+  });
+
+  return { windows };
 }
 
 /**
