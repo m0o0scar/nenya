@@ -150,6 +150,8 @@ const DEFAULT_BADGE_ANIMATION_DELAY = 300;
 
 const ANIMATION_DOWN_SEQUENCE = ['🔽', '⏬'];
 const ANIMATION_UP_SEQUENCE = ['🔼', '⏫'];
+const AUTO_EXPORT_ALARM_NAME = 'nenya-session-export';
+const AUTO_EXPORT_INTERVAL_MINUTES = 1;
 
 /** @type {BadgeAnimationHandle | null} */
 let currentBadgeAnimationHandle = null;
@@ -520,6 +522,15 @@ if (chrome?.storage?.onChanged) {
 
     const next = normalizeNotificationPreferences(detail.newValue);
     updateNotificationPreferencesCache(next);
+  });
+}
+
+// Listen for chrome.alarms events
+if (chrome?.alarms) {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === AUTO_EXPORT_ALARM_NAME) {
+      void handleAutoExportAlarm();
+    }
   });
 }
 
@@ -1677,6 +1688,178 @@ async function getOrCreateBrowserId() {
 /** @type {Promise<void> | null} */
 let ensureNenyaSessionsCollectionPromise = null;
 
+/** @type {number | null} */
+let deviceCollectionId = null;
+/** @type {Promise<void> | null} */
+let currentExportPromise = null;
+
+/**
+ * Get or create the parent "nenya / sessions" collection.
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<number>}
+ */
+async function ensureSessionsCollection(tokens) {
+  const SESSIONS_COLLECTION_NAME = 'nenya / sessions';
+
+  // 1. Fetch root level collections
+  const response = await raindropRequest('/collections', tokens);
+  const collections = Array.isArray(response?.items) ? response.items : [];
+
+  // 2. Check if there is one named "nenya / sessions"
+  const sessionsCollection = collections.find(
+    (c) => c.title === SESSIONS_COLLECTION_NAME,
+  );
+
+  // 3. If no, create it
+  let sessionsCollectionId;
+  if (!sessionsCollection) {
+    console.log(
+      `[mirror] Creating Raindrop collection: ${SESSIONS_COLLECTION_NAME}`,
+    );
+    const createResult = await raindropRequest('/collection', tokens, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: SESSIONS_COLLECTION_NAME,
+      }),
+    });
+    sessionsCollectionId = createResult?.item?._id;
+    console.log(`[mirror] Collection created: ${SESSIONS_COLLECTION_NAME}`);
+  } else {
+    sessionsCollectionId = sessionsCollection._id;
+    console.log(
+      `[mirror] Raindrop collection already exists: ${SESSIONS_COLLECTION_NAME}`,
+    );
+  }
+
+  if (!sessionsCollectionId) {
+    throw new Error('Failed to obtain sessions collection ID');
+  }
+
+  return sessionsCollectionId;
+}
+
+/**
+ * Delete old device collection and create a new one.
+ * Step 1: Delete entire old device collection if exists
+ * Step 2: Create new device collection
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<number>}
+ */
+async function recreateDeviceCollection(tokens) {
+  const browserId = await getOrCreateBrowserId();
+  console.log(`[mirror] Current Browser ID: ${browserId}`);
+
+  // Ensure parent collection exists
+  const sessionsCollectionId = await ensureSessionsCollection(tokens);
+
+  // Fetch children of "nenya / sessions"
+  const childrenResult = await raindropRequest(
+    '/collections/childrens',
+    tokens,
+  );
+  const childCollections = Array.isArray(childrenResult?.items)
+    ? childrenResult.items
+    : [];
+
+  const deviceCollection = childCollections.find(
+    (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
+  );
+
+  // Step 1: Delete entire old device collection if exists
+  if (deviceCollection) {
+    console.log(
+      `[mirror] Deleting old device collection: ${browserId} (ID: ${deviceCollection._id})`,
+    );
+    await raindropRequest(`/collection/${deviceCollection._id}`, tokens, {
+      method: 'DELETE',
+    });
+    console.log(`[mirror] Old device collection deleted: ${browserId}`);
+  }
+
+  // Step 2: Create new device collection
+  console.log(`[mirror] Creating new device collection: ${browserId}`);
+  const createResult = await raindropRequest('/collection', tokens, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title: browserId,
+      parent: { $id: sessionsCollectionId },
+    }),
+  });
+  const newCollectionId = createResult?.item?._id;
+  console.log(
+    `[mirror] New device collection created: ${browserId} (ID: ${newCollectionId})`,
+  );
+
+  if (!newCollectionId) {
+    throw new Error('Failed to create device collection');
+  }
+
+  return newCollectionId;
+}
+
+/**
+ * Complete export flow: delete old collection, create new one, and export session.
+ * This function follows the required three-step process:
+ * 1. Delete entire old device collection on raindrop
+ * 2. Create new device collection
+ * 3. Create raindrop items from current session
+ * @param {StoredProviderTokens} [providedTokens]
+ * @returns {Promise<void>}
+ */
+async function ensureDeviceCollectionAndExport(providedTokens) {
+  // Prevent concurrent exports - if one is already running, wait for it
+  if (currentExportPromise) {
+    console.log('[mirror] Export already in progress, waiting...');
+    await currentExportPromise;
+    console.log('[mirror] Previous export completed, starting new export');
+  }
+
+  // Create a new export promise
+  currentExportPromise = (async () => {
+    try {
+      console.log('[mirror] ===== Starting new export =====');
+
+      // Get valid tokens
+      const tokens = providedTokens || (await loadValidProviderTokens());
+      if (!tokens) {
+        console.log('[mirror] No valid tokens, skipping export');
+        return;
+      }
+
+      // Step 1: Delete entire old device collection on raindrop
+      // Step 2: Create new device collection
+      console.log(
+        '[mirror] Step 1-2: Deleting old collection and creating new one',
+      );
+      const collectionId = await recreateDeviceCollection(tokens);
+      console.log(`[mirror] New device collection ID: ${collectionId}`);
+
+      // Store for future auto-exports
+      deviceCollectionId = collectionId;
+
+      // Step 3: Create raindrop items from current session
+      console.log('[mirror] Step 3: Creating new items from current session');
+      await exportCurrentSessionToRaindrop(collectionId, tokens);
+
+      console.log('[mirror] ===== Export completed successfully =====');
+    } catch (error) {
+      console.warn('[mirror] Export failed:', error);
+      throw error;
+    } finally {
+      // Clear the promise so next export can proceed
+      currentExportPromise = null;
+    }
+  })();
+
+  return currentExportPromise;
+}
+
 /**
  * Ensure the "nenya / sessions" collection exists in Raindrop.
  * @returns {Promise<void>}
@@ -1693,91 +1876,11 @@ async function ensureNenyaSessionsCollection() {
         return;
       }
 
-      const SESSIONS_COLLECTION_NAME = 'nenya / sessions';
+      // Use the unified export function
+      await ensureDeviceCollectionAndExport(tokens);
 
-      // 1. Fetch root level collections
-      const response = await raindropRequest('/collections', tokens);
-      const collections = Array.isArray(response?.items) ? response.items : [];
-
-      // 2. Check if there is one named "nenya / sessions"
-      const sessionsCollection = collections.find(
-        (c) => c.title === SESSIONS_COLLECTION_NAME,
-      );
-
-      // 3. If no, create it
-      let sessionsCollectionId;
-      if (!sessionsCollection) {
-        console.log(
-          `[mirror] Creating Raindrop collection: ${SESSIONS_COLLECTION_NAME}`,
-        );
-        const createResult = await raindropRequest('/collection', tokens, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: SESSIONS_COLLECTION_NAME,
-          }),
-        });
-        sessionsCollectionId = createResult?.item?._id;
-        console.log(`[mirror] Collection created: ${SESSIONS_COLLECTION_NAME}`);
-      } else {
-        sessionsCollectionId = sessionsCollection._id;
-        console.log(
-          `[mirror] Raindrop collection already exists: ${SESSIONS_COLLECTION_NAME}`,
-        );
-      }
-
-      if (!sessionsCollectionId) {
-        throw new Error('Failed to obtain sessions collection ID');
-      }
-
-      // 4. Ensure device-specific collection
-      const browserId = await getOrCreateBrowserId();
-      console.log(`[mirror] Current Browser ID: ${browserId}`);
-
-      // Fetch children of "nenya / sessions"
-      const childrenResult = await raindropRequest(
-        '/collections/childrens',
-        tokens,
-      );
-      const childCollections = Array.isArray(childrenResult?.items)
-        ? childrenResult.items
-        : [];
-
-      const deviceCollection = childCollections.find(
-        (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
-      );
-
-      // Always delete old collection if it exists
-      if (deviceCollection) {
-        console.log(
-          `[mirror] Deleting existing device collection: ${browserId}`,
-        );
-        await raindropRequest(`/collection/${deviceCollection._id}`, tokens, {
-          method: 'DELETE',
-        });
-      }
-
-      // Always create a new collection
-      console.log(`[mirror] Creating device collection: ${browserId}`);
-      const createResult = await raindropRequest('/collection', tokens, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          title: browserId,
-          parent: { $id: sessionsCollectionId },
-        }),
-      });
-      const deviceCollectionId = createResult?.item?._id;
-      console.log(`[mirror] Device collection created: ${browserId}`);
-
-      // Always export session to the new collection
-      if (deviceCollectionId) {
-        await exportCurrentSessionToRaindrop(deviceCollectionId, tokens);
-      }
+      // Start auto-export if not already running
+      startAutoExport();
     } catch (error) {
       console.warn(
         '[mirror] Failed to ensure nenya sessions collection:',
@@ -1787,6 +1890,204 @@ async function ensureNenyaSessionsCollection() {
   })();
 
   return ensureNenyaSessionsCollectionPromise;
+}
+
+/**
+ * Delete all items in a Raindrop collection.
+ * Step 1: Fetch all item IDs from all pages
+ * Step 2: Batch delete all items
+ * @param {number} collectionId
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<void>}
+ */
+async function deleteAllItemsInCollection(collectionId, tokens) {
+  try {
+    console.log(
+      `[mirror] Starting to delete all items from collection ${collectionId}`,
+    );
+
+    // Step 1: Fetch all item IDs from all pages
+    const allItemIds = [];
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await raindropRequest(
+        `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+        tokens,
+      );
+      const items = Array.isArray(response?.items) ? response.items : [];
+
+      if (items.length === 0) {
+        hasMore = false;
+        break;
+      }
+
+      // Extract and collect item IDs
+      const itemIds = items
+        .map((item) => extractItemId(item))
+        .filter((id) => Number.isFinite(id));
+
+      allItemIds.push(...itemIds);
+
+      // Check if there are more pages
+      if (items.length < FETCH_PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        page += 1;
+      }
+    }
+
+    console.log(
+      `[mirror] Found ${allItemIds.length} items to delete from collection ${collectionId}`,
+    );
+
+    // Step 2: Batch delete all items (in chunks if needed)
+    if (allItemIds.length > 0) {
+      // Raindrop batch delete API limit
+      const DELETE_CHUNK_SIZE = 100;
+      for (let i = 0; i < allItemIds.length; i += DELETE_CHUNK_SIZE) {
+        const chunk = allItemIds.slice(i, i + DELETE_CHUNK_SIZE);
+        console.log(
+          `[mirror] Deleting items ${i + 1}-${Math.min(
+            i + chunk.length,
+            allItemIds.length,
+          )} of ${allItemIds.length}`,
+          chunk,
+        );
+
+        // Use the correct API endpoint: DELETE /raindrops/{collectionId}
+        // We send both 'ids' and 'id' to be safe as documentation is ambiguous
+        const response = await raindropRequest(
+          `/raindrops/${collectionId}`,
+          tokens,
+          {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids: chunk, id: chunk }),
+          },
+        );
+
+        console.log(
+          `[mirror] Delete response for chunk ${i / DELETE_CHUNK_SIZE + 1}:`,
+          response,
+        );
+
+        // If DELETE didn't work (modified: 0), try the fallback method:
+        // Moving items to Trash (-99) using PUT
+        if (response && response.modified === 0 && chunk.length > 0) {
+          console.log(
+            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+          );
+          const fallbackResponse = await raindropRequest(
+            `/raindrops/${collectionId}`,
+            tokens,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ids: chunk,
+                collection: { $id: -99 },
+              }),
+            },
+          );
+          console.log('[mirror] Fallback PUT response:', fallbackResponse);
+        }
+      }
+
+      console.log(
+        `[mirror] Successfully deleted ${allItemIds.length} items from collection ${collectionId}`,
+      );
+    } else {
+      console.log(
+        `[mirror] Collection ${collectionId} is already empty, no items to delete`,
+      );
+    }
+  } catch (error) {
+    console.warn(
+      `[mirror] Failed to delete items from collection ${collectionId}:`,
+      error,
+    );
+    throw error;
+  }
+}
+
+/**
+ * Check if any browser window is active (not minimized or hidden).
+ * @returns {Promise<boolean>}
+ */
+async function checkIfAnyWindowIsActive() {
+  try {
+    const windows = await chrome.windows.getAll();
+    return windows.some((win) => win.state !== 'minimized');
+  } catch (error) {
+    console.warn('[mirror] Failed to check window state:', error);
+    return false;
+  }
+}
+
+/**
+ * Handle auto-export when alarm fires.
+ * @returns {Promise<void>}
+ */
+async function handleAutoExportAlarm() {
+  try {
+    // Check if any window is active
+    const isAnyWindowActive = await checkIfAnyWindowIsActive();
+    if (!isAnyWindowActive) {
+      console.log('[mirror] No active windows, skipping auto-export');
+      return;
+    }
+
+    console.log('[mirror] Auto-export triggered');
+
+    // Use the unified export function that follows the three-step process:
+    // 1. Create device collection if not exists, reuse if exists
+    // 2. Delete ALL raindrop items in the collection with batch API
+    // 3. Save new raindrop items to the collection with batch API
+    await ensureDeviceCollectionAndExport();
+  } catch (error) {
+    console.warn('[mirror] Auto-export failed:', error);
+  }
+}
+
+/**
+ * Start the auto-export alarm.
+ * @returns {void}
+ */
+function startAutoExport() {
+  if (!chrome?.alarms) {
+    console.warn('[mirror] chrome.alarms API not available');
+    return;
+  }
+
+  console.log('[mirror] Starting auto-export alarm (every 1 minute)');
+
+  // Create a repeating alarm that fires every minute
+  chrome.alarms.create(AUTO_EXPORT_ALARM_NAME, {
+    delayInMinutes: AUTO_EXPORT_INTERVAL_MINUTES,
+    periodInMinutes: AUTO_EXPORT_INTERVAL_MINUTES,
+  });
+}
+
+/**
+ * Stop the auto-export alarm.
+ * @returns {void}
+ */
+function stopAutoExport() {
+  if (!chrome?.alarms) {
+    return;
+  }
+
+  chrome.alarms.clear(AUTO_EXPORT_ALARM_NAME, (wasCleared) => {
+    if (wasCleared) {
+      console.log('[mirror] Stopped auto-export alarm');
+    }
+  });
 }
 
 /**
@@ -2755,7 +3056,11 @@ function extractItemId(item) {
   if (!item || typeof item !== 'object') {
     return undefined;
   }
+  // Raindrop items use _id, but we check common variations
   const raw = item._id ?? item.id ?? item.ID;
+  if (raw === undefined || raw === null) {
+    return undefined;
+  }
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
     return undefined;
