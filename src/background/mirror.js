@@ -120,6 +120,8 @@ export {
   handleRaindropSearch,
   isPromiseLike,
   ensureNenyaSessionsCollection,
+  handleFetchSessions,
+  handleRestoreSession,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -127,6 +129,210 @@ import {
   convertSplitUrlForSave,
   convertSplitUrlForRestore,
 } from '../shared/splitUrl.js';
+
+// ... (skipping some lines)
+
+/**
+ * Unwrap an internal URL from nenya.local format.
+ * @param {string} url
+ * @returns {string}
+ */
+function unwrapInternalUrl(url) {
+  if (!url || typeof url !== 'string') {
+    return url;
+  }
+
+  if (url.startsWith('https://nenya.local/tab?url=')) {
+    try {
+      const parsed = new URL(url);
+      const originalUrl = parsed.searchParams.get('url');
+      return originalUrl || url;
+    } catch (e) {
+      return url;
+    }
+  }
+
+  return convertSplitUrlForRestore(url);
+}
+
+/**
+ * Fetch all sessions (child collections of "nenya / sessions").
+ * @returns {Promise<Array<{id: number, title: string, isCurrent: boolean}>>}
+ */
+async function handleFetchSessions() {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  const sessionsCollectionId = await ensureSessionsCollection(tokens);
+  const browserId = await getOrCreateBrowserId();
+
+  const childrenResult = await raindropRequest(
+    '/collections/childrens',
+    tokens,
+  );
+  const childCollections = Array.isArray(childrenResult?.items)
+    ? childrenResult.items
+    : [];
+
+  return childCollections
+    .filter((c) => c.parent?.$id === sessionsCollectionId)
+    .map((c) => ({
+      id: c._id,
+      title: c.title,
+      isCurrent: c.title === browserId,
+    }));
+}
+
+/**
+ * Restore a session from a Raindrop collection.
+ * @param {number} collectionId
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleRestoreSession(collectionId) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // 1. Fetch all items in the collection
+  const items = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await raindropRequest(
+      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+      tokens,
+    );
+    const pageItems = Array.isArray(response?.items) ? response.items : [];
+    items.push(...pageItems);
+
+    if (pageItems.length < FETCH_PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      page += 1;
+    }
+  }
+
+  if (items.length === 0) {
+    return { success: true };
+  }
+
+  // 2. Separate meta item from tabs
+  const metaItem = items.find(
+    (item) => item.link === 'https://nenya.local/meta',
+  );
+  const tabItems = items.filter(
+    (item) => item.link !== 'https://nenya.local/meta',
+  );
+
+  let metaData = null;
+  if (metaItem && metaItem.excerpt) {
+    try {
+      metaData = JSON.parse(metaItem.excerpt);
+    } catch (e) {
+      console.warn('[mirror] Failed to parse session meta data:', e);
+    }
+  }
+
+  // 3. Group tabs by their original windowId
+  const tabsByWindow = new Map();
+  tabItems.forEach((item) => {
+    let tabData = {};
+    if (item.excerpt) {
+      try {
+        tabData = JSON.parse(item.excerpt);
+      } catch (e) {
+        // Ignore
+      }
+    }
+    const windowId = tabData.windowId || 0;
+    if (!tabsByWindow.has(windowId)) {
+      tabsByWindow.set(windowId, []);
+    }
+    tabsByWindow.get(windowId).push({
+      url: unwrapInternalUrl(item.link),
+      pinned: tabData.pinned || false,
+      index: tabData.index,
+      groupId: tabData.tabGroupId,
+    });
+  });
+
+  // 4. Restore each window
+  for (const [oldWindowId, tabs] of tabsByWindow.entries()) {
+    // Sort tabs by their original index
+    tabs.sort((a, b) => (a.index || 0) - (b.index || 0));
+
+    // Create a new window with the first tab
+    const firstTab = tabs[0];
+    const newWindow = await chrome.windows.create({
+      url: firstTab.url,
+      focused: true,
+    });
+
+    if (
+      !newWindow ||
+      !newWindow.id ||
+      !newWindow.tabs ||
+      newWindow.tabs.length === 0
+    )
+      continue;
+    const windowId = newWindow.id;
+    const firstCreatedTabId = newWindow.tabs[0].id;
+    if (firstCreatedTabId === undefined) continue;
+
+    if (firstTab.pinned) {
+      await chrome.tabs.update(firstCreatedTabId, { pinned: true });
+    }
+
+    // Create remaining tabs
+    const createdTabs = [
+      { id: firstCreatedTabId, oldGroupId: firstTab.groupId },
+    ];
+    for (let i = 1; i < tabs.length; i++) {
+      const tabInfo = tabs[i];
+      const newTab = await chrome.tabs.create({
+        windowId: windowId,
+        url: tabInfo.url,
+        pinned: tabInfo.pinned,
+      });
+      if (newTab && newTab.id !== undefined) {
+        createdTabs.push({ id: newTab.id, oldGroupId: tabInfo.groupId });
+      }
+    }
+
+    // Restore tab groups if metaData is available
+    if (metaData && metaData.tabGroups) {
+      const windowGroups = metaData.tabGroups.filter(
+        (g) => g.windowId === oldWindowId,
+      );
+
+      for (const oldGroup of windowGroups) {
+        const tabIdsInGroup = createdTabs
+          .filter((t) => t.oldGroupId === oldGroup.id)
+          .map((t) => t.id);
+
+        if (tabIdsInGroup.length > 0) {
+          const newGroupId = await /** @type {Promise<number>} */ (
+            chrome.tabs.group({
+              tabIds: /** @type {any} */ (tabIdsInGroup),
+              createProperties: { windowId: windowId },
+            })
+          );
+          await chrome.tabGroups.update(newGroupId, {
+            title: oldGroup.title,
+            color: oldGroup.color,
+            collapsed: oldGroup.collapsed,
+          });
+        }
+      }
+    }
+  }
+
+  return { success: true };
+}
 import {
   getValidTokens,
   TOKEN_VALIDATION_MESSAGE,

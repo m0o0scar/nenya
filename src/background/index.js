@@ -5,6 +5,8 @@ import {
   handleTokenValidationMessage,
   handleRaindropSearch,
   ensureNenyaSessionsCollection,
+  handleFetchSessions,
+  handleRestoreSession,
 } from './mirror.js';
 
 import {
@@ -63,6 +65,8 @@ const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
+const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
+const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -2269,6 +2273,35 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error('[background] Raindrop search failed:', error);
         sendResponse({ items: [], collections: [] });
+      });
+    return true;
+  }
+
+  if (message.type === FETCH_SESSIONS_MESSAGE) {
+    handleFetchSessions()
+      .then((result) => {
+        sendResponse({ ok: true, sessions: result });
+      })
+      .catch((error) => {
+        console.error('[background] Fetch sessions failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === RESTORE_SESSION_MESSAGE) {
+    const collectionId = Number(message.collectionId);
+    if (!Number.isFinite(collectionId)) {
+      sendResponse({ ok: false, error: 'Invalid collection ID' });
+      return false;
+    }
+    handleRestoreSession(collectionId)
+      .then((result) => {
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        console.error('[background] Restore session failed:', error);
+        sendResponse({ ok: false, error: error.message });
       });
     return true;
   }
