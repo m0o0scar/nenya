@@ -8,6 +8,9 @@ import {
   handleFetchSessions,
   handleRestoreSession,
   handleFetchSessionDetails,
+  exportCurrentSessionToRaindrop,
+  ensureDeviceCollectionAndExport,
+  loadValidProviderTokens,
 } from './mirror.js';
 
 import {
@@ -72,6 +75,7 @@ const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
+const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -546,7 +550,7 @@ function buildFriendlyEncryptedTitle() {
   for (let i = 0; i < count; i += 1) {
     const word =
       FRIENDLY_TITLE_WORDS[
-        Math.floor(Math.random() * FRIENDLY_TITLE_WORDS.length)
+      Math.floor(Math.random() * FRIENDLY_TITLE_WORDS.length)
       ];
     if (word) {
       words.push(word.charAt(0).toUpperCase() + word.slice(1));
@@ -614,8 +618,8 @@ async function encryptUrlWithPassword(url, password) {
   if (!response.ok) {
     throw new Error(
       'Encryption failed: ' +
-        response.status +
-        (response.statusText ? ' ' + response.statusText : ''),
+      response.status +
+      (response.statusText ? ' ' + response.statusText : ''),
     );
   }
 
@@ -2467,6 +2471,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === SAVE_SESSION_MESSAGE) {
+    const collectionId = Number(message.collectionId);
+    if (!Number.isFinite(collectionId)) {
+      sendResponse({ ok: false, error: 'Invalid collection ID' });
+      return false;
+    }
+    void (async () => {
+      try {
+        const tokens = await loadValidProviderTokens();
+        if (!tokens) {
+          throw new Error('Not authenticated with Raindrop');
+        }
+        // Use the unified export function to handle locking and robust sync
+        await ensureDeviceCollectionAndExport(tokens, collectionId);
+        sendResponse({ ok: true });
+      } catch (error) {
+        console.error('[background] Save session failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE) {
     const clipboardText =
       typeof message.clipboardText === 'string' ? message.clipboardText : '';
@@ -3454,8 +3481,8 @@ if (chrome.contextMenus) {
         typeof info.linkUrl === 'string' && info.linkUrl
           ? info.linkUrl
           : typeof info.pageUrl === 'string'
-          ? info.pageUrl
-          : '';
+            ? info.pageUrl
+            : '';
       if (!targetUrl) {
         return;
       }

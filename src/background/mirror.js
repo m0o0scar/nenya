@@ -123,6 +123,8 @@ export {
   handleFetchSessions,
   handleRestoreSession,
   handleFetchSessionDetails,
+  exportCurrentSessionToRaindrop,
+  ensureDeviceCollectionAndExport,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -154,6 +156,34 @@ function unwrapInternalUrl(url) {
   }
 
   return convertSplitUrlForRestore(url);
+}
+
+/**
+ * Get metadata stored in a Raindrop item's excerpt or note.
+ * Prefers 'excerpt' as per user request for searchability.
+ * @param {object} item
+ * @returns {object}
+ */
+function getItemMetadata(item) {
+  // Try excerpt first
+  if (item.excerpt) {
+    try {
+      const data = JSON.parse(item.excerpt);
+      if (data && typeof data === 'object') return data;
+    } catch (e) {
+      // ignore
+    }
+  }
+  // Fallback to note
+  if (item.note) {
+    try {
+      const data = JSON.parse(item.note);
+      if (data && typeof data === 'object') return data;
+    } catch (e) {
+      // ignore
+    }
+  }
+  return {};
 }
 
 /**
@@ -234,14 +264,7 @@ async function handleFetchSessionDetails(collectionId) {
   // 3. Group tabs by windowId and then by groupId
   const windowsMap = new Map();
   tabItems.forEach((item) => {
-    let tabData = {};
-    if (item.excerpt) {
-      try {
-        tabData = JSON.parse(item.excerpt);
-      } catch (e) {
-        // Ignore
-      }
-    }
+    const tabData = getItemMetadata(item);
     const windowId = tabData.windowId || 0;
     if (!windowsMap.has(windowId)) {
       windowsMap.set(windowId, {
@@ -346,14 +369,7 @@ async function handleRestoreSession(collectionId) {
   // 3. Group tabs by their original windowId
   const tabsByWindow = new Map();
   tabItems.forEach((item) => {
-    let tabData = {};
-    if (item.excerpt) {
-      try {
-        tabData = JSON.parse(item.excerpt);
-      } catch (e) {
-        // Ignore
-      }
-    }
+    const tabData = getItemMetadata(item);
     const windowId = tabData.windowId || 0;
     if (!tabsByWindow.has(windowId)) {
       tabsByWindow.set(windowId, []);
@@ -367,7 +383,7 @@ async function handleRestoreSession(collectionId) {
           windowId: windowId,
           title: tabData.groupTitle || 'Group',
           color: tabData.groupColor || 'grey',
-          collapsed: tabData.groupCollapsed || false
+          collapsed: tabData.groupCollapsed || false,
         });
       }
     }
@@ -471,7 +487,7 @@ const RAINDROP_COLLECTION_URL_BASE = 'https://app.raindrop.io/my/';
 const BOOKMARK_MANAGER_URL_BASE = 'chrome://bookmarks/?id=';
 const NOTIFICATION_ICON_PATH = 'assets/icons/icon-128x128.png';
 const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
-const FETCH_PAGE_SIZE = 100;
+const FETCH_PAGE_SIZE = 50; // Raindrop API limits perpage to 50 max for some endpoints
 const DEFAULT_BADGE_ANIMATION_DELAY = 300;
 
 const ANIMATION_DOWN_SEQUENCE = ['🔽', '⏬'];
@@ -1551,10 +1567,14 @@ async function raindropRequest(path, tokens, init) {
   const headers = new Headers(init?.headers ?? {});
   headers.set('Authorization', 'Bearer ' + tokens.accessToken);
   headers.set('Accept', 'application/json');
+  // Force no cache for all Raindrop API requests
+  headers.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  headers.set('Pragma', 'no-cache');
 
   const response = await fetch(url, {
     ...init,
     headers,
+    cache: 'no-store',
   });
 
   if (!response.ok) {
@@ -2131,7 +2151,14 @@ async function ensureDeviceCollection(tokens) {
  * @param {StoredProviderTokens} [providedTokens]
  * @returns {Promise<void>}
  */
-async function ensureDeviceCollectionAndExport(providedTokens) {
+/**
+ * Unified entry point for exporting the current session.
+ * Handles locking, token validation, and collection insurance.
+ * @param {any} [providedTokens]
+ * @param {number} [providedCollectionId]
+ * @returns {Promise<void>}
+ */
+async function ensureDeviceCollectionAndExport(providedTokens, providedCollectionId) {
   // Prevent concurrent exports - if one is already running, wait for it
   if (currentExportPromise) {
     console.log('[mirror] Export already in progress, waiting...');
@@ -2151,11 +2178,14 @@ async function ensureDeviceCollectionAndExport(providedTokens) {
         return;
       }
 
-      // Step 1: Ensure device collection exists (non-destructive)
-      console.log(
-        '[mirror] Step 1: Ensuring device collection existing',
-      );
-      const collectionId = await ensureDeviceCollection(tokens);
+      // Step 1: Ensure device collection exists (non-destructive) or use provided ID
+      let collectionId = providedCollectionId;
+      if (!collectionId) {
+        console.log(
+          '[mirror] Step 1: Ensuring device collection existing',
+        );
+        collectionId = await ensureDeviceCollection(tokens);
+      }
       console.log(`[mirror] Device collection ID: ${collectionId}`);
 
       // Store for future auto-exports
@@ -2437,13 +2467,9 @@ function hasTabChanged(item, tab, finalUrl, excerptData) {
   if (item.link !== finalUrl) return true;
   if (item.title !== (tab.title || 'Untitled')) return true;
 
-  // Check excerpt fields
-  let oldData = {};
-  try {
-    oldData = JSON.parse(item.excerpt || '{}');
-  } catch (e) {
-    return true; // If excerpt is corrupt, force update
-  }
+  // Check metadata fields
+  const oldData = getItemMetadata(item);
+  if (Object.keys(oldData).length === 0) return true; // Force update if no metadata
 
   if (oldData.pinned !== excerptData.pinned) return true;
   if (oldData.index !== excerptData.index) return true;
@@ -2466,7 +2492,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     const groupsMap = new Map();
     groups.forEach((g) => groupsMap.set(g.id, g));
 
-    // 1. Fetch existing items from Raindrop
+    // 1. Fetch ALL existing items from Raindrop
     const existingItems = [];
     let page = 0;
     let hasMore = true;
@@ -2483,21 +2509,32 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       }
     }
 
-    const existingMap = new Map();
-    existingItems.forEach(item => {
-      try {
-        const data = JSON.parse(item.excerpt || '{}');
-        if (data.tabId !== undefined && data.windowId !== undefined) {
-          existingMap.set(getTabUniqueId(data.tabId, data.windowId), item);
+    // Maps for matching current tabs to existing Raindrop items
+    const metadataMap = new Map(); // uniqueId -> item
+    const urlMap = new Map(); // url -> Array<item>
+    const allExistingIds = new Set();
+
+    existingItems.forEach((item) => {
+      allExistingIds.add(item._id);
+      const data = getItemMetadata(item);
+      if (data.tabId !== undefined && data.windowId !== undefined) {
+        const uniqueId = getTabUniqueId(data.tabId, data.windowId);
+        if (!metadataMap.has(uniqueId)) {
+          metadataMap.set(uniqueId, item);
         }
-      } catch (e) {
-        // Ignore items with bad excerpts
+      } else {
+        // If metadata is missing or invalid, index by URL as a fallback
+        const url = item.link;
+        if (!urlMap.has(url)) {
+          urlMap.set(url, []);
+        }
+        urlMap.get(url).push(item);
       }
     });
 
     const toCreate = [];
     const toUpdate = [];
-    const processedUniqueIds = new Set();
+    const processedRaindropIds = new Set();
 
     // 2. Identify Creates and Updates
     for (const win of windows) {
@@ -2510,7 +2547,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           ? tab.url
           : wrapInternalUrl(tab.url);
 
-        const excerptData = {
+        const metadata = {
           tabId: tab.id,
           tabGroupId: tab.groupId,
           windowId: tab.windowId,
@@ -2520,25 +2557,36 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
         if (tab.groupId > -1 && groupsMap.has(tab.groupId)) {
           const g = groupsMap.get(tab.groupId);
-          excerptData.groupTitle = g.title;
-          excerptData.groupColor = g.color;
-          excerptData.groupCollapsed = g.collapsed;
+          metadata.groupTitle = g.title;
+          metadata.groupColor = g.color;
+          metadata.groupCollapsed = g.collapsed;
         }
 
+        if (tab.id === undefined || tab.windowId === undefined) continue;
         const uniqueId = getTabUniqueId(tab.id, tab.windowId);
-        processedUniqueIds.add(uniqueId);
-
-        const existingItem = existingMap.get(uniqueId);
+        
+        // Match Strategy:
+        // A. Primary: Match by metadata (tabId-windowId)
+        // B. Secondary: Match by URL (fallback for when Raindrop overwrites excerpt)
+        let existingItem = metadataMap.get(uniqueId);
+        
+        if (!existingItem) {
+          const itemsWithSameUrl = urlMap.get(finalUrl);
+          if (itemsWithSameUrl && itemsWithSameUrl.length > 0) {
+            existingItem = itemsWithSameUrl.shift();
+          }
+        }
 
         const payload = {
           link: finalUrl,
           title: tab.title || 'Untitled',
           collection: { $id: deviceCollectionId },
-          excerpt: JSON.stringify(excerptData),
+          excerpt: JSON.stringify(metadata),
         };
 
         if (existingItem) {
-          if (hasTabChanged(existingItem, tab, finalUrl, excerptData)) {
+          processedRaindropIds.add(existingItem._id);
+          if (hasTabChanged(existingItem, tab, finalUrl, metadata)) {
             toUpdate.push({ id: existingItem._id, ...payload });
           }
         } else {
@@ -2547,11 +2595,11 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       }
     }
 
-    // 3. Identify Deletes
+    // 3. Identify Deletes (Any item in Raindrop NOT matched to a current tab)
     const idsToDelete = [];
-    existingMap.forEach((item, uniqueId) => {
-      if (!processedUniqueIds.has(uniqueId)) {
-        idsToDelete.push(item._id);
+    allExistingIds.forEach((id) => {
+      if (!processedRaindropIds.has(id)) {
+        idsToDelete.push(id);
       }
     });
 
@@ -2577,11 +2625,30 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
         const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
         console.log(`[mirror] Batch Deleting ${chunk.length} items`);
-        await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+        
+        // Use the same robust delete logic as deleteAllItemsInCollection
+        // sending both 'ids' and 'id' to be safe
+        const response = await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
           method: 'DELETE',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: chunk }),
+          body: JSON.stringify({ ids: chunk, id: chunk }),
         });
+
+        // If DELETE didn't work (modified: 0), try the fallback method:
+        // Moving items to Trash (-99) using PUT
+        if (response && response.modified === 0 && chunk.length > 0) {
+          console.log(
+            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+          );
+          await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ids: chunk,
+              collection: { $id: -99 },
+            }),
+          });
+        }
       }
     }
 
@@ -2596,7 +2663,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           body: JSON.stringify({
             link: item.link,
             title: item.title,
-            excerpt: item.excerpt,
+            excerpt: item.excerpt, // Use excerpt for metadata
             // collection is not needed if not moving
           }),
         });

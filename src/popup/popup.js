@@ -697,6 +697,54 @@ async function handleImportCustomCode(file) {
   }
 }
 
+/**
+ * Handle saving/syncing the current session to a collection.
+ * @param {number} collectionId
+ * @param {HTMLButtonElement} button
+ */
+async function handleSaveSession(collectionId, button) {
+  if (button.classList.contains('loading')) return;
+
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+  button.classList.add('loading');
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: SAVE_SESSION_MESSAGE,
+      collectionId
+    });
+
+    if (response && response.ok) {
+      button.innerHTML = '✅';
+      setTimeout(() => {
+        button.innerHTML = originalContent;
+        button.classList.remove('loading');
+      }, 2000);
+      if (statusMessage) {
+        concludeStatus('Session synced successfully', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Unknown error');
+    }
+  } catch (error) {
+    console.warn('[popup] Save session failed:', error);
+    button.innerHTML = '❌';
+    setTimeout(() => {
+      button.innerHTML = originalContent;
+      button.classList.remove('loading');
+    }, 3000);
+    if (statusMessage) {
+      concludeStatus(
+        'Failed to sync session: ' + error.message,
+        'error',
+        4000,
+        statusMessage,
+      );
+    }
+  }
+}
+
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
 const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
 const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
@@ -704,6 +752,7 @@ const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
+const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
@@ -818,8 +867,26 @@ function renderSessions(sessions, container) {
       void handleRestoreSession(session.id, restoreButton);
     });
 
+    const actionsContainer = document.createElement('div');
+    actionsContainer.className = 'flex items-center gap-1';
+
+    if (session.isCurrent) {
+      const saveButton = document.createElement('button');
+      saveButton.className =
+        'btn btn-square btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity';
+      saveButton.innerHTML = '💾';
+      saveButton.title = 'Sync current session to this collection';
+      saveButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void handleSaveSession(session.id, saveButton);
+      });
+      actionsContainer.appendChild(saveButton);
+    }
+
+    actionsContainer.appendChild(restoreButton);
+
     header.appendChild(leftSide);
-    header.appendChild(restoreButton);
+    header.appendChild(actionsContainer);
 
     const detailsContainer = document.createElement('div');
     detailsContainer.className = 'pl-4 hidden';
@@ -829,9 +896,7 @@ function renderSessions(sessions, container) {
       if (isHidden) {
         detailsContainer.classList.remove('hidden');
         toggleIcon.classList.add('rotate-90');
-        if (detailsContainer.children.length === 0) {
-          void fetchAndRenderSessionDetails(session.id, detailsContainer);
-        }
+        void fetchAndRenderSessionDetails(session.id, detailsContainer);
       } else {
         detailsContainer.classList.add('hidden');
         toggleIcon.classList.remove('rotate-90');
@@ -1200,7 +1265,7 @@ async function initializePopup() {
           statusMessage,
           openOptionsButton,
           validationStatus.error ||
-            'Session expired. Please reconnect in Options.',
+          'Session expired. Please reconnect in Options.',
         );
       }
     } else {
