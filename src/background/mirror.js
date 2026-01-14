@@ -119,6 +119,7 @@ export {
   fetchRaindropItems,
   handleRaindropSearch,
   isPromiseLike,
+  ensureNenyaSessionsCollection,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -1431,6 +1432,67 @@ async function handleRaindropSearch(query) {
     console.error('[mirror] Raindrop search failed:', error);
     return { items: [], collections: [] };
   }
+}
+
+/** @type {Promise<void> | null} */
+let ensureNenyaSessionsCollectionPromise = null;
+
+/**
+ * Ensure the "nenya / sessions" collection exists in Raindrop.
+ * @returns {Promise<void>}
+ */
+async function ensureNenyaSessionsCollection() {
+  if (ensureNenyaSessionsCollectionPromise) {
+    return ensureNenyaSessionsCollectionPromise;
+  }
+
+  ensureNenyaSessionsCollectionPromise = (async () => {
+    try {
+      const tokens = await loadValidProviderTokens();
+      if (!tokens) {
+        return;
+      }
+
+      const SESSIONS_COLLECTION_NAME = 'nenya / sessions';
+
+      // 1. Fetch root level collections
+      const response = await raindropRequest('/collections', tokens);
+      const collections = Array.isArray(response?.items) ? response.items : [];
+
+      // 2. Check if there is one named "nenya / sessions"
+      const sessionsCollection = collections.find(
+        (c) => c.title === SESSIONS_COLLECTION_NAME,
+      );
+
+      // 3. If no, create it
+      if (!sessionsCollection) {
+        console.log(
+          `[mirror] Creating Raindrop collection: ${SESSIONS_COLLECTION_NAME}`,
+        );
+        await raindropRequest('/collection', tokens, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: SESSIONS_COLLECTION_NAME,
+          }),
+        });
+        console.log(`[mirror] Collection created: ${SESSIONS_COLLECTION_NAME}`);
+      } else {
+        console.log(
+          `[mirror] Raindrop collection already exists: ${SESSIONS_COLLECTION_NAME}`,
+        );
+      }
+    } catch (error) {
+      console.warn(
+        '[mirror] Failed to ensure nenya sessions collection:',
+        error,
+      );
+    }
+  })();
+
+  return ensureNenyaSessionsCollectionPromise;
 }
 
 /**

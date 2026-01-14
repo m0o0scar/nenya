@@ -4,6 +4,7 @@ import {
   pushNotification,
   handleTokenValidationMessage,
   handleRaindropSearch,
+  ensureNenyaSessionsCollection,
 } from './mirror.js';
 
 import {
@@ -868,6 +869,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     void (async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
       await restoreSplitPages();
+      await ensureNenyaSessionsCollection();
     })();
 
     // Inject content scripts into existing tabs instead of reloading them
@@ -1192,6 +1194,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 // Ensure backup service is initialized immediately when service worker starts
 initializeOptionsBackupService();
+void ensureNenyaSessionsCollection();
 
 void initializeAutoReloadFeature().catch((error) => {
   console.error('[auto-reload] Initialization failed:', error);
