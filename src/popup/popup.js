@@ -697,6 +697,486 @@ async function handleImportCustomCode(file) {
   }
 }
 
+const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
+const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
+const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
+const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
+const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
+const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
+const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
+const SESSIONS_CACHE_KEY = 'sessionsCache';
+
+/**
+ * Initialize the sessions list in the popup.
+ * @returns {Promise<void>}
+ */
+async function initializeSessions() {
+  const sessionsSection = document.getElementById('sessionsSection');
+  const sessionsList = document.getElementById('sessionsList');
+  const loadingIndicator = document.getElementById('sessionsLoadingIndicator');
+
+  if (!sessionsSection || !sessionsList) {
+    return;
+  }
+
+  // 1. Load and render cached sessions immediately if available
+  try {
+    const result = await chrome.storage.local.get(SESSIONS_CACHE_KEY);
+    const cachedSessions = result[SESSIONS_CACHE_KEY];
+    if (Array.isArray(cachedSessions) && cachedSessions.length > 0) {
+      sessionsSection.classList.remove('hidden');
+      renderSessions(cachedSessions, sessionsList);
+    }
+  } catch (err) {
+    console.warn('[popup] Failed to load sessions cache:', err);
+  }
+
+  // 2. Show loading indicator and fetch latest sessions
+  if (loadingIndicator) {
+    loadingIndicator.classList.remove('hidden');
+  }
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: FETCH_SESSIONS_MESSAGE,
+    });
+
+    if (response && response.ok && Array.isArray(response.sessions)) {
+      if (response.sessions.length > 0) {
+        sessionsSection.classList.remove('hidden');
+        renderSessions(response.sessions, sessionsList);
+        // Update cache
+        await chrome.storage.local.set({ [SESSIONS_CACHE_KEY]: response.sessions });
+      } else {
+        // If no sessions found on server, clear UI and cache
+        sessionsSection.classList.add('hidden');
+        sessionsList.innerHTML = '';
+        await chrome.storage.local.remove(SESSIONS_CACHE_KEY);
+      }
+    } else {
+      console.warn('[popup] Failed to fetch sessions:', response?.error);
+      // If we don't have any sessions (rendered from cache or now), hide section
+      if (sessionsList.children.length === 0) {
+        sessionsSection.classList.add('hidden');
+      }
+    }
+  } catch (error) {
+    console.error('[popup] Error initializing sessions:', error);
+    if (sessionsList.children.length === 0) {
+      sessionsSection.classList.add('hidden');
+    }
+  } finally {
+    if (loadingIndicator) {
+      loadingIndicator.classList.add('hidden');
+    }
+  }
+}
+
+/**
+ * Render the sessions list.
+ * @param {Array<{id: number, title: string, isCurrent: boolean}>} sessions
+ * @param {HTMLElement} container
+ */
+function renderSessions(sessions, container) {
+  container.innerHTML = '';
+
+  sessions.forEach((session) => {
+    const sessionItem = document.createElement('div');
+    sessionItem.className = 'flex flex-col gap-1';
+
+    const header = document.createElement('div');
+    header.className =
+      'flex items-center justify-between p-2 hover:bg-base-300 rounded-md group cursor-pointer';
+
+    const leftSide = document.createElement('div');
+    leftSide.className = 'flex items-center gap-2 overflow-hidden';
+
+    const toggleIcon = document.createElement('span');
+    toggleIcon.className = 'text-[10px] transition-transform duration-200';
+    toggleIcon.textContent = '▶';
+    leftSide.appendChild(toggleIcon);
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'truncate font-medium text-sm';
+    titleSpan.textContent = session.title;
+    leftSide.appendChild(titleSpan);
+
+    if (session.isCurrent) {
+      const chip = document.createElement('span');
+      chip.className = 'badge badge-sm badge-primary text-[10px] h-4';
+      chip.textContent = 'Current';
+      leftSide.appendChild(chip);
+    }
+
+    const restoreButton = document.createElement('button');
+    restoreButton.className =
+      'btn btn-square btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity';
+    restoreButton.innerHTML = '↗️';
+    restoreButton.title = 'Restore session';
+    restoreButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void handleRestoreSession(session.id, restoreButton);
+    });
+
+    header.appendChild(leftSide);
+    header.appendChild(restoreButton);
+
+    const detailsContainer = document.createElement('div');
+    detailsContainer.className = 'pl-4 hidden';
+
+    header.addEventListener('click', () => {
+      const isHidden = detailsContainer.classList.contains('hidden');
+      if (isHidden) {
+        detailsContainer.classList.remove('hidden');
+        toggleIcon.classList.add('rotate-90');
+        if (detailsContainer.children.length === 0) {
+          void fetchAndRenderSessionDetails(session.id, detailsContainer);
+        }
+      } else {
+        detailsContainer.classList.add('hidden');
+        toggleIcon.classList.remove('rotate-90');
+      }
+    });
+
+    sessionItem.appendChild(header);
+    sessionItem.appendChild(detailsContainer);
+    container.appendChild(sessionItem);
+  });
+}
+
+/**
+ * Fetch and render the tree details of a session.
+ * @param {number} collectionId
+ * @param {HTMLElement} container
+ */
+async function fetchAndRenderSessionDetails(collectionId, container) {
+  container.innerHTML =
+    '<div class="flex items-center justify-center py-2"><span class="loading loading-spinner loading-xs"></span></div>';
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: FETCH_SESSION_DETAILS_MESSAGE,
+      collectionId,
+    });
+
+    if (response && response.ok && response.details) {
+      renderSessionTree(response.details, container);
+    } else {
+      container.innerHTML =
+        '<div class="text-xs text-error p-2">Failed to load details</div>';
+    }
+  } catch (error) {
+    console.error('[popup] Error fetching session details:', error);
+    container.innerHTML =
+      '<div class="text-xs text-error p-2">Error loading details</div>';
+  }
+}
+
+/**
+ * Render the structured tree of windows, groups, and tabs.
+ * @param {any} details
+ * @param {HTMLElement} container
+ */
+function renderSessionTree(details, container) {
+  container.innerHTML = '';
+
+  details.windows.forEach((win, index) => {
+    const windowItem = document.createElement('div');
+    windowItem.className = 'flex flex-col gap-1 mt-1';
+
+    const header = document.createElement('div');
+    header.className =
+      'flex items-center justify-between p-1 hover:bg-base-300 rounded-md group cursor-pointer';
+
+    const leftSide = document.createElement('div');
+    leftSide.className = 'flex items-center gap-2 overflow-hidden';
+
+    const toggleIcon = document.createElement('span');
+    toggleIcon.className = 'text-[8px] transition-transform duration-200 rotate-90';
+    toggleIcon.textContent = '▶';
+    leftSide.appendChild(toggleIcon);
+
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'truncate text-xs font-semibold opacity-70';
+    titleSpan.textContent = `Window ${index + 1}`;
+    leftSide.appendChild(titleSpan);
+
+    const restoreButton = document.createElement('button');
+    restoreButton.className =
+      'btn btn-square btn-ghost btn-[10px] h-5 w-5 opacity-0 group-hover:opacity-100 transition-opacity';
+    restoreButton.innerHTML = '↗️';
+    restoreButton.title = 'Restore window';
+    restoreButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      void handleRestoreWindow(win.tree, restoreButton);
+    });
+
+    header.appendChild(leftSide);
+    header.appendChild(restoreButton);
+
+    const treeContainer = document.createElement('div');
+    treeContainer.className = 'pl-3 flex flex-col gap-0.5';
+
+    header.addEventListener('click', () => {
+      const isHidden = treeContainer.classList.contains('hidden');
+      if (isHidden) {
+        treeContainer.classList.remove('hidden');
+        toggleIcon.classList.add('rotate-90');
+      } else {
+        treeContainer.classList.add('hidden');
+        toggleIcon.classList.remove('rotate-90');
+      }
+    });
+
+    win.tree.forEach((node) => {
+      if (node.type === 'tab') {
+        treeContainer.appendChild(renderTabItem(node));
+      } else if (node.type === 'group') {
+        treeContainer.appendChild(renderGroupItem(node));
+      }
+    });
+
+    windowItem.appendChild(header);
+    windowItem.appendChild(treeContainer);
+    container.appendChild(windowItem);
+  });
+}
+
+/**
+ * Render a tab item.
+ * @param {any} tab
+ * @returns {HTMLElement}
+ */
+function renderTabItem(tab) {
+  const item = document.createElement('div');
+  item.className =
+    'flex items-center justify-between p-1 hover:bg-base-300 rounded-sm group';
+
+  const leftSide = document.createElement('div');
+  leftSide.className = 'flex items-center gap-2 overflow-hidden flex-1';
+
+  const icon = document.createElement('span');
+  icon.textContent = '📄';
+  icon.className = 'text-[10px] opacity-50';
+  leftSide.appendChild(icon);
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'truncate text-[11px]';
+  titleSpan.textContent = tab.title || tab.url;
+  leftSide.appendChild(titleSpan);
+
+  const restoreButton = document.createElement('button');
+  restoreButton.className =
+    'btn btn-square btn-ghost btn-[10px] h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity';
+  restoreButton.innerHTML = '↗️';
+  restoreButton.title = 'Restore tab';
+  restoreButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void handleRestoreTab(tab, restoreButton);
+  });
+
+  item.appendChild(leftSide);
+  item.appendChild(restoreButton);
+  return item;
+}
+
+/**
+ * Render a group item.
+ * @param {any} group
+ * @returns {HTMLElement}
+ */
+function renderGroupItem(group) {
+  const groupItem = document.createElement('div');
+  groupItem.className = 'flex flex-col gap-0.5';
+
+  const header = document.createElement('div');
+  header.className =
+    'flex items-center justify-between p-1 hover:bg-base-300 rounded-sm group cursor-pointer';
+
+  const leftSide = document.createElement('div');
+  leftSide.className = 'flex items-center gap-2 overflow-hidden';
+
+  const colorBar = document.createElement('div');
+  colorBar.className = 'w-1 h-3 rounded-full';
+  colorBar.style.backgroundColor = group.color || 'grey';
+  leftSide.appendChild(colorBar);
+
+  const titleSpan = document.createElement('span');
+  titleSpan.className = 'truncate text-[11px] font-bold';
+  titleSpan.textContent = group.title || 'Group';
+  leftSide.appendChild(titleSpan);
+
+  const restoreButton = document.createElement('button');
+  restoreButton.className =
+    'btn btn-square btn-ghost btn-[10px] h-4 w-4 opacity-0 group-hover:opacity-100 transition-opacity';
+  restoreButton.innerHTML = '↗️';
+  restoreButton.title = 'Restore group';
+  restoreButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    void handleRestoreGroup(group, restoreButton);
+  });
+
+  header.appendChild(leftSide);
+  header.appendChild(restoreButton);
+
+  const tabsContainer = document.createElement('div');
+  tabsContainer.className = 'pl-3 flex flex-col gap-0.5 border-l border-base-content/10 ml-1.5';
+
+  header.addEventListener('click', () => {
+    const isHidden = tabsContainer.classList.contains('hidden');
+    if (isHidden) {
+      tabsContainer.classList.remove('hidden');
+    } else {
+      tabsContainer.classList.add('hidden');
+    }
+  });
+
+  group.tabs.forEach((tab) => {
+    tabsContainer.appendChild(renderTabItem(tab));
+  });
+
+  groupItem.appendChild(header);
+  groupItem.appendChild(tabsContainer);
+  return groupItem;
+}
+
+/**
+ * Handle window restoration.
+ * @param {any[]} tree
+ * @param {HTMLButtonElement} button
+ */
+async function handleRestoreWindow(tree, button) {
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-[10px]"></span>';
+  button.disabled = true;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: RESTORE_WINDOW_MESSAGE,
+      tree,
+    });
+
+    if (response && response.ok) {
+      if (statusMessage) {
+        concludeStatus('Window restored successfully.', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Failed to restore window');
+    }
+  } catch (error) {
+    console.error('[popup] Error restoring window:', error);
+    if (statusMessage) {
+      concludeStatus(`Error: ${error.message}`, 'error', 3000, statusMessage);
+    }
+  } finally {
+    button.innerHTML = originalContent;
+    button.disabled = false;
+  }
+}
+
+/**
+ * Handle group restoration.
+ * @param {any} group
+ * @param {HTMLButtonElement} button
+ */
+async function handleRestoreGroup(group, button) {
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-[10px]"></span>';
+  button.disabled = true;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: RESTORE_GROUP_MESSAGE,
+      group,
+    });
+
+    if (response && response.ok) {
+      if (statusMessage) {
+        concludeStatus('Group restored successfully.', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Failed to restore group');
+    }
+  } catch (error) {
+    console.error('[popup] Error restoring group:', error);
+    if (statusMessage) {
+      concludeStatus(`Error: ${error.message}`, 'error', 3000, statusMessage);
+    }
+  } finally {
+    button.innerHTML = originalContent;
+    button.disabled = false;
+  }
+}
+
+/**
+ * Handle tab restoration.
+ * @param {any} tab
+ * @param {HTMLButtonElement} button
+ */
+async function handleRestoreTab(tab, button) {
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-[10px]"></span>';
+  button.disabled = true;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: RESTORE_TAB_MESSAGE,
+      url: tab.url,
+      pinned: tab.pinned,
+    });
+
+    if (response && response.ok) {
+      if (statusMessage) {
+        concludeStatus('Tab restored successfully.', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Failed to restore tab');
+    }
+  } catch (error) {
+    console.error('[popup] Error restoring tab:', error);
+    if (statusMessage) {
+      concludeStatus(`Error: ${error.message}`, 'error', 3000, statusMessage);
+    }
+  } finally {
+    button.innerHTML = originalContent;
+    button.disabled = false;
+  }
+}
+
+/**
+ * Handle session restoration.
+ * @param {number} collectionId
+ * @param {HTMLButtonElement} button
+ */
+async function handleRestoreSession(collectionId, button) {
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-xs"></span>';
+  button.disabled = true;
+
+  try {
+    const response = await chrome.runtime.sendMessage({
+      type: RESTORE_SESSION_MESSAGE,
+      collectionId,
+    });
+
+    if (response && response.ok) {
+      if (statusMessage) {
+        concludeStatus('Session restored successfully.', 'success', 3000, statusMessage);
+      }
+      window.close();
+    } else {
+      throw new Error(response?.error || 'Failed to restore session');
+    }
+  } catch (error) {
+    console.error('[popup] Error restoring session:', error);
+    if (statusMessage) {
+      concludeStatus(`Error: ${error.message}`, 'error', 3000, statusMessage);
+    }
+    button.innerHTML = originalContent;
+    button.disabled = false;
+  }
+}
+
 /**
  * Initialize the popup based on login status.
  * @returns {Promise<void>}
@@ -710,6 +1190,8 @@ async function initializePopup() {
       if (mirrorSection) {
         toggleMirrorSection(true, mirrorSection);
       }
+      // Initialize sessions only if logged in
+      void initializeSessions();
     } else if (validationStatus.needsReauth) {
       // Tokens exist but expired/invalid and couldn't be refreshed
       // Show login message with reauth prompt
