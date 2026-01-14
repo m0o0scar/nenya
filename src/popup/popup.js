@@ -1395,7 +1395,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function initializeBookmarksSearch(inputElement, resultsElement) {
   /** @type {number} */
   let highlightedIndex = -1;
-  /** @type {Array<{type: 'bookmark', data: chrome.bookmarks.BookmarkTreeNode}>} */
+  /** @type {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
 
   /**
@@ -1533,15 +1533,12 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       const resultItem = document.createElement('div');
       resultItem.className = 'p-2 hover:bg-base-300 cursor-pointer rounded-md';
       resultItem.dataset.index = String(index);
-      if (result.type === 'bookmark') {
-        // Bookmark item
-        const bookmark = result.data;
 
+      if (result.type === 'bookmark') {
+        const bookmark = result.data;
         if (bookmark.url) {
-          // Bookmark item - show title and URL on separate lines
           const titleText = bookmark.title || bookmark.url;
           const truncatedUrl = truncateUrl(bookmark.url);
-
           resultItem.innerHTML = `
             <div class="flex items-center gap-1">
               <span>↗️</span>
@@ -1551,16 +1548,11 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
               ${escapeHtml(truncatedUrl)}
             </div>
           `;
-
           resultItem.addEventListener('click', () => {
-            if (bookmark.url) {
-              void openBookmark(bookmark.url);
-            }
+            void openBookmark(bookmark.url);
           });
         } else {
-          // Bookmark folder
           const folderTitle = bookmark.title || 'Untitled';
-
           resultItem.innerHTML = `
             <div class="flex items-center gap-1">
               <span>📂</span>
@@ -1568,19 +1560,54 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
               <span class="count-display">(0)</span>
             </div>
           `;
-
-          // Count direct children bookmarks and update text
           void countDirectChildrenBookmarks(bookmark).then((count) => {
             const countSpan = resultItem.querySelector('.count-display');
             if (countSpan) {
               countSpan.textContent = `(${count})`;
             }
           });
-
           resultItem.addEventListener('click', () => {
             void openFolderBookmarks(bookmark);
           });
         }
+      } else if (result.type === 'raindrop') {
+        const item = result.data;
+        const titleText = item.title || item.link;
+        const truncatedUrl = truncateUrl(item.link);
+        const collectionChip = item.collectionTitle
+          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+              ${escapeHtml(item.collectionTitle)}
+            </span>`
+          : '';
+
+        resultItem.innerHTML = `
+          <div class="flex items-center gap-1 overflow-hidden w-full">
+            <span>💧</span>
+            <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
+            ${collectionChip}
+          </div>
+          <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
+            ${escapeHtml(truncatedUrl)}
+          </div>
+        `;
+        resultItem.addEventListener('click', () => {
+          if (item.link) {
+            void openBookmark(item.link);
+          }
+        });
+      } else if (result.type === 'raindrop-collection') {
+        const collection = result.data;
+        const collectionTitle = collection.title || 'Untitled';
+        const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+        resultItem.innerHTML = `
+          <div class="flex items-center gap-1">
+            <span>📥</span>
+            <span class="flex-1 truncate">${escapeHtml(collectionTitle)}</span>
+          </div>
+        `;
+        resultItem.addEventListener('click', () => {
+          void openBookmark(collectionUrl);
+        });
       }
 
       resultsElement.appendChild(resultItem);
@@ -1654,17 +1681,54 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @param {string} query
    */
   async function performSearch(query) {
-    // Search bookmarks
+    if (!query.trim()) {
+      currentResults = [];
+      resultsElement.innerHTML = '';
+      return;
+    }
+
+    // Search local bookmarks
     const bookmarkResults = await searchBookmarks(query);
 
-    // Map to result format
-    const results = bookmarkResults.map((bookmark) => ({
-      type: 'bookmark',
-      data: bookmark,
-    }));
+    // Map to result format, filtering out folders (nodes without a URL)
+    const results = bookmarkResults
+      .filter((bookmark) => bookmark.url)
+      .map((bookmark) => ({
+        type: 'bookmark',
+        data: bookmark,
+      }));
 
-    // Limit to top 10 results
-    const topResults = results.slice(0, 10);
+    // Search Raindrop
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'mirror:search',
+        query,
+      });
+
+      if (response) {
+        if (Array.isArray(response.items)) {
+          response.items.forEach((item) => {
+            results.push({
+              type: 'raindrop',
+              data: item,
+            });
+          });
+        }
+        if (Array.isArray(response.collections)) {
+          response.collections.forEach((collection) => {
+            results.push({
+              type: 'raindrop-collection',
+              data: collection,
+            });
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('[popup] Raindrop search failed:', error);
+    }
+
+    // Limit to top 20 results
+    const topResults = results.slice(0, 20);
     currentResults = topResults;
     renderSearchResults(topResults);
   }
@@ -1769,6 +1833,15 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
             // Bookmark folder - open all direct children bookmarks
             void openFolderBookmarks(bookmark);
           }
+        } else if (highlightedResult.type === 'raindrop') {
+          const item = highlightedResult.data;
+          if (item.link) {
+            void openBookmark(item.link);
+          }
+        } else if (highlightedResult.type === 'raindrop-collection') {
+          const collection = highlightedResult.data;
+          const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+          void openBookmark(collectionUrl);
         }
         return;
       }

@@ -120,6 +120,7 @@ export {
   buildRaindropCollectionUrl,
   handleTokenValidationMessage,
   fetchRaindropItems,
+  handleRaindropSearch,
   isPromiseLike,
 };
 
@@ -1321,6 +1322,114 @@ async function fetchRaindropItems(tokens, collectionId, page = 0) {
       error,
     );
     return null;
+  }
+}
+
+/**
+ * Search Raindrop items and collections.
+ * @param {string} query
+ * @returns {Promise<{ items: any[], collections: any[] }>}
+ */
+async function handleRaindropSearch(query) {
+  try {
+    const tokens = await loadValidProviderTokens();
+    if (!tokens) {
+      return { items: [], collections: [] };
+    }
+
+    const [itemsResponse, rootCollections, childCollections] = await Promise.all([
+      raindropRequest(
+        `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
+        tokens,
+      ),
+      raindropRequest('/collections', tokens),
+      raindropRequest('/collections/childrens', tokens),
+    ]);
+
+    const items = Array.isArray(itemsResponse?.items) ? itemsResponse.items : [];
+    const allCollections = [
+      ...(Array.isArray(rootCollections?.items) ? rootCollections.items : []),
+      ...(Array.isArray(childCollections?.items) ? childCollections.items : []),
+    ];
+
+    const queryLower = query.toLowerCase();
+    const EXCLUDED_COLLECTION_NAME = 'nenya / options backup';
+
+    // Identify excluded collection IDs
+    const excludedCollectionIds = new Set();
+    allCollections.forEach((c) => {
+      if (c.title?.toLowerCase() === EXCLUDED_COLLECTION_NAME) {
+        excludedCollectionIds.add(c._id);
+      }
+    });
+
+    // Create a map of collectionId -> title
+    const collectionIdTitleMap = new Map();
+    allCollections.forEach((c) => {
+      if (c._id && c.title) {
+        collectionIdTitleMap.set(c._id, c.title);
+      }
+    });
+    // Add Unsorted
+    collectionIdTitleMap.set(-1, 'Unsorted');
+
+    // Filter items: add collection names AND exclude those in specific collections
+    // AND refine URL matching to ignore Raindrop system URLs
+    const filteredItems = items
+      .filter((item) => {
+        // Exclude specific collections
+        if (excludedCollectionIds.has(item.collectionId)) {
+          return false;
+        }
+
+        const title = (item.title || '').toLowerCase();
+        const link = (item.link || '').toLowerCase();
+
+        // If it's a Raindrop system/internal URL, ONLY match against the title
+        if (link.startsWith('https://api.raindrop.io')) {
+          return title.includes(queryLower);
+        }
+
+        // Otherwise, match against title OR the non-domain part of the URL
+        if (title.includes(queryLower)) {
+          return true;
+        }
+
+        const linkWithoutDomain = link
+          .replace('https://raindrop.io', '')
+          .replace('http://raindrop.io', '');
+
+        return linkWithoutDomain.includes(queryLower);
+      })
+      .map((item) => {
+        if (item.collectionId !== undefined) {
+          item.collectionTitle = collectionIdTitleMap.get(item.collectionId);
+        }
+        return item;
+      });
+
+    // Local filtering for collections: match title AND exclude specific collections
+    const filteredCollections = allCollections.filter(
+      (c) =>
+        c.title?.toLowerCase().includes(queryLower) &&
+        c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
+    );
+
+    // Special case: include virtual "Unsorted" collection if query matches "unsorted"
+    if ('unsorted'.includes(queryLower)) {
+      const alreadyHasUnsorted = filteredCollections.some((c) => c._id === -1);
+      if (!alreadyHasUnsorted) {
+        filteredCollections.unshift({
+          _id: -1,
+          title: 'Unsorted',
+        });
+      }
+    }
+
+    return { items: filteredItems, collections: filteredCollections };
+  } catch (error) {
+    console.error('[mirror] Raindrop search failed:', error);
+    return { items: [], collections: [] };
   }
 }
 

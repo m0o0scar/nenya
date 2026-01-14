@@ -3,6 +3,7 @@ import {
   normalizeHttpUrl,
   pushNotification,
   handleTokenValidationMessage,
+  handleRaindropSearch,
 } from './mirror.js';
 
 import {
@@ -60,6 +61,7 @@ const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
+const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -2251,6 +2253,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const messageText =
           error instanceof Error ? error.message : String(error);
         sendResponse({ ok: false, error: messageText });
+      });
+    return true;
+  }
+
+  if (message.type === RAINDROP_SEARCH_MESSAGE) {
+    const query = typeof message.query === 'string' ? message.query : '';
+    handleRaindropSearch(query)
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        console.error('[background] Raindrop search failed:', error);
+        sendResponse({ items: [], collections: [] });
       });
     return true;
   }
