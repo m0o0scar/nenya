@@ -130,9 +130,6 @@
     "_execute_action": {
       "description": "Open popup"
     },
-    "bookmarks-pull-raindrop": {
-      "description": "💧 Pull from Raindrop"
-    },
     "bookmarks-save-to-unsorted": {
       "description": "💧 Save to Unsorted"
     },

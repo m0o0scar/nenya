@@ -3,7 +3,6 @@
 /**
  * @typedef {Object} NotificationBookmarkSettings
  * @property {boolean} enabled
- * @property {boolean} pullFinished
  * @property {boolean} unsortedSaved
  */
 
@@ -37,7 +36,6 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
   enabled: true,
   bookmark: {
     enabled: true,
-    pullFinished: true,
     unsortedSaved: true
   },
   project: {
@@ -58,9 +56,6 @@ const globalToggle = /** @type {HTMLInputElement | null} */ (
 );
 const bookmarkToggle = /** @type {HTMLInputElement | null} */ (
   document.getElementById('notificationBookmarkToggle')
-);
-const bookmarkPullToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationBookmarkPullToggle')
 );
 const bookmarkUnsortedToggle = /** @type {HTMLInputElement | null} */ (
   document.getElementById('notificationBookmarkUnsortedToggle')
@@ -111,7 +106,6 @@ function clonePreferences(value) {
     enabled: Boolean(value.enabled),
     bookmark: {
       enabled: Boolean(value.bookmark.enabled),
-      pullFinished: Boolean(value.bookmark.pullFinished),
       unsortedSaved: Boolean(value.bookmark.unsortedSaved)
     },
     project: {
@@ -148,9 +142,6 @@ function normalizePreferences(value) {
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
     bookmark: {
       enabled: typeof bookmark.enabled === 'boolean' ? bookmark.enabled : fallback.bookmark.enabled,
-      pullFinished: typeof bookmark.pullFinished === 'boolean'
-        ? bookmark.pullFinished
-        : fallback.bookmark.pullFinished,
       unsortedSaved: typeof bookmark.unsortedSaved === 'boolean'
         ? bookmark.unsortedSaved
         : fallback.bookmark.unsortedSaved
@@ -218,9 +209,6 @@ function applyPreferencesToUI() {
   if (bookmarkToggle) {
     bookmarkToggle.checked = preferences.bookmark.enabled;
   }
-  if (bookmarkPullToggle) {
-    bookmarkPullToggle.checked = preferences.bookmark.pullFinished;
-  }
   if (bookmarkUnsortedToggle) {
     bookmarkUnsortedToggle.checked = preferences.bookmark.unsortedSaved;
   }
@@ -264,10 +252,6 @@ function updateToggleDisabledState() {
   if (bookmarkToggle) {
     bookmarkToggle.disabled = bookmarkDisabled;
     bookmarkToggle.setAttribute('aria-disabled', bookmarkDisabled ? 'true' : 'false');
-  }
-  if (bookmarkPullToggle) {
-    bookmarkPullToggle.disabled = bookmarkChildDisabled;
-    bookmarkPullToggle.setAttribute('aria-disabled', bookmarkChildDisabled ? 'true' : 'false');
   }
   if (bookmarkUnsortedToggle) {
     bookmarkUnsortedToggle.disabled = bookmarkChildDisabled;
@@ -337,6 +321,17 @@ function handleClipboardToggleChange(checked) {
 }
 
 /**
+ * Handle updates triggered by the project group toggle.
+ * @param {boolean} checked
+ * @returns {void}
+ */
+function handleProjectToggleChange(checked) {
+  preferences.project.enabled = checked;
+  updateToggleDisabledState();
+  void savePreferences();
+}
+
+/**
  * Initialize listeners for the notification controls.
  * @returns {void}
  */
@@ -355,13 +350,6 @@ function attachEventListeners() {
     });
   }
 
-  if (bookmarkPullToggle) {
-    bookmarkPullToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      preferences.bookmark.pullFinished = target.checked;
-      void savePreferences();
-    });
-  }
 
   if (bookmarkUnsortedToggle) {
     bookmarkUnsortedToggle.addEventListener('change', (event) => {
@@ -455,7 +443,7 @@ function subscribeToStorageChanges() {
  * @returns {Promise<void>}
  */
 async function initializeNotificationControls() {
-  if (!globalToggle || !bookmarkToggle || !bookmarkPullToggle || !bookmarkUnsortedToggle || 
+  if (!globalToggle || !bookmarkToggle || !bookmarkUnsortedToggle || 
       !projectToggle || !projectSaveToggle || !projectAddToggle || !projectReplaceToggle || !projectDeleteToggle ||
       !clipboardToggle || !clipboardCopySuccessToggle) {
     return;

@@ -1,8 +1,4 @@
 import {
-  MIRROR_ALARM_NAME,
-  MIRROR_PULL_INTERVAL_MINUTES,
-  resetAndPull,
-  runMirrorPull,
   saveUrlsToUnsorted,
   normalizeHttpUrl,
   pushNotification,
@@ -77,8 +73,6 @@ import {
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 
-const MANUAL_PULL_MESSAGE = 'mirror:pull';
-const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
@@ -141,12 +135,6 @@ chrome.commands.onCommand.addListener((command) => {
         console.warn('[commands] Tab activation failed:', error);
       }
     })();
-    return;
-  }
-  if (command === 'bookmarks-pull-raindrop') {
-    void runMirrorPull('manual').catch((error) => {
-      console.warn('[commands] Pull failed:', error);
-    });
     return;
   }
 
@@ -982,47 +970,16 @@ async function handleEncryptAndSave(options) {
     error: saveResult.error,
   };
 }
-
-/**
- * Ensure the repeating alarm is scheduled.
- * @returns {Promise<void>}
- */
-async function scheduleMirrorAlarm() {
-  chrome.alarms.create(MIRROR_ALARM_NAME, {
-    periodInMinutes: MIRROR_PULL_INTERVAL_MINUTES,
-  });
-}
-
 /**
  * Handle one-time initialization tasks.
  * @param {string} trigger
  * @returns {void}
  */
 function handleLifecycleEvent(trigger) {
-  setupContextMenus();
+  setupCentralizedContextMenus();
   setupClipboardContextMenus();
-  void scheduleMirrorAlarm();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
-  // Delay startup pull to avoid race condition with network initialization
-  if (trigger === 'startup') {
-    setTimeout(() => {
-      void runMirrorPull(trigger).catch((error) => {
-        console.warn(
-          '[mirror] Initial pull skipped:',
-          error instanceof Error ? error.message : error,
-        );
-      });
-    }, 2000);
-    return;
-  }
-
-  void runMirrorPull(trigger).catch((error) => {
-    console.warn(
-      '[mirror] Initial pull skipped:',
-      error instanceof Error ? error.message : error,
-    );
-  });
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -1586,20 +1543,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   void (async () => {
-    const handled = await handleAutoReloadAlarm(alarm);
-    if (handled) {
-      return;
-    }
-
-    if (alarm.name !== MIRROR_ALARM_NAME) {
-      return;
-    }
-
-    try {
-      await runMirrorPull('alarm');
-    } catch (error) {
-      console.error('[mirror] Scheduled pull failed:', error);
-    }
+    await handleAutoReloadAlarm(alarm);
   })();
 });
 
@@ -2895,31 +2839,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === MANUAL_PULL_MESSAGE) {
-    runMirrorPull('manual')
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        const messageText =
-          error instanceof Error ? error.message : String(error);
-        sendResponse({ ok: false, error: messageText });
-      });
-    return true;
-  }
 
-  if (message.type === RESET_PULL_MESSAGE) {
-    resetAndPull()
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        const messageText =
-          error instanceof Error ? error.message : String(error);
-        sendResponse({ ok: false, error: messageText });
-      });
-    return true;
-  }
 
   if (message.type === 'INJECT_CUSTOM_JS') {
     const ruleId = message.ruleId;
@@ -3504,14 +3424,6 @@ if (chrome.contextMenus) {
     // Create new project
     if (menuItemId === RAINDROP_MENU_IDS.CREATE_PROJECT) {
       void handleCreateProjectFromContextMenu(tab);
-      return;
-    }
-
-    // Pull from Raindrop
-    if (menuItemId === RAINDROP_MENU_IDS.PULL) {
-      void runMirrorPull('manual').catch((error) => {
-        console.warn('[contextMenu] Pull failed:', error);
-      });
       return;
     }
 

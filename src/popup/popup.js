@@ -9,7 +9,6 @@ import {
   getTokenValidationStatus,
   handleEncryptAndSaveActive,
   handleSaveToUnsorted,
-  handlePull,
   showSaveToUnsortedDialog,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
@@ -34,15 +33,6 @@ const SHORTCUT_CONFIG = {
     emoji: '💬',
     tooltip: 'Chat with llm',
     handler: () => handleGetMarkdown(),
-  },
-  pull: {
-    emoji: '🌧️',
-    tooltip: 'Pull from raindrop',
-    handler: () => {
-      if (pullButton && statusMessage) {
-        void handlePull(pullButton, statusMessage);
-      }
-    },
   },
   saveUnsorted: {
     emoji: '📤',
@@ -148,7 +138,6 @@ const STORAGE_KEY = 'pinnedShortcuts';
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
   'getMarkdown', // Chat with llm
-  'pull', // Pull from raindrop
   'saveUnsorted', // Save to unsorted
   'encryptSave', // Encrypt & save to unsorted
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
@@ -162,7 +151,6 @@ const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
 
 // Keep references to buttons for backward compatibility
 let getMarkdownButton = null;
-let pullButton = null;
 let saveUnsortedButton = null;
 let encryptSaveButton = null;
 let openOptionsButton = null;
@@ -252,7 +240,6 @@ async function loadAndRenderShortcuts() {
 
     // Reset button references
     getMarkdownButton = null;
-    pullButton = null;
     saveUnsortedButton = null;
     encryptSaveButton = null;
     openOptionsButton = null;
@@ -293,9 +280,6 @@ async function loadAndRenderShortcuts() {
       switch (shortcutId) {
         case 'getMarkdown':
           getMarkdownButton = button;
-          break;
-        case 'pull':
-          pullButton = button;
           break;
         case 'saveUnsorted':
           saveUnsortedButton = button;

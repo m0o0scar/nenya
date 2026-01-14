@@ -192,42 +192,6 @@ export function showLoginMessage(
   }
 }
 
-/**
- * Format a summary of applied changes.
- * @param {{ bookmarksCreated?: number, bookmarksUpdated?: number, bookmarksMoved?: number, bookmarksDeleted?: number, foldersCreated?: number, foldersRemoved?: number } | undefined} stats
- * @returns {string}
- */
-export function formatStats(stats) {
-  if (!stats) {
-    return 'No changes detected.';
-  }
-
-  const entries = [];
-  if (stats.bookmarksCreated) {
-    entries.push(stats.bookmarksCreated + ' bookmark(s) created');
-  }
-  if (stats.bookmarksUpdated) {
-    entries.push(stats.bookmarksUpdated + ' bookmark(s) updated');
-  }
-  if (stats.bookmarksMoved) {
-    entries.push(stats.bookmarksMoved + ' bookmark(s) moved');
-  }
-  if (stats.bookmarksDeleted) {
-    entries.push(stats.bookmarksDeleted + ' bookmark(s) removed');
-  }
-  if (stats.foldersCreated) {
-    entries.push(stats.foldersCreated + ' folder(s) added');
-  }
-  if (stats.foldersRemoved) {
-    entries.push(stats.foldersRemoved + ' folder(s) removed');
-  }
-
-  if (entries.length === 0) {
-    return 'No changes detected.';
-  }
-
-  return entries.join(', ');
-}
 
 /**
  * @typedef {Object} SaveUnsortedEntry
@@ -235,12 +199,17 @@ export function formatStats(stats) {
  * @property {string} [title]
  */
 
+/**
+ * Show the save to Unsorted dialog.
+ * @param {any} tab
+ * @returns {Promise<void>}
+ */
 export async function showSaveToUnsortedDialog(tab) {
-  const modal = document.getElementById('saveToUnsortedModal');
-  const titleInput = document.getElementById('saveToUnsortedTitleInput');
-  const screenshotCheckbox = document.getElementById(
+  const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('saveToUnsortedModal'));
+  const titleInput = /** @type {HTMLInputElement | null} */ (document.getElementById('saveToUnsortedTitleInput'));
+  const screenshotCheckbox = /** @type {HTMLInputElement | null} */ (document.getElementById(
     'saveToUnsortedScreenshotCheckbox',
-  );
+  ));
   const cancelButton = document.getElementById('saveToUnsortedCancelButton');
   const confirmButton = document.getElementById('saveToUnsortedConfirmButton');
 
@@ -277,10 +246,10 @@ export async function showSaveToUnsortedDialog(tab) {
         type: 'mirror:saveToUnsorted',
         entries,
       });
-      handleSaveResponse(response, document.getElementById('statusMessage'));
+      handleSaveResponse(response, /** @type {HTMLElement} */ (document.getElementById('statusMessage')));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      concludeStatus(message, 'error', 3000, document.getElementById('statusMessage'));
+      concludeStatus(message, 'error', 3000, /** @type {HTMLElement} */ (document.getElementById('statusMessage')));
     }
     modal.close();
   };
@@ -378,6 +347,7 @@ export async function handleEncryptAndSaveActive(encryptButton, statusMessage) {
       currentWindow: true,
       active: true,
     });
+    
     const activeTab = tabs && tabs[0];
     const rawUrl = typeof activeTab?.url === 'string' ? activeTab.url : '';
     if (!rawUrl) {
@@ -494,8 +464,7 @@ function buildSaveEntriesFromTabs(tabs) {
 /**
  * Update popup status based on a save response.
  * @param {any} response
- * @param {HTMLElement} statusMessage
- * @returns {void}
+ * @returns {string}
  */
 function summarizeSaveResult(response) {
   const created = Number(response.created) || 0;
@@ -542,72 +511,4 @@ function handleSaveResponse(response, statusMessage) {
   const errorText =
     typeof response.error === 'string' ? response.error : message;
   concludeStatus(errorText, 'error', 3000, statusMessage);
-}
-
-/**
- * Handle the pull from Raindrop action.
- * @param {HTMLElement} pullButton
- * @param {HTMLElement} statusMessage
- * @returns {Promise<void>}
- */
-export async function handlePull(pullButton, statusMessage) {
-  if (!pullButton) {
-    console.error('[popup] Sync button not found.');
-    concludeStatus(
-      'Unable to locate sync controls.',
-      'error',
-      3000,
-      statusMessage,
-    );
-    return;
-  }
-
-  /** @type {HTMLButtonElement} */ (pullButton).disabled = true;
-  setStatus('Syncing bookmarks...', 'info', statusMessage);
-
-  try {
-    const response = await sendRuntimeMessage({ type: 'mirror:pull' });
-    if (response && response.ok) {
-      const summary = formatStats(response.stats);
-      concludeStatus(
-        'Sync complete. ' + summary,
-        'success',
-        3000,
-        statusMessage,
-      );
-    } else {
-      const message =
-        response && typeof response.error === 'string'
-          ? response.error
-          : 'Sync failed. Please try again.';
-      concludeStatus(message, 'error', 3000, statusMessage);
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    concludeStatus(message, 'error', 3000, statusMessage);
-  } finally {
-    /** @type {HTMLButtonElement} */ (pullButton).disabled = false;
-  }
-}
-
-/**
- * Initialize mirror functionality with event listeners.
- * @param {HTMLElement} pullButton
- * @param {HTMLElement} statusMessage
- * @returns {void}
- */
-export function initializeMirror(pullButton, statusMessage) {
-  if (pullButton) {
-    pullButton.addEventListener('click', () => {
-      void handlePull(pullButton, statusMessage);
-    });
-  } else {
-    console.error('[popup] Sync button not found.');
-    concludeStatus(
-      'Unable to locate sync controls.',
-      'error',
-      3000,
-      statusMessage,
-    );
-  }
 }

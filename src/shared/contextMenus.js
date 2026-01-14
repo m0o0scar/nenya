@@ -43,7 +43,6 @@ export const RAINDROP_MENU_IDS = {
   SAVE_CLIPBOARD: 'nenya-save-clipboard-link',
   ENCRYPT_SAVE: 'nenya-encrypt-unsorted',
   CREATE_PROJECT: 'nenya-create-project',
-  PULL: 'nenya-pull-raindrop',
 };
 
 /**
@@ -119,7 +118,7 @@ async function removeDynamicMenuItems(prefix) {
  * @returns {Promise<void>}
  */
 async function createCopyMenu() {
-  const contexts = ['page', 'frame', 'selection', 'editable', 'link', 'image'];
+  const contexts = /** @type {any} */ (['page', 'frame', 'selection', 'editable', 'link', 'image']);
 
   await createMenuItem({
     id: PARENT_MENU_IDS.COPY,
@@ -168,15 +167,15 @@ async function createCopyMenu() {
  * @returns {Promise<void>}
  */
 async function createRaindropMenu() {
-  const pageContexts = ['page', 'frame', 'selection', 'editable', 'image'];
-  const allContexts = [
+  const pageContexts = /** @type {any} */ (['page', 'frame', 'selection', 'editable', 'image']);
+  const allContexts = /** @type {any} */ ([
     'page',
     'frame',
     'selection',
     'editable',
     'image',
     'link',
-  ];
+  ]);
 
   await createMenuItem({
     id: PARENT_MENU_IDS.RAINDROP,
@@ -243,20 +242,6 @@ async function createRaindropMenu() {
     contexts: ['page'],
   });
 
-  // Separator
-  await createMenuItem({
-    id: 'nenya-raindrop-separator-2',
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    type: 'separator',
-    contexts: allContexts,
-  });
-
-  await createMenuItem({
-    id: RAINDROP_MENU_IDS.PULL,
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Pull from Raindrop',
-    contexts: ['page'],
-  });
 }
 
 /**
@@ -440,7 +425,7 @@ export async function updateProjectSubmenus() {
       await new Promise((resolve) => {
         chrome.contextMenus.remove(id, () => {
           chrome.runtime.lastError; // Clear error
-          resolve();
+          resolve(undefined);
         });
       });
     } catch {
@@ -473,7 +458,7 @@ export async function updateProjectSubmenus() {
           `${DYNAMIC_PREFIXES.ADD_PROJECT}empty`,
           () => {
             chrome.runtime.lastError;
-            resolve();
+            resolve(undefined);
           },
         );
       });
@@ -482,7 +467,7 @@ export async function updateProjectSubmenus() {
           `${DYNAMIC_PREFIXES.REPLACE_PROJECT}empty`,
           () => {
             chrome.runtime.lastError;
-            resolve();
+            resolve(undefined);
           },
         );
       });
@@ -535,7 +520,7 @@ export async function updateRunCodeSubmenu(url) {
             `${DYNAMIC_PREFIXES.RUN_CODE}${rule.id}`,
             () => {
               chrome.runtime.lastError; // Clear error
-              resolve();
+              resolve(undefined);
             },
           );
         });
@@ -550,7 +535,7 @@ export async function updateRunCodeSubmenu(url) {
     await new Promise((resolve) => {
       chrome.contextMenus.remove(`${DYNAMIC_PREFIXES.RUN_CODE}empty`, () => {
         chrome.runtime.lastError;
-        resolve();
+        resolve(undefined);
       });
     });
   } catch {
@@ -584,7 +569,7 @@ export async function updateRunCodeSubmenu(url) {
     const ruleTitle =
       typeof rule.title === 'string' && rule.title.trim()
         ? rule.title.trim()
-        : rule.pattern;
+        : rule.patterns[0] || '';
     // Truncate if too long
     const title =
       ruleTitle.length > 40 ? ruleTitle.substring(0, 37) + '...' : ruleTitle;
@@ -616,7 +601,7 @@ export async function updateSplitMenuVisibility(tab) {
       visible: !isSplitPage,
     });
     await chrome.contextMenus.update(OTHER_MENU_IDS.UNSPLIT_TABS, {
-      visible: isSplitPage,
+      visible: Boolean(isSplitPage),
     });
   } catch (error) {
     console.warn(
