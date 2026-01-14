@@ -2068,17 +2068,12 @@ async function ensureSessionsCollection(tokens) {
 }
 
 /**
- * Delete old device collection and create a new one.
- * Step 1: Delete entire old device collection if exists
- * Step 2: Create new device collection
+ * Ensure the device collection exists without deleting it.
  * @param {StoredProviderTokens} tokens
  * @returns {Promise<number>}
  */
-async function recreateDeviceCollection(tokens) {
+async function ensureDeviceCollection(tokens) {
   const browserId = await getOrCreateBrowserId();
-  console.log(`[mirror] Current Browser ID: ${browserId}`);
-
-  // Ensure parent collection exists
   const sessionsCollectionId = await ensureSessionsCollection(tokens);
 
   // Fetch children of "nenya / sessions"
@@ -2090,22 +2085,22 @@ async function recreateDeviceCollection(tokens) {
     ? childrenResult.items
     : [];
 
+  const updateSort = (a, b) => {
+    // We want to find the one that matches title
+    // but we can just use find
+    return 0;
+  };
+
   const deviceCollection = childCollections.find(
     (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
   );
 
-  // Step 1: Delete entire old device collection if exists
   if (deviceCollection) {
-    console.log(
-      `[mirror] Deleting old device collection: ${browserId} (ID: ${deviceCollection._id})`,
-    );
-    await raindropRequest(`/collection/${deviceCollection._id}`, tokens, {
-      method: 'DELETE',
-    });
-    console.log(`[mirror] Old device collection deleted: ${browserId}`);
+    console.log(`[mirror] Found existing device collection: ${browserId}`);
+    return deviceCollection._id;
   }
 
-  // Step 2: Create new device collection
+  // Create new if not exists
   console.log(`[mirror] Creating new device collection: ${browserId}`);
   const createResult = await raindropRequest('/collection', tokens, {
     method: 'POST',
@@ -2115,12 +2110,10 @@ async function recreateDeviceCollection(tokens) {
     body: JSON.stringify({
       title: browserId,
       parent: { $id: sessionsCollectionId },
+      view: 'list'
     }),
   });
   const newCollectionId = createResult?.item?._id;
-  console.log(
-    `[mirror] New device collection created: ${browserId} (ID: ${newCollectionId})`,
-  );
 
   if (!newCollectionId) {
     throw new Error('Failed to create device collection');
@@ -2158,13 +2151,12 @@ async function ensureDeviceCollectionAndExport(providedTokens) {
         return;
       }
 
-      // Step 1: Delete entire old device collection on raindrop
-      // Step 2: Create new device collection
+      // Step 1: Ensure device collection exists (non-destructive)
       console.log(
-        '[mirror] Step 1-2: Deleting old collection and creating new one',
+        '[mirror] Step 1: Ensuring device collection existing',
       );
-      const collectionId = await recreateDeviceCollection(tokens);
-      console.log(`[mirror] New device collection ID: ${collectionId}`);
+      const collectionId = await ensureDeviceCollection(tokens);
+      console.log(`[mirror] Device collection ID: ${collectionId}`);
 
       // Store for future auto-exports
       deviceCollectionId = collectionId;
@@ -2422,17 +2414,92 @@ function stopAutoExport() {
  * @param {StoredProviderTokens} tokens
  * @returns {Promise<void>}
  */
+/**
+ * Generate a unique ID for a tab based on its window ID.
+ * @param {number} tabId
+ * @param {number} windowId
+ * @returns {string}
+ */
+function getTabUniqueId(tabId, windowId) {
+  return `${tabId}-${windowId}`;
+}
+
+/**
+ * Compare two tab objects to see if they differ.
+ * @param {object} item
+ * @param {object} tab
+ * @param {string} finalUrl
+ * @param {object} excerptData
+ * @returns {boolean}
+ */
+function hasTabChanged(item, tab, finalUrl, excerptData) {
+  // Check basic fields
+  if (item.link !== finalUrl) return true;
+  if (item.title !== (tab.title || 'Untitled')) return true;
+
+  // Check excerpt fields
+  let oldData = {};
+  try {
+    oldData = JSON.parse(item.excerpt || '{}');
+  } catch (e) {
+    return true; // If excerpt is corrupt, force update
+  }
+
+  if (oldData.pinned !== excerptData.pinned) return true;
+  if (oldData.index !== excerptData.index) return true;
+  if (oldData.tabGroupId !== excerptData.tabGroupId) return true;
+
+  // Check group details if they exist
+  if (excerptData.tabGroupId > -1) {
+    if (oldData.groupTitle !== excerptData.groupTitle) return true;
+    if (oldData.groupColor !== excerptData.groupColor) return true;
+    if (oldData.groupCollapsed !== excerptData.groupCollapsed) return true;
+  }
+
+  return false;
+}
+
 async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
     const groups = await chrome.tabGroups.query({});
-
-    const items = [];
-
     const groupsMap = new Map();
     groups.forEach((g) => groupsMap.set(g.id, g));
 
-    // 1. Map tabs to raindrops
+    // 1. Fetch existing items from Raindrop
+    const existingItems = [];
+    let page = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const pageItems = await fetchRaindropItems(tokens, deviceCollectionId, page);
+      if (pageItems && pageItems.length > 0) {
+        existingItems.push(...pageItems);
+        // Optimization: if less than page size, we are done
+        if (pageItems.length < FETCH_PAGE_SIZE) hasMore = false;
+        else page++;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    const existingMap = new Map();
+    existingItems.forEach(item => {
+      try {
+        const data = JSON.parse(item.excerpt || '{}');
+        if (data.tabId !== undefined && data.windowId !== undefined) {
+          existingMap.set(getTabUniqueId(data.tabId, data.windowId), item);
+        }
+      } catch (e) {
+        // Ignore items with bad excerpts
+      }
+    });
+
+    const toCreate = [];
+    const toUpdate = [];
+    const processedUniqueIds = new Set();
+
+    // 2. Identify Creates and Updates
     for (const win of windows) {
       if (!win.tabs) continue;
 
@@ -2458,39 +2525,88 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           excerptData.groupCollapsed = g.collapsed;
         }
 
-        items.push({
+        const uniqueId = getTabUniqueId(tab.id, tab.windowId);
+        processedUniqueIds.add(uniqueId);
+
+        const existingItem = existingMap.get(uniqueId);
+
+        const payload = {
           link: finalUrl,
           title: tab.title || 'Untitled',
           collection: { $id: deviceCollectionId },
           excerpt: JSON.stringify(excerptData),
+        };
+
+        if (existingItem) {
+          if (hasTabChanged(existingItem, tab, finalUrl, excerptData)) {
+            toUpdate.push({ id: existingItem._id, ...payload });
+          }
+        } else {
+          toCreate.push(payload);
+        }
+      }
+    }
+
+    // 3. Identify Deletes
+    const idsToDelete = [];
+    existingMap.forEach((item, uniqueId) => {
+      if (!processedUniqueIds.has(uniqueId)) {
+        idsToDelete.push(item._id);
+      }
+    });
+
+    // 4. Execute Batch Operations
+
+    // Batch Create
+    if (toCreate.length > 0) {
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < toCreate.length; i += CHUNK_SIZE) {
+        const chunk = toCreate.slice(i, i + CHUNK_SIZE);
+        console.log(`[mirror] Batch Creating ${chunk.length} items`);
+        await raindropRequest('/raindrops', tokens, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: chunk }),
         });
       }
     }
 
-    // 2. Map metadata to special raindrop (REMOVED)
-    // We no longer enable meta item, relying on per-tab info.
+    // Batch Delete
+    if (idsToDelete.length > 0) {
+      const CHUNK_SIZE = 100;
+      for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
+        const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
+        console.log(`[mirror] Batch Deleting ${chunk.length} items`);
+        await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: chunk }),
+        });
+      }
+    }
 
-    // 3. Batch create raindrops
-    console.log(
-      `[mirror] Batching ${items.length} items to collection ${deviceCollectionId}`,
-    );
-
-    // Raindrop batch API limit is 100 items per request
-    const CHUNK_SIZE = 100;
-    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
-      const chunk = items.slice(i, i + CHUNK_SIZE);
-      await raindropRequest('/raindrops', tokens, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ items: chunk }),
-      });
+    // Individual Updates
+    if (toUpdate.length > 0) {
+      console.log(`[mirror] Updating ${toUpdate.length} items individually`);
+      for (const item of toUpdate) {
+        // PUT /raindrop/:id
+        await raindropRequest(`/raindrop/${item.id}`, tokens, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            link: item.link,
+            title: item.title,
+            excerpt: item.excerpt,
+            // collection is not needed if not moving
+          }),
+        });
+      }
     }
 
     console.log(
-      `[mirror] Session exported successfully to collection ${deviceCollectionId}`,
+      `[mirror] Session sync complete: ${toCreate.length} created, ${toUpdate.length} updated, ${idsToDelete.length} deleted.`,
     );
+
   } catch (error) {
     console.warn('[mirror] Failed to export current session:', error);
   }
