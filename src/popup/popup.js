@@ -12,7 +12,7 @@ import {
   showSaveToUnsortedDialog,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
-import { initializeProjects } from './projects.js';
+
 import { debounce } from '../shared/debounce.js';
 
 /**
@@ -164,9 +164,7 @@ let highlightTextButton = null;
 let customCodeButton = null;
 let pictureInPictureButton = null;
 
-const saveProjectButton = /** @type {HTMLButtonElement | null} */ (
-  document.getElementById('saveProjectButton')
-);
+
 
 const importCustomCodeFileInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('importCustomCodeFileInput')
@@ -177,9 +175,7 @@ const statusMessage = /** @type {HTMLDivElement | null} */ (
 const autoReloadStatusElement = /** @type {HTMLSpanElement | null} */ (
   document.getElementById('autoReloadStatus')
 );
-const projectsContainer = /** @type {HTMLDivElement | null} */ (
-  document.getElementById('projectsContainer')
-);
+
 const bookmarksSearchInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('bookmarksSearchInput')
 );
@@ -371,10 +367,7 @@ async function loadAndRenderShortcuts() {
   }
 }
 
-// Initialize projects functionality
-if (saveProjectButton && projectsContainer && statusMessage) {
-  initializeProjects(saveProjectButton, projectsContainer, statusMessage);
-}
+
 
 // Initialize bookmarks search functionality
 if (bookmarksSearchInput && bookmarksSearchResults) {
@@ -1402,7 +1395,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function initializeBookmarksSearch(inputElement, resultsElement) {
   /** @type {number} */
   let highlightedIndex = -1;
-  /** @type {chrome.bookmarks.BookmarkTreeNode[]} */
+  /** @type {Array<{type: 'bookmark', data: chrome.bookmarks.BookmarkTreeNode}>} */
   let currentResults = [];
 
   /**
@@ -1451,11 +1444,11 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @param {number} index
    */
   function updateHighlight(index) {
-    const items = resultsElement.querySelectorAll('[data-index]');
+    const items = resultsElement.querySelectorAll('.hover\\:bg-base-300');
     items.forEach((item, i) => {
       if (i === index) {
         item.classList.add('bg-base-300');
-        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        item.scrollIntoView({ block: 'nearest' });
       } else {
         item.classList.remove('bg-base-300');
       }
@@ -1532,7 +1525,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /**
    * Renders the bookmark search results.
-   * @param {Array<{type: 'project'|'bookmark', data: any}>} results
+   * @param {Array<{type: 'bookmark', data: chrome.bookmarks.BookmarkTreeNode}>} results
    */
   function renderSearchResults(results) {
     resultsElement.innerHTML = '';
@@ -1540,30 +1533,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       const resultItem = document.createElement('div');
       resultItem.className = 'p-2 hover:bg-base-300 cursor-pointer rounded-md';
       resultItem.dataset.index = String(index);
-
-      if (result.type === 'project') {
-        // Project item
-        const project = result.data;
-        const projectTitle = project.title || 'Untitled project';
-        const itemCount = Number.isFinite(project.itemCount)
-          ? project.itemCount
-          : 0;
-        const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
-
-        resultItem.innerHTML = `
-          <div class="flex items-center gap-1">
-            <span>📚</span>
-            <span class="flex-1 truncate">${escapeHtml(projectTitle)}</span>
-          </div>
-          <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
-            Project • ${escapeHtml(itemText)}
-          </div>
-        `;
-
-        resultItem.addEventListener('click', () => {
-          void restoreProject(project.id, project.title);
-        });
-      } else if (result.type === 'bookmark') {
+      if (result.type === 'bookmark') {
         // Bookmark item
         const bookmark = result.data;
 
@@ -1619,29 +1589,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     highlightedIndex = -1;
   }
 
-  /**
-   * Restore a project from search results.
-   * @param {number} projectId
-   * @param {string} projectTitle
-   * @returns {Promise<void>}
-   */
-  async function restoreProject(projectId, projectTitle) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'projects:restoreProjectTabs',
-        projectId: projectId,
-        projectTitle: projectTitle,
-      });
 
-      if (response && response.ok) {
-        window.close();
-      } else {
-        console.error('[popup] Failed to restore project:', response?.error);
-      }
-    } catch (error) {
-      console.error('[popup] Failed to restore project:', error);
-    }
-  }
 
   /**
    * Opens all direct children bookmarks of a folder in separate tabs.
@@ -1706,23 +1654,17 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @param {string} query
    */
   async function performSearch(query) {
-    // Search both bookmarks and projects in parallel
-    const [bookmarkResults, projectResults] = await Promise.all([
-      searchBookmarks(query),
-      searchProjects(query),
-    ]);
+    // Search bookmarks
+    const bookmarkResults = await searchBookmarks(query);
 
-    // Merge results: projects first, then bookmarks
-    const mergedResults = [
-      ...projectResults.map((project) => ({ type: 'project', data: project })),
-      ...bookmarkResults.map((bookmark) => ({
-        type: 'bookmark',
-        data: bookmark,
-      })),
-    ];
+    // Map to result format
+    const results = bookmarkResults.map((bookmark) => ({
+      type: 'bookmark',
+      data: bookmark,
+    }));
 
     // Limit to top 10 results
-    const topResults = mergedResults.slice(0, 10);
+    const topResults = results.slice(0, 10);
     currentResults = topResults;
     renderSearchResults(topResults);
   }
@@ -1789,27 +1731,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     });
   }
 
-  /**
-   * Search projects and return matching results.
-   * @param {string} query
-   * @returns {Promise<any[]>}
-   */
-  async function searchProjects(query) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'projects:searchProjects',
-        query: query,
-      });
 
-      if (response && response.ok && Array.isArray(response.projects)) {
-        return response.projects;
-      }
-      return [];
-    } catch (error) {
-      console.error('[popup] Failed to search projects:', error);
-      return [];
-    }
-  }
 
   // Debounce search to improve performance and prevent excessive calls while typing.
   const debouncedSearch = debounce(performSearch, 300);
@@ -1838,13 +1760,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
         const highlightedResult = currentResults[highlightedIndex];
 
-        if (highlightedResult.type === 'project') {
-          // Project - restore it
-          void restoreProject(
-            highlightedResult.data.id,
-            highlightedResult.data.title,
-          );
-        } else if (highlightedResult.type === 'bookmark') {
+        if (highlightedResult.type === 'bookmark') {
           // Bookmark or folder
           const bookmark = highlightedResult.data;
           if (bookmark.url) {

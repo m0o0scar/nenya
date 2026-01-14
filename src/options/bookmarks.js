@@ -1,6 +1,6 @@
 /* global chrome */
 
-import { clearAllProjectData } from '../background/projects.js';
+
 import { updateNotificationSectionsVisibility } from './notifications.js';
 import { setBackupConnectionState, refreshBackupStatus } from './backup.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
@@ -418,8 +418,7 @@ async function handleDisconnectClick() {
     // Clear provider tokens
     await clearProviderTokens(currentProvider.id);
 
-    // Clear all project-related data
-    await clearAllProjectData();
+
 
     renderProviderState();
     setBackupConnectionState(false);

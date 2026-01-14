@@ -6,14 +6,7 @@
  * @property {boolean} unsortedSaved
  */
 
-/**
- * @typedef {Object} NotificationProjectSettings
- * @property {boolean} enabled
- * @property {boolean} saveProject
- * @property {boolean} addTabs
- * @property {boolean} replaceItems
- * @property {boolean} deleteProject
- */
+
 
 /**
  * @typedef {Object} NotificationClipboardSettings
@@ -25,7 +18,6 @@
  * @typedef {Object} NotificationPreferences
  * @property {boolean} enabled
  * @property {NotificationBookmarkSettings} bookmark
- * @property {NotificationProjectSettings} project
  * @property {NotificationClipboardSettings} clipboard
  */
 
@@ -37,13 +29,6 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
   bookmark: {
     enabled: true,
     unsortedSaved: true
-  },
-  project: {
-    enabled: true,
-    saveProject: true,
-    addTabs: true,
-    replaceItems: true,
-    deleteProject: true
   },
   clipboard: {
     enabled: true,
@@ -60,21 +45,7 @@ const bookmarkToggle = /** @type {HTMLInputElement | null} */ (
 const bookmarkUnsortedToggle = /** @type {HTMLInputElement | null} */ (
   document.getElementById('notificationBookmarkUnsortedToggle')
 );
-const projectToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationProjectToggle')
-);
-const projectSaveToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationProjectSaveToggle')
-);
-const projectAddToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationProjectAddToggle')
-);
-const projectReplaceToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationProjectReplaceToggle')
-);
-const projectDeleteToggle = /** @type {HTMLInputElement | null} */ (
-  document.getElementById('notificationProjectDeleteToggle')
-);
+
 const clipboardToggle = /** @type {HTMLInputElement | null} */ (
   document.getElementById('notificationClipboardToggle')
 );
@@ -86,9 +57,7 @@ const clipboardCopySuccessToggle = /** @type {HTMLInputElement | null} */ (
 const bookmarkManagementSection = /** @type {HTMLElement | null} */ (
   document.querySelector('[aria-labelledby="notifications-bookmark-heading"]')
 );
-const projectManagementSection = /** @type {HTMLElement | null} */ (
-  document.querySelector('[aria-labelledby="notifications-project-heading"]')
-);
+
 const clipboardManagementSection = /** @type {HTMLElement | null} */ (
   document.querySelector('[aria-labelledby="notifications-clipboard-heading"]')
 );
@@ -108,13 +77,6 @@ function clonePreferences(value) {
       enabled: Boolean(value.bookmark.enabled),
       unsortedSaved: Boolean(value.bookmark.unsortedSaved)
     },
-    project: {
-      enabled: Boolean(value.project?.enabled),
-      saveProject: Boolean(value.project?.saveProject),
-      addTabs: Boolean(value.project?.addTabs),
-      replaceItems: Boolean(value.project?.replaceItems),
-      deleteProject: Boolean(value.project?.deleteProject)
-    },
     clipboard: {
       enabled: Boolean(value.clipboard?.enabled),
       copySuccess: Boolean(value.clipboard?.copySuccess)
@@ -122,20 +84,14 @@ function clonePreferences(value) {
   };
 }
 
-/**
- * Normalize possibly partial preferences into a complete object.
- * @param {unknown} value
- * @returns {NotificationPreferences}
- */
 function normalizePreferences(value) {
   const fallback = clonePreferences(DEFAULT_NOTIFICATION_PREFERENCES);
   if (!value || typeof value !== 'object') {
     return fallback;
   }
 
-  const raw = /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, project?: Partial<NotificationProjectSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (value);
+  const raw = /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (value);
   const bookmark = raw.bookmark ?? {};
-  const project = raw.project ?? {};
   const clipboard = raw.clipboard ?? {};
 
   return {
@@ -146,21 +102,6 @@ function normalizePreferences(value) {
         ? bookmark.unsortedSaved
         : fallback.bookmark.unsortedSaved
     },
-    project: {
-      enabled: typeof project.enabled === 'boolean' ? project.enabled : fallback.project.enabled,
-      saveProject: typeof project.saveProject === 'boolean'
-        ? project.saveProject
-        : fallback.project.saveProject,
-      addTabs: typeof project.addTabs === 'boolean'
-        ? project.addTabs
-        : fallback.project.addTabs,
-      replaceItems: typeof project.replaceItems === 'boolean'
-        ? project.replaceItems
-        : fallback.project.replaceItems,
-      deleteProject: typeof project.deleteProject === 'boolean'
-        ? project.deleteProject
-        : fallback.project.deleteProject
-    },
     clipboard: {
       enabled: typeof clipboard.enabled === 'boolean' ? clipboard.enabled : fallback.clipboard.enabled,
       copySuccess: typeof clipboard.copySuccess === 'boolean'
@@ -169,6 +110,7 @@ function normalizePreferences(value) {
     }
   };
 }
+
 
 /**
  * Read notification preferences from chrome.storage.
@@ -212,21 +154,6 @@ function applyPreferencesToUI() {
   if (bookmarkUnsortedToggle) {
     bookmarkUnsortedToggle.checked = preferences.bookmark.unsortedSaved;
   }
-  if (projectToggle) {
-    projectToggle.checked = preferences.project.enabled;
-  }
-  if (projectSaveToggle) {
-    projectSaveToggle.checked = preferences.project.saveProject;
-  }
-  if (projectAddToggle) {
-    projectAddToggle.checked = preferences.project.addTabs;
-  }
-  if (projectReplaceToggle) {
-    projectReplaceToggle.checked = preferences.project.replaceItems;
-  }
-  if (projectDeleteToggle) {
-    projectDeleteToggle.checked = preferences.project.deleteProject;
-  }
   if (clipboardToggle) {
     clipboardToggle.checked = preferences.clipboard.enabled;
   }
@@ -244,8 +171,6 @@ function applyPreferencesToUI() {
 function updateToggleDisabledState() {
   const bookmarkDisabled = !preferences.enabled;
   const bookmarkChildDisabled = bookmarkDisabled || !preferences.bookmark.enabled;
-  const projectDisabled = !preferences.enabled;
-  const projectChildDisabled = projectDisabled || !preferences.project.enabled;
   const clipboardDisabled = !preferences.enabled;
   const clipboardChildDisabled = clipboardDisabled || !preferences.clipboard.enabled;
 
@@ -256,26 +181,6 @@ function updateToggleDisabledState() {
   if (bookmarkUnsortedToggle) {
     bookmarkUnsortedToggle.disabled = bookmarkChildDisabled;
     bookmarkUnsortedToggle.setAttribute('aria-disabled', bookmarkChildDisabled ? 'true' : 'false');
-  }
-  if (projectToggle) {
-    projectToggle.disabled = projectDisabled;
-    projectToggle.setAttribute('aria-disabled', projectDisabled ? 'true' : 'false');
-  }
-  if (projectSaveToggle) {
-    projectSaveToggle.disabled = projectChildDisabled;
-    projectSaveToggle.setAttribute('aria-disabled', projectChildDisabled ? 'true' : 'false');
-  }
-  if (projectAddToggle) {
-    projectAddToggle.disabled = projectChildDisabled;
-    projectAddToggle.setAttribute('aria-disabled', projectChildDisabled ? 'true' : 'false');
-  }
-  if (projectReplaceToggle) {
-    projectReplaceToggle.disabled = projectChildDisabled;
-    projectReplaceToggle.setAttribute('aria-disabled', projectChildDisabled ? 'true' : 'false');
-  }
-  if (projectDeleteToggle) {
-    projectDeleteToggle.disabled = projectChildDisabled;
-    projectDeleteToggle.setAttribute('aria-disabled', projectChildDisabled ? 'true' : 'false');
   }
   if (clipboardToggle) {
     clipboardToggle.disabled = clipboardDisabled;
@@ -320,16 +225,7 @@ function handleClipboardToggleChange(checked) {
   void savePreferences();
 }
 
-/**
- * Handle updates triggered by the project group toggle.
- * @param {boolean} checked
- * @returns {void}
- */
-function handleProjectToggleChange(checked) {
-  preferences.project.enabled = checked;
-  updateToggleDisabledState();
-  void savePreferences();
-}
+
 
 /**
  * Initialize listeners for the notification controls.
@@ -359,44 +255,7 @@ function attachEventListeners() {
     });
   }
 
-  if (projectToggle) {
-    projectToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      handleProjectToggleChange(target.checked);
-    });
-  }
 
-  if (projectSaveToggle) {
-    projectSaveToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      preferences.project.saveProject = target.checked;
-      void savePreferences();
-    });
-  }
-
-  if (projectAddToggle) {
-    projectAddToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      preferences.project.addTabs = target.checked;
-      void savePreferences();
-    });
-  }
-
-  if (projectReplaceToggle) {
-    projectReplaceToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      preferences.project.replaceItems = target.checked;
-      void savePreferences();
-    });
-  }
-
-  if (projectDeleteToggle) {
-    projectDeleteToggle.addEventListener('change', (event) => {
-      const target = /** @type {HTMLInputElement} */ (event.currentTarget);
-      preferences.project.deleteProject = target.checked;
-      void savePreferences();
-    });
-  }
 
   if (clipboardToggle) {
     clipboardToggle.addEventListener('change', (event) => {
@@ -444,7 +303,6 @@ function subscribeToStorageChanges() {
  */
 async function initializeNotificationControls() {
   if (!globalToggle || !bookmarkToggle || !bookmarkUnsortedToggle || 
-      !projectToggle || !projectSaveToggle || !projectAddToggle || !projectReplaceToggle || !projectDeleteToggle ||
       !clipboardToggle || !clipboardCopySuccessToggle) {
     return;
   }
@@ -462,9 +320,7 @@ export function updateNotificationSectionsVisibility(isLoggedIn) {
   if (bookmarkManagementSection) {
     bookmarkManagementSection.hidden = !isLoggedIn;
   }
-  if (projectManagementSection) {
-    projectManagementSection.hidden = !isLoggedIn;
-  }
+
   // Clipboard section is always visible, no need to hide/show based on login
 }
 

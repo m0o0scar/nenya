@@ -4,24 +4,7 @@ import {
   pushNotification,
   handleTokenValidationMessage,
 } from './mirror.js';
-import {
-  SAVE_PROJECT_MESSAGE,
-  LIST_PROJECTS_MESSAGE,
-  GET_CACHED_PROJECTS_MESSAGE,
-  ADD_PROJECT_TABS_MESSAGE,
-  REPLACE_PROJECT_ITEMS_MESSAGE,
-  DELETE_PROJECT_MESSAGE,
-  RESTORE_PROJECT_TABS_MESSAGE,
-  SEARCH_PROJECTS_MESSAGE,
-  handleSaveProjectMessage,
-  handleListProjectsMessage,
-  handleGetCachedProjectsMessage,
-  handleAddTabsToProjectMessage,
-  handleReplaceProjectItemsMessage,
-  handleDeleteProjectMessage,
-  handleRestoreProjectTabsMessage,
-  handleSearchProjectsMessage,
-} from './projects.js';
+
 import {
   initializeOptionsBackupService,
   handleOptionsBackupMessage,
@@ -32,7 +15,7 @@ import {
   getActiveAutoReloadStatus,
   evaluateAllTabs,
 } from './auto-reload.js';
-import { saveTabsAsProject } from './projects.js';
+
 import {
   setupClipboardContextMenus,
   handleClipboardContextMenuClick,
@@ -44,7 +27,6 @@ import {
 } from './clipboard.js';
 import {
   setupContextMenus as setupCentralizedContextMenus,
-  updateProjectSubmenus,
   updateRunCodeSubmenu,
   updateSplitMenuVisibility,
   updateScreenshotMenuVisibility,
@@ -54,7 +36,6 @@ import {
   PARENT_MENU_IDS,
   isCopyMenuItem,
   isRaindropMenuItem,
-  parseProjectMenuItem,
   parseRunCodeMenuItem,
   parseLLMMenuItem,
   getCopyFormatType,
@@ -201,113 +182,7 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
-  if (command === 'bookmarks-save-project') {
-    void (async () => {
-      try {
-        /** @type {chrome.tabs.Tab[]} */
-        let tabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
-        if (!tabs || tabs.length === 0) {
-          tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-        }
-        const descriptors = [];
-        const seen = new Set();
-        tabs.forEach((tab) => {
-          if (!tab || typeof tab.id !== 'number') {
-            return;
-          }
-          const rawUrl = typeof tab.url === 'string' ? tab.url : '';
-          // Convert split page URLs to nenya.local format before normalization
-          const convertedUrl = convertSplitUrlForSave(rawUrl);
-          const normalized = normalizeHttpUrl(convertedUrl);
-          if (!normalized || seen.has(normalized)) {
-            return;
-          }
-          seen.add(normalized);
-          descriptors.push({
-            id: tab.id,
-            windowId:
-              typeof tab.windowId === 'number'
-                ? tab.windowId
-                : chrome.windows?.WINDOW_ID_NONE ?? -1,
-            index: typeof tab.index === 'number' ? tab.index : -1,
-            groupId:
-              typeof tab.groupId === 'number'
-                ? tab.groupId
-                : chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1,
-            pinned: Boolean(tab.pinned),
-            url: normalized,
-            title: typeof tab.title === 'string' ? tab.title : '',
-          });
-        });
-        if (descriptors.length === 0) {
-          return;
-        }
 
-        // Prompt user for project name in the active tab
-        let projectName = '';
-        try {
-          const activeTabs = await chrome.tabs.query({
-            currentWindow: true,
-            active: true,
-          });
-          const active = activeTabs && activeTabs[0];
-          if (active && typeof active.id === 'number') {
-            const results = await chrome.scripting.executeScript({
-              target: { tabId: active.id },
-              func: () => {
-                const base =
-                  document.title ||
-                  (typeof location?.href === 'string'
-                    ? (() => {
-                        try {
-                          return new URL(location.href).hostname;
-                        } catch {
-                          return 'project';
-                        }
-                      })()
-                    : 'project');
-                const input = window.prompt('Project name', base);
-                return input && input.trim() ? input.trim() : null;
-              },
-              world: 'ISOLATED',
-            });
-            const value =
-              Array.isArray(results) && results[0] ? results[0].result : null;
-            if (!value) {
-              return;
-            }
-            projectName = String(value);
-          }
-        } catch (e) {
-          // Fallback: derive a name if prompt was not possible
-          const first = tabs[0];
-          if (first && typeof first.title === 'string' && first.title.trim()) {
-            projectName = first.title.trim();
-          } else if (first && typeof first.url === 'string') {
-            try {
-              projectName = new URL(first.url).hostname;
-            } catch {
-              projectName = 'project';
-            }
-          } else {
-            projectName = 'project';
-          }
-        }
-
-        if (!projectName) {
-          return;
-        }
-
-        await saveTabsAsProject(projectName, descriptors);
-      } catch (error) {
-        console.warn('[commands] Save project failed:', error);
-      }
-    })();
-    return;
-  }
 
   if (command === 'pip-quit') {
     void (async () => {
@@ -2395,37 +2270,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === SAVE_PROJECT_MESSAGE) {
-    return handleSaveProjectMessage(message, sendResponse);
-  }
 
-  if (message.type === ADD_PROJECT_TABS_MESSAGE) {
-    return handleAddTabsToProjectMessage(message, sendResponse);
-  }
-
-  if (message.type === REPLACE_PROJECT_ITEMS_MESSAGE) {
-    return handleReplaceProjectItemsMessage(message, sendResponse);
-  }
-
-  if (message.type === LIST_PROJECTS_MESSAGE) {
-    return handleListProjectsMessage(message, sendResponse);
-  }
-
-  if (message.type === GET_CACHED_PROJECTS_MESSAGE) {
-    return handleGetCachedProjectsMessage(message, sendResponse);
-  }
-
-  if (message.type === DELETE_PROJECT_MESSAGE) {
-    return handleDeleteProjectMessage(message, sendResponse);
-  }
-
-  if (message.type === RESTORE_PROJECT_TABS_MESSAGE) {
-    return handleRestoreProjectTabsMessage(message, sendResponse);
-  }
-
-  if (message.type === SEARCH_PROJECTS_MESSAGE) {
-    return handleSearchProjectsMessage(message, sendResponse);
-  }
 
   if (message.type === 'launchElementPicker') {
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
@@ -3421,27 +3266,7 @@ if (chrome.contextMenus) {
       return;
     }
 
-    // Create new project
-    if (menuItemId === RAINDROP_MENU_IDS.CREATE_PROJECT) {
-      void handleCreateProjectFromContextMenu(tab);
-      return;
-    }
 
-    // ========================================================================
-    // PROJECT SUBMENU HANDLERS
-    // ========================================================================
-    const projectMenuItem = parseProjectMenuItem(menuItemId);
-    if (projectMenuItem) {
-      if (projectMenuItem.type === 'add') {
-        void handleAddToProjectFromContextMenu(projectMenuItem.projectId, tab);
-      } else if (projectMenuItem.type === 'replace') {
-        void handleReplaceProjectFromContextMenu(
-          projectMenuItem.projectId,
-          tab,
-        );
-      }
-      return;
-    }
 
     // ========================================================================
     // RUN CODE MENU HANDLERS

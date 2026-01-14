@@ -57,14 +57,7 @@
  * @property {boolean} unsortedSaved
  */
 
-/**
- * @typedef {Object} NotificationProjectSettings
- * @property {boolean} enabled
- * @property {boolean} saveProject
- * @property {boolean} addTabs
- * @property {boolean} replaceItems
- * @property {boolean} deleteProject
- */
+
 
 /**
  * @typedef {Object} NotificationClipboardSettings
@@ -76,7 +69,6 @@
  * @typedef {Object} NotificationPreferences
  * @property {boolean} enabled
  * @property {NotificationBookmarkSettings} bookmark
- * @property {NotificationProjectSettings} project
  * @property {NotificationClipboardSettings} clipboard
  */
 
@@ -117,7 +109,6 @@
  */
 
 
-// Export functions needed by projects.js and index.js
 export {
   concludeActionBadge,
   setActionBadge,
@@ -391,13 +382,6 @@ function createDefaultNotificationPreferences() {
       pullFinished: true,
       unsortedSaved: true,
     },
-    project: {
-      enabled: true,
-      saveProject: true,
-      addTabs: true,
-      replaceItems: true,
-      deleteProject: true,
-    },
     clipboard: {
       enabled: true,
       copySuccess: true,
@@ -418,13 +402,6 @@ function cloneNotificationPreferences(value) {
       pullFinished: Boolean(value.bookmark.pullFinished),
       unsortedSaved: Boolean(value.bookmark.unsortedSaved),
     },
-    project: {
-      enabled: Boolean(value.project?.enabled),
-      saveProject: Boolean(value.project?.saveProject),
-      addTabs: Boolean(value.project?.addTabs),
-      replaceItems: Boolean(value.project?.replaceItems),
-      deleteProject: Boolean(value.project?.deleteProject),
-    },
     clipboard: {
       enabled: Boolean(value.clipboard?.enabled),
       copySuccess: Boolean(value.clipboard?.copySuccess),
@@ -432,11 +409,6 @@ function cloneNotificationPreferences(value) {
   };
 }
 
-/**
- * Normalize stored notification preferences.
- * @param {unknown} value
- * @returns {NotificationPreferences}
- */
 function normalizeNotificationPreferences(value) {
   const fallback = createDefaultNotificationPreferences();
   if (!value || typeof value !== 'object') {
@@ -444,11 +416,10 @@ function normalizeNotificationPreferences(value) {
   }
 
   const raw =
-    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, project?: Partial<NotificationProjectSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
+    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
       value
     );
   const bookmark = raw.bookmark ?? {};
-  const project = raw.project ?? {};
   const clipboard = raw.clipboard ?? {};
 
   return {
@@ -466,28 +437,6 @@ function normalizeNotificationPreferences(value) {
         typeof bookmark.unsortedSaved === 'boolean'
           ? bookmark.unsortedSaved
           : fallback.bookmark.unsortedSaved,
-    },
-    project: {
-      enabled:
-        typeof project.enabled === 'boolean'
-          ? project.enabled
-          : fallback.project.enabled,
-      saveProject:
-        typeof project.saveProject === 'boolean'
-          ? project.saveProject
-          : fallback.project.saveProject,
-      addTabs:
-        typeof project.addTabs === 'boolean'
-          ? project.addTabs
-          : fallback.project.addTabs,
-      replaceItems:
-        typeof project.replaceItems === 'boolean'
-          ? project.replaceItems
-          : fallback.project.replaceItems,
-      deleteProject:
-        typeof project.deleteProject === 'boolean'
-          ? project.deleteProject
-          : fallback.project.deleteProject,
     },
     clipboard: {
       enabled:
