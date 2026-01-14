@@ -179,6 +179,11 @@ async function handleFetchSessions() {
 
   return childCollections
     .filter((c) => c.parent?.$id === sessionsCollectionId)
+    .sort((a, b) => {
+      const timeA = new Date(a.lastUpdate).getTime();
+      const timeB = new Date(b.lastUpdate).getTime();
+      return timeB - timeA;
+    })
     .map((c) => ({
       id: c._id,
       title: c.title,
