@@ -2274,8 +2274,52 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       console.warn('[popup] Raindrop search failed:', error);
     }
 
+    // Deduplicate items with same URL and title (case-insensitive)
+    // For collections, deduplicate by _id
+    const seenKeys = new Set();
+    const seenCollectionIds = new Set();
+    const uniqueResults = results.filter((result) => {
+      // Collections: deduplicate by _id
+      if (result.type === 'raindrop-collection') {
+        const collectionId = result.data._id;
+        if (collectionId === undefined || collectionId === null) {
+          return true; // Keep collections without IDs (shouldn't happen)
+        }
+        if (seenCollectionIds.has(collectionId)) {
+          return false;
+        }
+        seenCollectionIds.add(collectionId);
+        return true;
+      }
+
+      let url = '';
+      let title = '';
+
+      if (result.type === 'bookmark') {
+        url = (result.data.url || '').toLowerCase();
+        title = (result.data.title || '').toLowerCase();
+      } else if (result.type === 'raindrop') {
+        url = (result.data.link || '').toLowerCase();
+        title = (result.data.title || '').toLowerCase();
+      }
+
+      // Skip items without URL (shouldn't happen for bookmarks/raindrops, but safety check)
+      if (!url) {
+        return true;
+      }
+
+      // Create a key from title and URL
+      const key = `${title}|${url}`;
+
+      if (seenKeys.has(key)) {
+        return false;
+      }
+      seenKeys.add(key);
+      return true;
+    });
+
     // Limit to top 20 results
-    const topResults = results.slice(0, 20);
+    const topResults = uniqueResults.slice(0, 20);
     currentResults = topResults;
     renderSearchResults(topResults);
   }
