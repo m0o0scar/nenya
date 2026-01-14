@@ -519,7 +519,7 @@
         <div class="nav-group-title">General</div>
         <a href="#mirror-heading" class="nav-item nav-link" data-section="mirror-heading">
           <span class="nav-icon text-lg">☁️</span>
-          <span>Cloud Bookmarks</span>
+          <span>Raindrop</span>
         </a>
         <a href="#notifications-heading" class="nav-item nav-link" data-section="notifications-heading">
           <span class="nav-icon text-lg">🔔</span>
@@ -612,8 +612,9 @@
         <section class="section-content" data-section="mirror-heading" id="section-mirror">
           <div class="animate-in">
             <div class="section-header">
-              <h1 id="mirror-heading" class="section-title">Cloud Bookmarks</h1>
-              <p class="section-description">Mirror your collections and bookmarks from the cloud to your browser.</p>
+              <h1 id="mirror-heading" class="section-title">Raindrop</h1>
+              <p class="section-description">Connect your Raindrop.io account to enable saving URLs to your
+                Unsorted collection.</p>
             </div>
 
             <div class="options-card">
@@ -642,32 +643,11 @@
                 <p id="providerDescription" class="text-sm text-base-content/60"></p>
               </div>
 
-              <div id="rootFolderSection" class="space-y-4 border-t border-base-300 pt-6 mt-6" hidden>
-                <div>
-                  <h3 class="text-lg font-semibold mb-1">Root bookmark folder</h3>
-                  <p class="text-sm text-base-content/60">Choose where the mirror folder lives and what it is called.
-                  </p>
-                </div>
-                <div>
-                  <label class="form-label">Parent folder</label>
-                  <select id="rootFolderParentSelect" class="nenya-input"></select>
-                </div>
-                <div>
-                  <label class="form-label">Folder name</label>
-                  <input id="rootFolderNameInput" class="nenya-input" type="text" autocomplete="off" required>
-                </div>
-                <div class="flex justify-end">
-                  <button id="rootFolderSaveButton" class="nenya-btn nenya-btn-secondary" type="button" disabled>Save
-                    changes</button>
-                </div>
-              </div>
 
               <div class="flex flex-wrap gap-3 mt-6 pt-6 border-t border-base-300">
                 <button id="connectButton" class="nenya-btn nenya-btn-primary" type="button" hidden>Connect</button>
                 <button id="disconnectButton" class="nenya-btn nenya-btn-danger" type="button" hidden>Logout</button>
                 <div class="flex gap-3 ml-auto">
-                  <button id="pullMirrorButton" class="nenya-btn nenya-btn-vibrant" type="button" hidden>Pull
-                    Now</button>
                 </div>
               </div>
             </div>
@@ -704,12 +684,6 @@
                   <div id="notificationBookmarkGroup" class="space-y-2 pl-4">
                     <label
                       class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
-                      <span>Pull finished</span>
-                      <input id="notificationBookmarkPullToggle" class="toggle toggle-sm toggle-secondary"
-                        type="checkbox">
-                    </label>
-                    <label
-                      class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
                       <span>Saved to Unsorted</span>
                       <input id="notificationBookmarkUnsortedToggle" class="toggle toggle-sm toggle-secondary"
                         type="checkbox">
@@ -717,41 +691,7 @@
                   </div>
                 </div>
 
-                <!-- Project Management -->
-                <div class="space-y-3">
-                  <h3 class="text-xs font-bold text-base-content/40 uppercase tracking-wider">Project Management</h3>
-                  <label
-                    class="flex items-center justify-between p-4 bg-base-200 rounded-2xl cursor-pointer hover:bg-base-300 transition-colors">
-                    <span class="font-medium">Enable project notifications</span>
-                    <input id="notificationProjectToggle" class="toggle toggle-primary" type="checkbox">
-                  </label>
-                  <div id="notificationProjectGroup" class="space-y-2 pl-4">
-                    <label
-                      class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
-                      <span>Save project</span>
-                      <input id="notificationProjectSaveToggle" class="toggle toggle-sm toggle-secondary"
-                        type="checkbox">
-                    </label>
-                    <label
-                      class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
-                      <span>Add tabs to project</span>
-                      <input id="notificationProjectAddToggle" class="toggle toggle-sm toggle-secondary"
-                        type="checkbox">
-                    </label>
-                    <label
-                      class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
-                      <span>Replace project items</span>
-                      <input id="notificationProjectReplaceToggle" class="toggle toggle-sm toggle-secondary"
-                        type="checkbox">
-                    </label>
-                    <label
-                      class="flex items-center justify-between p-3 bg-base-200 rounded-xl cursor-pointer hover:bg-base-300 transition-colors">
-                      <span>Delete project</span>
-                      <input id="notificationProjectDeleteToggle" class="toggle toggle-sm toggle-secondary"
-                        type="checkbox">
-                    </label>
-                  </div>
-                </div>
+
 
                 <!-- Clipboard Operations -->
                 <div class="space-y-3">
@@ -801,7 +741,6 @@
                       to your Downloads folder.</p>
                   </div>
                 </div>
-                <input id="screenshotAutoSaveToggle" type="checkbox" class="toggle toggle-primary" />
               </div>
             </div>
           </div>

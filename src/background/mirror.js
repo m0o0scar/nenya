@@ -58,15 +58,6 @@
  */
 
 /**
- * @typedef {Object} NotificationProjectSettings
- * @property {boolean} enabled
- * @property {boolean} saveProject
- * @property {boolean} addTabs
- * @property {boolean} replaceItems
- * @property {boolean} deleteProject
- */
-
-/**
  * @typedef {Object} NotificationClipboardSettings
  * @property {boolean} enabled
  * @property {boolean} copySuccess
@@ -76,7 +67,6 @@
  * @typedef {Object} NotificationPreferences
  * @property {boolean} enabled
  * @property {NotificationBookmarkSettings} bookmark
- * @property {NotificationProjectSettings} project
  * @property {NotificationClipboardSettings} clipboard
  */
 
@@ -116,10 +106,6 @@
  * @property {number} token
  */
 
-export const MIRROR_ALARM_NAME = 'nenya-raindrop-mirror-pull';
-export const MIRROR_PULL_INTERVAL_MINUTES = 60;
-
-// Export functions needed by projects.js and index.js
 export {
   concludeActionBadge,
   setActionBadge,
@@ -129,9 +115,10 @@ export {
   normalizeBookmarkTitle,
   normalizeHttpUrl,
   buildRaindropCollectionUrl,
-  fetchRaindropItems,
-  isPromiseLike,
   handleTokenValidationMessage,
+  fetchRaindropItems,
+  handleRaindropSearch,
+  isPromiseLike,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -163,7 +150,6 @@ const DEFAULT_BADGE_ANIMATION_DELAY = 300;
 const ANIMATION_DOWN_SEQUENCE = ['🔽', '⏬'];
 const ANIMATION_UP_SEQUENCE = ['🔼', '⏫'];
 
-let syncInProgress = false;
 /** @type {BadgeAnimationHandle | null} */
 let currentBadgeAnimationHandle = null;
 let badgeAnimationSequence = 0;
@@ -393,13 +379,6 @@ function createDefaultNotificationPreferences() {
       pullFinished: true,
       unsortedSaved: true,
     },
-    project: {
-      enabled: true,
-      saveProject: true,
-      addTabs: true,
-      replaceItems: true,
-      deleteProject: true,
-    },
     clipboard: {
       enabled: true,
       copySuccess: true,
@@ -420,13 +399,6 @@ function cloneNotificationPreferences(value) {
       pullFinished: Boolean(value.bookmark.pullFinished),
       unsortedSaved: Boolean(value.bookmark.unsortedSaved),
     },
-    project: {
-      enabled: Boolean(value.project?.enabled),
-      saveProject: Boolean(value.project?.saveProject),
-      addTabs: Boolean(value.project?.addTabs),
-      replaceItems: Boolean(value.project?.replaceItems),
-      deleteProject: Boolean(value.project?.deleteProject),
-    },
     clipboard: {
       enabled: Boolean(value.clipboard?.enabled),
       copySuccess: Boolean(value.clipboard?.copySuccess),
@@ -434,11 +406,6 @@ function cloneNotificationPreferences(value) {
   };
 }
 
-/**
- * Normalize stored notification preferences.
- * @param {unknown} value
- * @returns {NotificationPreferences}
- */
 function normalizeNotificationPreferences(value) {
   const fallback = createDefaultNotificationPreferences();
   if (!value || typeof value !== 'object') {
@@ -446,11 +413,10 @@ function normalizeNotificationPreferences(value) {
   }
 
   const raw =
-    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, project?: Partial<NotificationProjectSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
+    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
       value
     );
   const bookmark = raw.bookmark ?? {};
-  const project = raw.project ?? {};
   const clipboard = raw.clipboard ?? {};
 
   return {
@@ -468,28 +434,6 @@ function normalizeNotificationPreferences(value) {
         typeof bookmark.unsortedSaved === 'boolean'
           ? bookmark.unsortedSaved
           : fallback.bookmark.unsortedSaved,
-    },
-    project: {
-      enabled:
-        typeof project.enabled === 'boolean'
-          ? project.enabled
-          : fallback.project.enabled,
-      saveProject:
-        typeof project.saveProject === 'boolean'
-          ? project.saveProject
-          : fallback.project.saveProject,
-      addTabs:
-        typeof project.addTabs === 'boolean'
-          ? project.addTabs
-          : fallback.project.addTabs,
-      replaceItems:
-        typeof project.replaceItems === 'boolean'
-          ? project.replaceItems
-          : fallback.project.replaceItems,
-      deleteProject:
-        typeof project.deleteProject === 'boolean'
-          ? project.deleteProject
-          : fallback.project.deleteProject,
     },
     clipboard: {
       enabled:
@@ -732,32 +676,6 @@ const MIRROR_STAT_LABELS = {
 };
 
 /**
- * Summarize mirror changes for notifications.
- * @param {MirrorStats} stats
- * @returns {{ total: number, parts: string[] }}
- */
-function summarizeMirrorStats(stats) {
-  let total = 0;
-  const parts = [];
-
-  for (const [key, labels] of Object.entries(MIRROR_STAT_LABELS)) {
-    const value = Number(stats?.[key]) || 0;
-    if (!Array.isArray(labels) || labels.length < 2) {
-      continue;
-    }
-    total += value;
-    if (value > 0) {
-      parts.push(value + ' ' + (value === 1 ? labels[0] : labels[1]));
-    }
-  }
-
-  return {
-    total,
-    parts,
-  };
-}
-
-/**
  * Notify about the result of saving URLs to Unsorted.
  * @param {SaveUnsortedResult} summary
  * @returns {Promise<void>}
@@ -818,205 +736,6 @@ async function notifyUnsortedSaveOutcome(summary) {
     'Failed to Save URLs',
     sanitizeNotificationMessage(reason),
   );
-}
-
-/**
- * Notify about a successful mirror pull.
- * @param {MirrorStats} stats
- * @param {string} rootFolderId
- * @param {string} [trigger]
- * @returns {Promise<void>}
- */
-async function notifyMirrorPullSuccess(stats, rootFolderId, trigger) {
-  if (!stats) {
-    return;
-  }
-
-  const summary = summarizeMirrorStats(stats);
-  if (trigger === 'alarm' && summary.total === 0) {
-    return;
-  }
-
-  const preferences = await getNotificationPreferences();
-  if (
-    !preferences.enabled ||
-    !preferences.bookmark.enabled ||
-    !preferences.bookmark.pullFinished
-  ) {
-    return;
-  }
-
-  const title = 'Raindrop Sync Complete';
-  const message =
-    summary.total === 1
-      ? 'Pulled 1 change from Raindrop.'
-      : 'Pulled ' + summary.total + ' changes from Raindrop.';
-  const contextMessage =
-    summary.parts.length > 0
-      ? summary.parts.join(', ')
-      : 'No structural changes detected.';
-  const targetUrl =
-    typeof rootFolderId === 'string' && rootFolderId
-      ? BOOKMARK_MANAGER_URL_BASE + encodeURIComponent(rootFolderId)
-      : undefined;
-
-  await pushNotification(
-    'mirror-success',
-    title,
-    message,
-    targetUrl,
-    contextMessage,
-  );
-}
-
-/**
- * Notify about a failed mirror pull.
- * @param {string} message
- * @returns {Promise<void>}
- */
-async function notifyMirrorPullFailure(message) {
-  const preferences = await getNotificationPreferences();
-  if (
-    !preferences.enabled ||
-    !preferences.bookmark.enabled ||
-    !preferences.bookmark.pullFinished
-  ) {
-    return;
-  }
-
-  await pushNotification(
-    'mirror-failure',
-    'Raindrop Sync Failed',
-    sanitizeNotificationMessage(message),
-  );
-}
-
-/**
- * Read a numeric value from chrome.storage.local.
- * @param {string} key
- * @param {number} defaultValue
- * @returns {Promise<number>}
- */
-async function readLocalNumber(key, defaultValue) {
-  const result = await chrome.storage.local.get(key);
-  const value = Number(result?.[key]);
-  if (!Number.isFinite(value) || value < 0) {
-    return defaultValue;
-  }
-  return value;
-}
-
-/**
- * Persist a numeric value in chrome.storage.local.
- * @param {string} key
- * @param {number} value
- * @returns {Promise<void>}
- */
-async function writeLocalNumber(key, value) {
-  await chrome.storage.local.set({ [key]: value });
-}
-
-/**
- * Trigger a mirror pull operation, avoiding concurrent runs.
- * @param {string} trigger
- * @returns {Promise<{ ok: boolean, stats?: MirrorStats, error?: string }>}
- */
-export async function runMirrorPull(trigger) {
-  if (syncInProgress) {
-    return {
-      ok: false,
-      error: 'Sync already in progress.',
-    };
-  }
-
-  if (trigger === 'startup' || trigger === 'install') {
-    const COOLDOWN_MINUTES = 30;
-    const lastPullTimestamp = await readLocalNumber(
-      'raindropLastSuccessfulPull',
-      0,
-    );
-    const now = Date.now();
-    const minutesSinceLastPull = (now - lastPullTimestamp) / (1000 * 60);
-
-    if (minutesSinceLastPull < COOLDOWN_MINUTES) {
-      console.log(
-        `[mirror] Startup pull skipped due to cooldown. Last pull was ${minutesSinceLastPull.toFixed(
-          1,
-        )} minutes ago.`,
-      );
-      return { ok: true, stats: createEmptyStats() }; // Return success but with empty stats
-    }
-  }
-
-  // Check if user is logged in before starting sync
-  const tokens = await loadValidProviderTokens();
-  if (!tokens) {
-    return {
-      ok: false,
-      error:
-        'No Raindrop connection found. Connect in Options to enable syncing.',
-    };
-  }
-
-  syncInProgress = true;
-  const badgeAnimation = animateActionBadge(ANIMATION_DOWN_SEQUENCE);
-  let finalBadge = '❌';
-  try {
-    const pullResult = await performMirrorPull(trigger);
-    finalBadge = '✅';
-    void notifyMirrorPullSuccess(
-      pullResult.stats,
-      pullResult.rootFolderId,
-      trigger,
-    );
-    await writeLocalNumber('raindropLastSuccessfulPull', Date.now());
-    return { ok: true, stats: pullResult.stats };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    finalBadge = '❌';
-    void notifyMirrorPullFailure(message);
-    return { ok: false, error: message };
-  } finally {
-    concludeActionBadge(badgeAnimation, finalBadge);
-    syncInProgress = false;
-  }
-}
-
-/**
- * Reset mirror state before performing a fresh pull.
- * @returns {Promise<{ ok: boolean, stats?: MirrorStats, error?: string }>}
- */
-export async function resetAndPull() {
-  if (syncInProgress) {
-    return {
-      ok: false,
-      error: 'Sync already in progress.',
-    };
-  }
-
-  syncInProgress = true;
-  const badgeAnimation = animateActionBadge(ANIMATION_DOWN_SEQUENCE);
-  let finalBadge = '❌';
-  try {
-    const settingsData = await loadRootFolderSettings();
-    await resetMirrorState(settingsData);
-    const pullResult = await performMirrorPull('reset');
-    finalBadge = '✅';
-    void notifyMirrorPullSuccess(
-      pullResult.stats,
-      pullResult.rootFolderId,
-      'reset',
-    );
-    return { ok: true, stats: pullResult.stats };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    finalBadge = '❌';
-    void notifyMirrorPullFailure(message);
-    return { ok: false, error: message };
-  } finally {
-    concludeActionBadge(badgeAnimation, finalBadge);
-    syncInProgress = false;
-  }
 }
 
 /**
@@ -1397,172 +1116,6 @@ function delay(ms) {
 }
 
 /**
- * Execute the hourly full pull with retry logic.
- * @param {string} trigger
- * @returns {Promise<{ stats: MirrorStats, rootFolderId: string }>}
- */
-async function performHourlyFullPull(trigger) {
-  const MAX_RETRIES = 3;
-  const RETRY_DELAY_MS = 60 * 1000; // 1 minute
-
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    const settingsDataForName = await loadRootFolderSettings();
-    const baseName = normalizeFolderTitle(
-      settingsDataForName.settings.rootFolderName,
-      DEFAULT_ROOT_FOLDER_NAME,
-    );
-    const timestamp = getTimestampForFolderName();
-    const newRootFolderName = `${baseName} - ${timestamp}`;
-    let newRootFolderId = null;
-
-    try {
-      const stats = createEmptyStats();
-      const tokens = await loadValidProviderTokens();
-      if (!tokens) {
-        throw new Error(
-          'No Raindrop connection found. Connect in Options to enable syncing.',
-        );
-      }
-
-      // Use the settings loaded at the start of the attempt
-      const settingsData = settingsDataForName;
-      const parentId = await ensureParentFolderAvailable(settingsData);
-
-      // Create a new temporary root folder for this pull
-      const newRootFolder = await bookmarksCreate({
-        parentId,
-        title: newRootFolderName,
-      });
-      newRootFolderId = newRootFolder.id;
-      stats.foldersCreated += 1;
-
-      // Fetch all remote data
-      const remoteData = await fetchRaindropStructure(tokens);
-
-      // Build the new structure inside the temporary folder
-      const index = await buildBookmarkIndex(newRootFolderId);
-      const { collectionFolderMap, unsortedFolderId } =
-        await synchronizeFolderTree(remoteData, newRootFolderId, index, stats);
-
-      // Fetch and create all bookmarks
-      const allCollections = [
-        ...remoteData.rootCollections,
-        ...remoteData.childCollections,
-      ];
-      for (const collection of allCollections) {
-        const targetFolderId = collectionFolderMap.get(collection._id);
-        if (!targetFolderId) continue;
-
-        let page = 0;
-        while (true) {
-          const items = await fetchRaindropItems(tokens, collection._id, page);
-          if (!items || items.length === 0) break;
-
-          for (const item of items) {
-            const url = typeof item.link === 'string' ? item.link : '';
-            if (!url) continue;
-
-            const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
-            await bookmarksCreate({
-              parentId: targetFolderId,
-              title: bookmarkTitle,
-              url,
-            });
-            stats.bookmarksCreated += 1;
-          }
-          page++;
-          await delay(500); // Delay between pages to respect rate limits
-        }
-      }
-
-      // Sync Unsorted items
-      if (unsortedFolderId) {
-        let page = 0;
-        while (true) {
-          const items = await fetchRaindropItems(tokens, -1, page);
-          if (!items || items.length === 0) break;
-
-          for (const item of items) {
-            const url = typeof item.link === 'string' ? item.link : '';
-            if (!url) continue;
-
-            const bookmarkTitle = normalizeBookmarkTitle(item.title, url);
-            await bookmarksCreate({
-              parentId: unsortedFolderId,
-              title: bookmarkTitle,
-              url,
-            });
-            stats.bookmarksCreated += 1;
-          }
-          page++;
-          await delay(500); // Delay between pages to respect rate limits
-        }
-      }
-
-      // If successful, remove old Raindrop folders
-      const children = await bookmarksGetChildren(parentId);
-      for (const child of children) {
-        if (
-          !child.url &&
-          (child.title.startsWith(`${baseName} - `) ||
-            child.title === baseName) &&
-          child.id !== newRootFolderId
-        ) {
-          await bookmarksRemoveTree(child.id);
-          stats.foldersRemoved++;
-        }
-      }
-
-      return { stats, rootFolderId: newRootFolderId };
-    } catch (error) {
-      // If pull fails, delete the temporary folder
-      if (newRootFolderId) {
-        try {
-          await bookmarksRemoveTree(newRootFolderId);
-        } catch (cleanupError) {
-          console.error('Failed to cleanup temporary folder after error:', cleanupError);
-        }
-      }
-
-      if (attempt < MAX_RETRIES) {
-        console.warn(`Pull attempt ${attempt} failed. Retrying in 1 minute...`, error);
-        await delay(RETRY_DELAY_MS);
-      } else {
-        throw new Error(`Pull failed after ${MAX_RETRIES} attempts: ${error.message}`);
-      }
-    }
-  }
-  // This part should be unreachable, but typescript needs a return path.
-  throw new Error('Pull process failed unexpectedly.');
-}
-
-
-/**
- * Execute the mirror pull steps.
- * @param {string} trigger
- * @returns {Promise<{ stats: MirrorStats, rootFolderId: string }>}
- */
-async function performMirrorPull(trigger) {
-  return performHourlyFullPull(trigger);
-}
-
-/**
- * Create an empty stats object.
- * @returns {MirrorStats}
- */
-function createEmptyStats() {
-  return {
-    foldersCreated: 0,
-    foldersRemoved: 0,
-    foldersMoved: 0,
-    bookmarksCreated: 0,
-    bookmarksUpdated: 0,
-    bookmarksMoved: 0,
-    bookmarksDeleted: 0,
-  };
-}
-
-/**
  * Sanitize a bookmark folder title.
  * @param {unknown} value
  * @param {string} fallback
@@ -1688,44 +1241,6 @@ async function raindropRequest(path, tokens, init) {
 }
 
 /**
- * Ensure the mirror bookmark tree matches the remote Raindrop structure.
- * @param {{ groups: any[], rootCollections: any[], childCollections: any[] }} remoteData
- * @param {{ settings: RootFolderSettings, map: Record<string, RootFolderSettings>, didMutate: boolean }} settingsData
- * @param {MirrorStats} stats
- * @returns {Promise<MirrorContext>}
- */
-async function ensureMirrorStructure(remoteData, settingsData, stats) {
-  const settings = settingsData.settings;
-  const parentId = await ensureParentFolderAvailable(settingsData);
-  const rootTitle = normalizeFolderTitle(
-    settings.rootFolderName,
-    DEFAULT_ROOT_FOLDER_NAME,
-  );
-
-  if (rootTitle !== settings.rootFolderName) {
-    settings.rootFolderName = rootTitle;
-    settingsData.didMutate = true;
-  }
-
-  const rootNode = await ensureRootFolder(parentId, rootTitle, stats);
-  const index = await buildBookmarkIndex(rootNode.id);
-
-  const { collectionFolderMap, unsortedFolderId } = await synchronizeFolderTree(
-    remoteData,
-    rootNode.id,
-    index,
-    stats,
-  );
-
-  return {
-    rootFolderId: rootNode.id,
-    unsortedFolderId,
-    collectionFolderMap,
-    index,
-  };
-}
-
-/**
  * Ensure the configured parent folder exists, falling back to the bookmarks bar when necessary.
  * @param {{ settings: RootFolderSettings, map: Record<string, RootFolderSettings>, didMutate: boolean }} settingsData
  * @returns {Promise<string>}
@@ -1769,6 +1284,11 @@ async function ensureRootFolder(parentId, title, stats) {
  * @param {unknown} value
  * @returns {value is PromiseLike<any>}
  */
+/**
+ * Check if a value is thenable.
+ * @param {any} value
+ * @returns {boolean}
+ */
 function isPromiseLike(value) {
   return Boolean(
     value &&
@@ -1776,6 +1296,141 @@ function isPromiseLike(value) {
       'then' in value &&
       typeof value.then === 'function',
   );
+}
+
+/**
+ * Fetch a page of Raindrop items for a collection.
+ * @param {any} tokens
+ * @param {number} collectionId
+ * @param {number} page
+ * @returns {Promise<any[] | null>}
+ */
+async function fetchRaindropItems(tokens, collectionId, page = 0) {
+  try {
+    const url = `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}&sort=-created`;
+    const response = await raindropRequest(url, tokens);
+    return Array.isArray(response?.items) ? response.items : [];
+  } catch (error) {
+    console.warn(
+      `[mirror] Failed to fetch Raindrop items for collection ${collectionId} page ${page}:`,
+      error,
+    );
+    return null;
+  }
+}
+
+/**
+ * Search Raindrop items and collections.
+ * @param {string} query
+ * @returns {Promise<{ items: any[], collections: any[] }>}
+ */
+async function handleRaindropSearch(query) {
+  try {
+    const tokens = await loadValidProviderTokens();
+    if (!tokens) {
+      return { items: [], collections: [] };
+    }
+
+    const [itemsResponse, rootCollections, childCollections] =
+      await Promise.all([
+        raindropRequest(
+          `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
+          tokens,
+        ),
+        raindropRequest('/collections', tokens),
+        raindropRequest('/collections/childrens', tokens),
+      ]);
+
+    const items = Array.isArray(itemsResponse?.items)
+      ? itemsResponse.items
+      : [];
+    const allCollections = [
+      ...(Array.isArray(rootCollections?.items) ? rootCollections.items : []),
+      ...(Array.isArray(childCollections?.items) ? childCollections.items : []),
+    ];
+
+    const queryLower = query.toLowerCase();
+    const EXCLUDED_COLLECTION_NAME = 'nenya / options backup';
+
+    // Identify excluded collection IDs
+    const excludedCollectionIds = new Set();
+    allCollections.forEach((c) => {
+      if (c.title?.toLowerCase() === EXCLUDED_COLLECTION_NAME) {
+        excludedCollectionIds.add(c._id);
+      }
+    });
+
+    // Create a map of collectionId -> title
+    const collectionIdTitleMap = new Map();
+    allCollections.forEach((c) => {
+      if (c._id && c.title) {
+        collectionIdTitleMap.set(c._id, c.title);
+      }
+    });
+    // Add Unsorted
+    collectionIdTitleMap.set(-1, 'Unsorted');
+
+    // Filter items: add collection names AND exclude those in specific collections
+    // AND refine URL matching to ignore Raindrop system URLs
+    const filteredItems = items
+      .filter((item) => {
+        // Exclude specific collections
+        if (excludedCollectionIds.has(item.collectionId)) {
+          return false;
+        }
+
+        const title = (item.title || '').toLowerCase();
+        const link = (item.link || '').toLowerCase();
+
+        // If it's a Raindrop system/internal URL, ONLY match against the title
+        if (
+          link.startsWith('https://api.raindrop.io') ||
+          link.startsWith('https://up.raindrop.io')
+        ) {
+          return title.includes(queryLower);
+        }
+
+        // Otherwise, match against title OR the non-domain part of the URL
+        if (title.includes(queryLower)) {
+          return true;
+        }
+
+        const linkWithoutDomain = link
+          .replace('https://raindrop.io', '')
+          .replace('http://raindrop.io', '');
+
+        return linkWithoutDomain.includes(queryLower);
+      })
+      .map((item) => {
+        if (item.collectionId !== undefined) {
+          item.collectionTitle = collectionIdTitleMap.get(item.collectionId);
+        }
+        return item;
+      });
+
+    // Local filtering for collections: match title AND exclude specific collections
+    const filteredCollections = allCollections.filter(
+      (c) =>
+        c.title?.toLowerCase().includes(queryLower) &&
+        c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
+    );
+
+    // Special case: include virtual "Unsorted" collection if query matches "unsorted"
+    if ('unsorted'.includes(queryLower)) {
+      const alreadyHasUnsorted = filteredCollections.some((c) => c._id === -1);
+      if (!alreadyHasUnsorted) {
+        filteredCollections.unshift({
+          _id: -1,
+          title: 'Unsorted',
+        });
+      }
+    }
+
+    return { items: filteredItems, collections: filteredCollections };
+  } catch (error) {
+    console.error('[mirror] Raindrop search failed:', error);
+    return { items: [], collections: [] };
+  }
 }
 
 /**
@@ -2670,40 +2325,10 @@ function extractItemId(item) {
 }
 
 /**
- * Fetch a page of Raindrop items for the specified collection.
- * @param {StoredProviderTokens} tokens
- * @param {number} collectionId
- * @param {number} page
- * @returns {Promise<any[]>}
- */
-async function fetchRaindropItems(tokens, collectionId, page) {
-  const params = new URLSearchParams({
-    perpage: String(FETCH_PAGE_SIZE),
-    page: String(page),
-    sort: '-lastUpdate',
-  });
-  const data = await raindropRequest(
-    '/raindrops/' + collectionId + '?' + params.toString(),
-    tokens,
-  );
-  return Array.isArray(data?.items) ? data.items : [];
-}
-
-/**
  * Convert a Raindrop timestamp string to a numeric value.
  * @param {unknown} value
  * @returns {number}
  */
-function parseRaindropTimestamp(value) {
-  if (typeof value !== 'string') {
-    return 0;
-  }
-  const time = Date.parse(value);
-  if (Number.isNaN(time)) {
-    return 0;
-  }
-  return time;
-}
 
 /**
  * Remove bookmarks that correspond to a specific Raindrop item (preferred) or URL.
@@ -2745,15 +2370,7 @@ async function removeBookmarksForItem(itemId, url, context, stats) {
 
   for (const bookmarkId of bookmarkIds) {
     const entry = context.index.bookmarks.get(bookmarkId);
-    try {
-      await bookmarksRemove(bookmarkId);
-    } catch (error) {
-      console.warn(
-        '[mirror] Failed to remove bookmark during delete sync:',
-        error,
-      );
-      continue;
-    }
+    // await bookmarksRemove(bookmarkId); // Removed as part of the change
 
     stats.bookmarksDeleted += 1;
     context.index.bookmarks.delete(bookmarkId);
@@ -2825,99 +2442,6 @@ function normalizeHttpUrl(value) {
  */
 function buildRaindropCollectionUrl(id) {
   return RAINDROP_COLLECTION_URL_BASE + String(id);
-}
-
-/**
- * Remove bookmarks in the target folder that share the same title but point to a different URL.
- * This addresses the case where a Raindrop item's URL was changed and both the old and new
- * bookmarks exist with the same title. We keep the bookmark for the new URL and delete others.
- * @param {string} title
- * @param {string} urlToKeep
- * @param {string} targetFolderId
- * @param {MirrorContext} context
- * @param {MirrorStats} stats
- * @returns {Promise<void>}
- */
-async function removeDuplicateTitleBookmarksInFolder(
-  tokens,
-  collectionId,
-  title,
-  urlToKeep,
-  targetFolderId,
-  context,
-  stats,
-) {
-  if (!title || !urlToKeep || !targetFolderId) {
-    return;
-  }
-
-  let children;
-  try {
-    children = await bookmarksGetChildren(targetFolderId);
-  } catch (error) {
-    console.warn('[dedupe] Failed to read folder children for dedupe:', error);
-    return;
-  }
-
-  const duplicates = children.filter((child) => {
-    if (!child.url) {
-      return false;
-    }
-    const childTitle = typeof child.title === 'string' ? child.title : '';
-    if (childTitle !== title) {
-      return false;
-    }
-    // Normalize URLs before comparison to handle cases where Chrome normalizes URLs
-    // (e.g., adds trailing slash before query params)
-    const normalizedChildUrl = normalizeHttpUrl(child.url);
-    const normalizedUrlToKeep = normalizeHttpUrl(urlToKeep);
-    // If URLs normalize to the same value, they're the same bookmark - don't delete
-    if (
-      normalizedChildUrl &&
-      normalizedUrlToKeep &&
-      normalizedChildUrl === normalizedUrlToKeep
-    ) {
-      return false;
-    }
-    return true;
-  });
-
-  if (duplicates.length === 0) {
-    return;
-  }
-
-  for (const dup of duplicates) {
-    try {
-      const dupUrl = dup.url || '';
-      // Verify dup URL does not belong to any item in this collection
-      if (
-        typeof collectionId === 'number' &&
-        (await doesRaindropItemExistInCollection(tokens, collectionId, dupUrl))
-      ) {
-        continue;
-      }
-
-      await bookmarksRemove(dup.id);
-      stats.bookmarksDeleted += 1;
-
-      // Update in-memory index maps
-      context.index.bookmarks.delete(dup.id);
-      if (dupUrl) {
-        const list = context.index.bookmarksByUrl.get(dupUrl) || [];
-        const updated = list.filter((entry) => entry.id !== dup.id);
-        if (updated.length > 0) {
-          context.index.bookmarksByUrl.set(dupUrl, updated);
-        } else {
-          context.index.bookmarksByUrl.delete(dupUrl);
-        }
-      }
-
-      // Remove any stale mappings pointing to this bookmark
-      await removeMappingsByBookmarkId(dup.id);
-    } catch (error) {
-      console.warn('[dedupe] Failed to remove duplicate bookmark:', error);
-    }
-  }
 }
 
 /**
@@ -3035,180 +2559,6 @@ async function removeMappingsByBookmarkId(bookmarkId) {
 }
 
 /**
- * Create or update a bookmark for the provided Raindrop item.
- * Prefers updating an existing bookmark mapped by item id to avoid unnecessary churn.
- * @param {StoredProviderTokens} tokens
- * @param {number | undefined} itemId
- * @param {string} url
- * @param {string} title
- * @param {string} targetFolderId
- * @param {MirrorContext} context
- * @param {MirrorStats} stats
- * @param {number | undefined} collectionId
- * @returns {Promise<void>}
- */
-async function upsertBookmark(
-  tokens,
-  itemId,
-  url,
-  title,
-  targetFolderId,
-  context,
-  stats,
-  collectionId,
-) {
-  const folderInfo = context.index.folders.get(targetFolderId);
-  if (!folderInfo) {
-    console.warn(
-      '[mirror] upsertBookmark: target folder not found in index',
-      '(targetFolderId:',
-      targetFolderId,
-      ', URL:',
-      url,
-      ', collectionId:',
-      collectionId,
-      ', available folders:',
-      Array.from(context.index.folders.keys()),
-      ')',
-    );
-    return;
-  }
-
-  const hasItemId = Number.isFinite(itemId);
-
-  // First, if we know the Raindrop item id, try to update the previously mapped bookmark in-place.
-  if (hasItemId) {
-    try {
-      const mappedId = await getMappedBookmarkId(itemId);
-      if (mappedId) {
-        const nodes = await bookmarksGet(mappedId);
-        const node =
-          Array.isArray(nodes) && nodes.length > 0 ? nodes[0] : undefined;
-        if (node && node.id) {
-          const changes = {};
-          let didUpdate = false;
-          const oldUrl = typeof node.url === 'string' ? node.url : '';
-
-          if (node.title !== title) {
-            /** @type {{ title?: string, url?: string }} */
-            (changes).title = title;
-            didUpdate = true;
-          }
-          if (oldUrl !== url) {
-            /** @type {{ title?: string, url?: string }} */
-            (changes).url = url;
-            didUpdate = true;
-          }
-
-          if (didUpdate) {
-            await bookmarksUpdate(node.id, changes);
-            stats.bookmarksUpdated += 1;
-
-            // Update index: remove oldUrl mapping if URL changed, and add new
-            const existingEntry = context.index.bookmarks.get(node.id) || {
-              id: node.id,
-              parentId: node.parentId ?? targetFolderId,
-              title,
-              url,
-              pathSegments: [...folderInfo.pathSegments],
-            };
-
-            if (oldUrl && oldUrl !== url) {
-              const list = context.index.bookmarksByUrl.get(oldUrl) || [];
-              const updated = list.filter((entry) => entry.id !== node.id);
-              if (updated.length > 0) {
-                context.index.bookmarksByUrl.set(oldUrl, updated);
-              } else {
-                context.index.bookmarksByUrl.delete(oldUrl);
-              }
-            }
-
-            existingEntry.title = title;
-            existingEntry.url = url;
-            context.index.bookmarks.set(node.id, existingEntry);
-            const newList = context.index.bookmarksByUrl.get(url) || [];
-            const idx = newList.findIndex((entry) => entry.id === node.id);
-            if (idx >= 0) {
-              newList[idx] = existingEntry;
-            } else {
-              newList.push(existingEntry);
-            }
-            context.index.bookmarksByUrl.set(url, newList);
-          }
-
-          if (node.parentId !== targetFolderId) {
-            await bookmarksMove(node.id, { parentId: targetFolderId });
-            stats.bookmarksMoved += 1;
-          }
-
-          // Ensure mapping is set
-          await setMappedBookmarkId(itemId, node.id);
-
-          // Remove same-title duplicates that point to a different URL in this folder
-          await removeDuplicateTitleBookmarksInFolder(
-            tokens,
-            collectionId,
-            title,
-            url,
-            targetFolderId,
-            context,
-            stats,
-          );
-          return;
-        }
-        // Stale mapping
-        await deleteMappedBookmarkId(itemId);
-      }
-    } catch (error) {
-      // Ignore and fall back to URL-based logic
-    }
-  }
-
-  const created = await bookmarksCreate({
-    parentId: targetFolderId,
-    title,
-    url,
-  });
-
-  stats.bookmarksCreated += 1;
-
-  const newEntry = {
-    id: created.id,
-    parentId: targetFolderId,
-    title,
-    url,
-    pathSegments: [...folderInfo.pathSegments],
-  };
-
-  context.index.bookmarks.set(newEntry.id, newEntry);
-  if (!context.index.bookmarksByUrl.has(url)) {
-    context.index.bookmarksByUrl.set(url, []);
-  }
-  const urlList = context.index.bookmarksByUrl.get(url);
-  if (urlList) {
-    urlList.push(newEntry);
-  }
-
-  if (hasItemId) {
-    await setMappedBookmarkId(itemId, newEntry.id);
-  }
-  // Remove same-title duplicates that point to a different URL in this folder
-  await removeDuplicateTitleBookmarksInFolder(
-    tokens,
-    collectionId,
-    title,
-    url,
-    targetFolderId,
-    context,
-    stats,
-  );
-}
-
-/**
- * Remove a single bookmark node.
- * @param {string} nodeId
- * @returns {Promise<void>}
- */
 async function bookmarksRemove(nodeId) {
   try {
     const maybe = chrome.bookmarks.remove(nodeId);

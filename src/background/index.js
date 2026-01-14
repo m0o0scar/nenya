@@ -1,31 +1,11 @@
 import {
-  MIRROR_ALARM_NAME,
-  MIRROR_PULL_INTERVAL_MINUTES,
-  resetAndPull,
-  runMirrorPull,
   saveUrlsToUnsorted,
   normalizeHttpUrl,
   pushNotification,
   handleTokenValidationMessage,
+  handleRaindropSearch,
 } from './mirror.js';
-import {
-  SAVE_PROJECT_MESSAGE,
-  LIST_PROJECTS_MESSAGE,
-  GET_CACHED_PROJECTS_MESSAGE,
-  ADD_PROJECT_TABS_MESSAGE,
-  REPLACE_PROJECT_ITEMS_MESSAGE,
-  DELETE_PROJECT_MESSAGE,
-  RESTORE_PROJECT_TABS_MESSAGE,
-  SEARCH_PROJECTS_MESSAGE,
-  handleSaveProjectMessage,
-  handleListProjectsMessage,
-  handleGetCachedProjectsMessage,
-  handleAddTabsToProjectMessage,
-  handleReplaceProjectItemsMessage,
-  handleDeleteProjectMessage,
-  handleRestoreProjectTabsMessage,
-  handleSearchProjectsMessage,
-} from './projects.js';
+
 import {
   initializeOptionsBackupService,
   handleOptionsBackupMessage,
@@ -36,7 +16,7 @@ import {
   getActiveAutoReloadStatus,
   evaluateAllTabs,
 } from './auto-reload.js';
-import { saveTabsAsProject } from './projects.js';
+
 import {
   setupClipboardContextMenus,
   handleClipboardContextMenuClick,
@@ -48,7 +28,6 @@ import {
 } from './clipboard.js';
 import {
   setupContextMenus as setupCentralizedContextMenus,
-  updateProjectSubmenus,
   updateRunCodeSubmenu,
   updateSplitMenuVisibility,
   updateScreenshotMenuVisibility,
@@ -58,7 +37,6 @@ import {
   PARENT_MENU_IDS,
   isCopyMenuItem,
   isRaindropMenuItem,
-  parseProjectMenuItem,
   parseRunCodeMenuItem,
   parseLLMMenuItem,
   getCopyFormatType,
@@ -77,14 +55,13 @@ import {
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 
-const MANUAL_PULL_MESSAGE = 'mirror:pull';
-const RESET_PULL_MESSAGE = 'mirror:resetPull';
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
+const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -141,12 +118,6 @@ chrome.commands.onCommand.addListener((command) => {
         console.warn('[commands] Tab activation failed:', error);
       }
     })();
-    return;
-  }
-  if (command === 'bookmarks-pull-raindrop') {
-    void runMirrorPull('manual').catch((error) => {
-      console.warn('[commands] Pull failed:', error);
-    });
     return;
   }
 
@@ -213,113 +184,7 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
-  if (command === 'bookmarks-save-project') {
-    void (async () => {
-      try {
-        /** @type {chrome.tabs.Tab[]} */
-        let tabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
-        if (!tabs || tabs.length === 0) {
-          tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-        }
-        const descriptors = [];
-        const seen = new Set();
-        tabs.forEach((tab) => {
-          if (!tab || typeof tab.id !== 'number') {
-            return;
-          }
-          const rawUrl = typeof tab.url === 'string' ? tab.url : '';
-          // Convert split page URLs to nenya.local format before normalization
-          const convertedUrl = convertSplitUrlForSave(rawUrl);
-          const normalized = normalizeHttpUrl(convertedUrl);
-          if (!normalized || seen.has(normalized)) {
-            return;
-          }
-          seen.add(normalized);
-          descriptors.push({
-            id: tab.id,
-            windowId:
-              typeof tab.windowId === 'number'
-                ? tab.windowId
-                : chrome.windows?.WINDOW_ID_NONE ?? -1,
-            index: typeof tab.index === 'number' ? tab.index : -1,
-            groupId:
-              typeof tab.groupId === 'number'
-                ? tab.groupId
-                : chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1,
-            pinned: Boolean(tab.pinned),
-            url: normalized,
-            title: typeof tab.title === 'string' ? tab.title : '',
-          });
-        });
-        if (descriptors.length === 0) {
-          return;
-        }
 
-        // Prompt user for project name in the active tab
-        let projectName = '';
-        try {
-          const activeTabs = await chrome.tabs.query({
-            currentWindow: true,
-            active: true,
-          });
-          const active = activeTabs && activeTabs[0];
-          if (active && typeof active.id === 'number') {
-            const results = await chrome.scripting.executeScript({
-              target: { tabId: active.id },
-              func: () => {
-                const base =
-                  document.title ||
-                  (typeof location?.href === 'string'
-                    ? (() => {
-                        try {
-                          return new URL(location.href).hostname;
-                        } catch {
-                          return 'project';
-                        }
-                      })()
-                    : 'project');
-                const input = window.prompt('Project name', base);
-                return input && input.trim() ? input.trim() : null;
-              },
-              world: 'ISOLATED',
-            });
-            const value =
-              Array.isArray(results) && results[0] ? results[0].result : null;
-            if (!value) {
-              return;
-            }
-            projectName = String(value);
-          }
-        } catch (e) {
-          // Fallback: derive a name if prompt was not possible
-          const first = tabs[0];
-          if (first && typeof first.title === 'string' && first.title.trim()) {
-            projectName = first.title.trim();
-          } else if (first && typeof first.url === 'string') {
-            try {
-              projectName = new URL(first.url).hostname;
-            } catch {
-              projectName = 'project';
-            }
-          } else {
-            projectName = 'project';
-          }
-        }
-
-        if (!projectName) {
-          return;
-        }
-
-        await saveTabsAsProject(projectName, descriptors);
-      } catch (error) {
-        console.warn('[commands] Save project failed:', error);
-      }
-    })();
-    return;
-  }
 
   if (command === 'pip-quit') {
     void (async () => {
@@ -982,47 +847,16 @@ async function handleEncryptAndSave(options) {
     error: saveResult.error,
   };
 }
-
-/**
- * Ensure the repeating alarm is scheduled.
- * @returns {Promise<void>}
- */
-async function scheduleMirrorAlarm() {
-  chrome.alarms.create(MIRROR_ALARM_NAME, {
-    periodInMinutes: MIRROR_PULL_INTERVAL_MINUTES,
-  });
-}
-
 /**
  * Handle one-time initialization tasks.
  * @param {string} trigger
  * @returns {void}
  */
 function handleLifecycleEvent(trigger) {
-  setupContextMenus();
+  setupCentralizedContextMenus();
   setupClipboardContextMenus();
-  void scheduleMirrorAlarm();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
-  // Delay startup pull to avoid race condition with network initialization
-  if (trigger === 'startup') {
-    setTimeout(() => {
-      void runMirrorPull(trigger).catch((error) => {
-        console.warn(
-          '[mirror] Initial pull skipped:',
-          error instanceof Error ? error.message : error,
-        );
-      });
-    }, 2000);
-    return;
-  }
-
-  void runMirrorPull(trigger).catch((error) => {
-    console.warn(
-      '[mirror] Initial pull skipped:',
-      error instanceof Error ? error.message : error,
-    );
-  });
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -1586,20 +1420,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   void (async () => {
-    const handled = await handleAutoReloadAlarm(alarm);
-    if (handled) {
-      return;
-    }
-
-    if (alarm.name !== MIRROR_ALARM_NAME) {
-      return;
-    }
-
-    try {
-      await runMirrorPull('alarm');
-    } catch (error) {
-      console.error('[mirror] Scheduled pull failed:', error);
-    }
+    await handleAutoReloadAlarm(alarm);
   })();
 });
 
@@ -2436,6 +2257,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === RAINDROP_SEARCH_MESSAGE) {
+    const query = typeof message.query === 'string' ? message.query : '';
+    handleRaindropSearch(query)
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        console.error('[background] Raindrop search failed:', error);
+        sendResponse({ items: [], collections: [] });
+      });
+    return true;
+  }
+
   if (message.type === CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE) {
     const clipboardText =
       typeof message.clipboardText === 'string' ? message.clipboardText : '';
@@ -2451,37 +2285,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === SAVE_PROJECT_MESSAGE) {
-    return handleSaveProjectMessage(message, sendResponse);
-  }
 
-  if (message.type === ADD_PROJECT_TABS_MESSAGE) {
-    return handleAddTabsToProjectMessage(message, sendResponse);
-  }
-
-  if (message.type === REPLACE_PROJECT_ITEMS_MESSAGE) {
-    return handleReplaceProjectItemsMessage(message, sendResponse);
-  }
-
-  if (message.type === LIST_PROJECTS_MESSAGE) {
-    return handleListProjectsMessage(message, sendResponse);
-  }
-
-  if (message.type === GET_CACHED_PROJECTS_MESSAGE) {
-    return handleGetCachedProjectsMessage(message, sendResponse);
-  }
-
-  if (message.type === DELETE_PROJECT_MESSAGE) {
-    return handleDeleteProjectMessage(message, sendResponse);
-  }
-
-  if (message.type === RESTORE_PROJECT_TABS_MESSAGE) {
-    return handleRestoreProjectTabsMessage(message, sendResponse);
-  }
-
-  if (message.type === SEARCH_PROJECTS_MESSAGE) {
-    return handleSearchProjectsMessage(message, sendResponse);
-  }
 
   if (message.type === 'launchElementPicker') {
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
@@ -2895,31 +2699,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === MANUAL_PULL_MESSAGE) {
-    runMirrorPull('manual')
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        const messageText =
-          error instanceof Error ? error.message : String(error);
-        sendResponse({ ok: false, error: messageText });
-      });
-    return true;
-  }
 
-  if (message.type === RESET_PULL_MESSAGE) {
-    resetAndPull()
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        const messageText =
-          error instanceof Error ? error.message : String(error);
-        sendResponse({ ok: false, error: messageText });
-      });
-    return true;
-  }
 
   if (message.type === 'INJECT_CUSTOM_JS') {
     const ruleId = message.ruleId;
@@ -3501,35 +3281,7 @@ if (chrome.contextMenus) {
       return;
     }
 
-    // Create new project
-    if (menuItemId === RAINDROP_MENU_IDS.CREATE_PROJECT) {
-      void handleCreateProjectFromContextMenu(tab);
-      return;
-    }
 
-    // Pull from Raindrop
-    if (menuItemId === RAINDROP_MENU_IDS.PULL) {
-      void runMirrorPull('manual').catch((error) => {
-        console.warn('[contextMenu] Pull failed:', error);
-      });
-      return;
-    }
-
-    // ========================================================================
-    // PROJECT SUBMENU HANDLERS
-    // ========================================================================
-    const projectMenuItem = parseProjectMenuItem(menuItemId);
-    if (projectMenuItem) {
-      if (projectMenuItem.type === 'add') {
-        void handleAddToProjectFromContextMenu(projectMenuItem.projectId, tab);
-      } else if (projectMenuItem.type === 'replace') {
-        void handleReplaceProjectFromContextMenu(
-          projectMenuItem.projectId,
-          tab,
-        );
-      }
-      return;
-    }
 
     // ========================================================================
     // RUN CODE MENU HANDLERS

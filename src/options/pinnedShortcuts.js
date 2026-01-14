@@ -13,7 +13,6 @@
  */
 const AVAILABLE_SHORTCUTS = [
   { id: 'getMarkdown', emoji: '💬', tooltip: 'Chat with llm' },
-  { id: 'pull', emoji: '🌧️', tooltip: 'Pull from raindrop' },
   { id: 'saveUnsorted', emoji: '📤', tooltip: 'Save to unsorted' },
   {
     id: 'encryptSave',
@@ -44,7 +43,6 @@ const MAX_SHORTCUTS = 6;
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
   'getMarkdown', // Chat with llm
-  'pull', // Pull from raindrop
   'saveUnsorted', // Save to unsorted
   'encryptSave', // Encrypt & save to unsorted
   'saveClipboardToUnsorted', // Save clipboard link to unsorted

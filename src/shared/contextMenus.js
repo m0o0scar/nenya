@@ -19,8 +19,6 @@ export const PARENT_MENU_IDS = {
   RAINDROP: 'nenya-raindrop-parent',
   SEND_TO_LLM: 'nenya-send-to-llm-parent',
   RUN_CODE: 'nenya-run-code-parent',
-  ADD_TO_PROJECT: 'nenya-add-to-project-parent',
-  REPLACE_PROJECT: 'nenya-replace-project-parent',
 };
 
 /**
@@ -42,8 +40,6 @@ export const RAINDROP_MENU_IDS = {
   SAVE_LINK: 'nenya-save-unsorted-link',
   SAVE_CLIPBOARD: 'nenya-save-clipboard-link',
   ENCRYPT_SAVE: 'nenya-encrypt-unsorted',
-  CREATE_PROJECT: 'nenya-create-project',
-  PULL: 'nenya-pull-raindrop',
 };
 
 /**
@@ -60,8 +56,6 @@ export const OTHER_MENU_IDS = {
  */
 export const DYNAMIC_PREFIXES = {
   LLM_PROVIDER: 'send-to-llm-',
-  ADD_PROJECT: 'add-to-project-',
-  REPLACE_PROJECT: 'replace-project-',
   RUN_CODE: 'run-code-',
 };
 
@@ -75,10 +69,7 @@ const CUSTOM_CODE_STORAGE_KEY = 'customCodeRules';
  */
 const RUN_CODE_IN_PAGE_STORAGE_KEY = 'runCodeInPageRules';
 
-/**
- * Storage key for cached projects
- */
-const CACHED_PROJECTS_KEY = 'cachedProjects';
+
 
 // ============================================================================
 // CONTEXT MENU CREATION
@@ -119,7 +110,7 @@ async function removeDynamicMenuItems(prefix) {
  * @returns {Promise<void>}
  */
 async function createCopyMenu() {
-  const contexts = ['page', 'frame', 'selection', 'editable', 'link', 'image'];
+  const contexts = /** @type {any} */ (['page', 'frame', 'selection', 'editable', 'link', 'image']);
 
   await createMenuItem({
     id: PARENT_MENU_IDS.COPY,
@@ -168,15 +159,15 @@ async function createCopyMenu() {
  * @returns {Promise<void>}
  */
 async function createRaindropMenu() {
-  const pageContexts = ['page', 'frame', 'selection', 'editable', 'image'];
-  const allContexts = [
+  const pageContexts = /** @type {any} */ (['page', 'frame', 'selection', 'editable', 'image']);
+  const allContexts = /** @type {any} */ ([
     'page',
     'frame',
     'selection',
     'editable',
     'image',
     'link',
-  ];
+  ]);
 
   await createMenuItem({
     id: PARENT_MENU_IDS.RAINDROP,
@@ -220,43 +211,9 @@ async function createRaindropMenu() {
     contexts: allContexts,
   });
 
-  await createMenuItem({
-    id: RAINDROP_MENU_IDS.CREATE_PROJECT,
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Create new project',
-    contexts: ['page'],
-  });
+  // No project items needed
 
-  // Add to project submenu (will be populated dynamically)
-  await createMenuItem({
-    id: PARENT_MENU_IDS.ADD_TO_PROJECT,
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Add current page to project',
-    contexts: ['page'],
-  });
 
-  // Replace project submenu (will be populated dynamically)
-  await createMenuItem({
-    id: PARENT_MENU_IDS.REPLACE_PROJECT,
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Replace project with selected pages',
-    contexts: ['page'],
-  });
-
-  // Separator
-  await createMenuItem({
-    id: 'nenya-raindrop-separator-2',
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    type: 'separator',
-    contexts: allContexts,
-  });
-
-  await createMenuItem({
-    id: RAINDROP_MENU_IDS.PULL,
-    parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Pull from Raindrop',
-    contexts: ['page'],
-  });
 }
 
 /**
@@ -323,20 +280,7 @@ async function createOtherMenus() {
 // DYNAMIC MENU UPDATES
 // ============================================================================
 
-/**
- * Get cached projects from storage.
- * @returns {Promise<Array<{id: number, title: string}>>}
- */
-async function getCachedProjects() {
-  try {
-    const result = await chrome.storage.local.get(CACHED_PROJECTS_KEY);
-    const projects = result[CACHED_PROJECTS_KEY];
-    return Array.isArray(projects) ? projects : [];
-  } catch (error) {
-    console.warn('[contextMenu] Failed to get cached projects:', error);
-    return [];
-  }
-}
+
 
 /**
  * Get "Run code in page" rules from storage.
@@ -413,104 +357,7 @@ async function getMatchingCodeRules(url) {
   });
 }
 
-/**
- * Update project submenus with current project list.
- * @returns {Promise<void>}
- */
-export async function updateProjectSubmenus() {
-  if (!chrome.contextMenus) {
-    return;
-  }
 
-  const projects = await getCachedProjects();
-
-  // Remove existing project menu items by recreating all menus
-  // This is necessary because Chrome doesn't provide a way to list existing items
-  // We'll handle this by tracking and removing specific items
-
-  // First, remove any existing dynamic project items
-  const existingIds = [];
-  for (let i = 0; i < 100; i++) {
-    existingIds.push(`${DYNAMIC_PREFIXES.ADD_PROJECT}${i}`);
-    existingIds.push(`${DYNAMIC_PREFIXES.REPLACE_PROJECT}${i}`);
-  }
-
-  for (const id of existingIds) {
-    try {
-      await new Promise((resolve) => {
-        chrome.contextMenus.remove(id, () => {
-          chrome.runtime.lastError; // Clear error
-          resolve();
-        });
-      });
-    } catch {
-      // Ignore errors for non-existent items
-    }
-  }
-
-  // Add project items
-  if (projects.length === 0) {
-    // Show placeholder when no projects
-    await createMenuItem({
-      id: `${DYNAMIC_PREFIXES.ADD_PROJECT}empty`,
-      parentId: PARENT_MENU_IDS.ADD_TO_PROJECT,
-      title: '(No saved projects)',
-      contexts: ['page'],
-      enabled: false,
-    });
-    await createMenuItem({
-      id: `${DYNAMIC_PREFIXES.REPLACE_PROJECT}empty`,
-      parentId: PARENT_MENU_IDS.REPLACE_PROJECT,
-      title: '(No saved projects)',
-      contexts: ['page'],
-      enabled: false,
-    });
-  } else {
-    // Remove empty placeholders
-    try {
-      await new Promise((resolve) => {
-        chrome.contextMenus.remove(
-          `${DYNAMIC_PREFIXES.ADD_PROJECT}empty`,
-          () => {
-            chrome.runtime.lastError;
-            resolve();
-          },
-        );
-      });
-      await new Promise((resolve) => {
-        chrome.contextMenus.remove(
-          `${DYNAMIC_PREFIXES.REPLACE_PROJECT}empty`,
-          () => {
-            chrome.runtime.lastError;
-            resolve();
-          },
-        );
-      });
-    } catch {
-      // Ignore
-    }
-
-    for (const project of projects) {
-      const projectId = Number(project.id);
-      const title =
-        typeof project.title === 'string' ? project.title : 'Untitled';
-
-      await createMenuItem({
-        id: `${DYNAMIC_PREFIXES.ADD_PROJECT}${projectId}`,
-        parentId: PARENT_MENU_IDS.ADD_TO_PROJECT,
-        title: title,
-        contexts: ['page'],
-      });
-
-      await createMenuItem({
-        id: `${DYNAMIC_PREFIXES.REPLACE_PROJECT}${projectId}`,
-        parentId: PARENT_MENU_IDS.REPLACE_PROJECT,
-        title: title,
-        contexts: ['page'],
-      });
-    }
-  }
-}
 
 /**
  * Update Run Code submenu based on matching rules for current URL.
@@ -535,7 +382,7 @@ export async function updateRunCodeSubmenu(url) {
             `${DYNAMIC_PREFIXES.RUN_CODE}${rule.id}`,
             () => {
               chrome.runtime.lastError; // Clear error
-              resolve();
+              resolve(undefined);
             },
           );
         });
@@ -550,7 +397,7 @@ export async function updateRunCodeSubmenu(url) {
     await new Promise((resolve) => {
       chrome.contextMenus.remove(`${DYNAMIC_PREFIXES.RUN_CODE}empty`, () => {
         chrome.runtime.lastError;
-        resolve();
+        resolve(undefined);
       });
     });
   } catch {
@@ -584,7 +431,7 @@ export async function updateRunCodeSubmenu(url) {
     const ruleTitle =
       typeof rule.title === 'string' && rule.title.trim()
         ? rule.title.trim()
-        : rule.pattern;
+        : rule.patterns[0] || '';
     // Truncate if too long
     const title =
       ruleTitle.length > 40 ? ruleTitle.substring(0, 37) + '...' : ruleTitle;
@@ -616,7 +463,7 @@ export async function updateSplitMenuVisibility(tab) {
       visible: !isSplitPage,
     });
     await chrome.contextMenus.update(OTHER_MENU_IDS.UNSPLIT_TABS, {
-      visible: isSplitPage,
+      visible: Boolean(isSplitPage),
     });
   } catch (error) {
     console.warn(
@@ -680,8 +527,7 @@ export async function setupContextMenus() {
         await createRunCodeMenu();
         await createOtherMenus();
 
-        // Initialize dynamic submenus
-        await updateProjectSubmenus();
+
 
         console.log('[contextMenu] All context menus created successfully');
       } catch (setupError) {
@@ -723,36 +569,7 @@ export function isRaindropMenuItem(menuItemId) {
   return Object.values(RAINDROP_MENU_IDS).includes(menuItemId);
 }
 
-/**
- * Check if a menu item ID is a dynamic project menu item.
- * @param {string} menuItemId
- * @returns {{ type: 'add' | 'replace', projectId: number } | null}
- */
-export function parseProjectMenuItem(menuItemId) {
-  if (typeof menuItemId !== 'string') {
-    return null;
-  }
 
-  if (menuItemId.startsWith(DYNAMIC_PREFIXES.ADD_PROJECT)) {
-    const projectId = Number(
-      menuItemId.replace(DYNAMIC_PREFIXES.ADD_PROJECT, ''),
-    );
-    if (Number.isFinite(projectId) && projectId > 0) {
-      return { type: 'add', projectId };
-    }
-  }
-
-  if (menuItemId.startsWith(DYNAMIC_PREFIXES.REPLACE_PROJECT)) {
-    const projectId = Number(
-      menuItemId.replace(DYNAMIC_PREFIXES.REPLACE_PROJECT, ''),
-    );
-    if (Number.isFinite(projectId) && projectId > 0) {
-      return { type: 'replace', projectId };
-    }
-  }
-
-  return null;
-}
 
 /**
  * Check if a menu item ID is a Run Code menu item.

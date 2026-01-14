@@ -9,11 +9,10 @@ import {
   getTokenValidationStatus,
   handleEncryptAndSaveActive,
   handleSaveToUnsorted,
-  handlePull,
   showSaveToUnsortedDialog,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
-import { initializeProjects } from './projects.js';
+
 import { debounce } from '../shared/debounce.js';
 
 /**
@@ -34,15 +33,6 @@ const SHORTCUT_CONFIG = {
     emoji: '💬',
     tooltip: 'Chat with llm',
     handler: () => handleGetMarkdown(),
-  },
-  pull: {
-    emoji: '🌧️',
-    tooltip: 'Pull from raindrop',
-    handler: () => {
-      if (pullButton && statusMessage) {
-        void handlePull(pullButton, statusMessage);
-      }
-    },
   },
   saveUnsorted: {
     emoji: '📤',
@@ -148,7 +138,6 @@ const STORAGE_KEY = 'pinnedShortcuts';
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
   'getMarkdown', // Chat with llm
-  'pull', // Pull from raindrop
   'saveUnsorted', // Save to unsorted
   'encryptSave', // Encrypt & save to unsorted
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
@@ -162,7 +151,6 @@ const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
 
 // Keep references to buttons for backward compatibility
 let getMarkdownButton = null;
-let pullButton = null;
 let saveUnsortedButton = null;
 let encryptSaveButton = null;
 let openOptionsButton = null;
@@ -176,9 +164,7 @@ let highlightTextButton = null;
 let customCodeButton = null;
 let pictureInPictureButton = null;
 
-const saveProjectButton = /** @type {HTMLButtonElement | null} */ (
-  document.getElementById('saveProjectButton')
-);
+
 
 const importCustomCodeFileInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('importCustomCodeFileInput')
@@ -189,9 +175,7 @@ const statusMessage = /** @type {HTMLDivElement | null} */ (
 const autoReloadStatusElement = /** @type {HTMLSpanElement | null} */ (
   document.getElementById('autoReloadStatus')
 );
-const projectsContainer = /** @type {HTMLDivElement | null} */ (
-  document.getElementById('projectsContainer')
-);
+
 const bookmarksSearchInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('bookmarksSearchInput')
 );
@@ -252,7 +236,6 @@ async function loadAndRenderShortcuts() {
 
     // Reset button references
     getMarkdownButton = null;
-    pullButton = null;
     saveUnsortedButton = null;
     encryptSaveButton = null;
     openOptionsButton = null;
@@ -293,9 +276,6 @@ async function loadAndRenderShortcuts() {
       switch (shortcutId) {
         case 'getMarkdown':
           getMarkdownButton = button;
-          break;
-        case 'pull':
-          pullButton = button;
           break;
         case 'saveUnsorted':
           saveUnsortedButton = button;
@@ -387,10 +367,7 @@ async function loadAndRenderShortcuts() {
   }
 }
 
-// Initialize projects functionality
-if (saveProjectButton && projectsContainer && statusMessage) {
-  initializeProjects(saveProjectButton, projectsContainer, statusMessage);
-}
+
 
 // Initialize bookmarks search functionality
 if (bookmarksSearchInput && bookmarksSearchResults) {
@@ -1418,7 +1395,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 function initializeBookmarksSearch(inputElement, resultsElement) {
   /** @type {number} */
   let highlightedIndex = -1;
-  /** @type {chrome.bookmarks.BookmarkTreeNode[]} */
+  /** @type {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
 
   /**
@@ -1467,11 +1444,11 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @param {number} index
    */
   function updateHighlight(index) {
-    const items = resultsElement.querySelectorAll('[data-index]');
+    const items = resultsElement.querySelectorAll('.hover\\:bg-base-300');
     items.forEach((item, i) => {
       if (i === index) {
         item.classList.add('bg-base-300');
-        item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        item.scrollIntoView({ block: 'nearest' });
       } else {
         item.classList.remove('bg-base-300');
       }
@@ -1548,7 +1525,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /**
    * Renders the bookmark search results.
-   * @param {Array<{type: 'project'|'bookmark', data: any}>} results
+   * @param {Array<{type: 'bookmark', data: chrome.bookmarks.BookmarkTreeNode}>} results
    */
   function renderSearchResults(results) {
     resultsElement.innerHTML = '';
@@ -1557,37 +1534,11 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       resultItem.className = 'p-2 hover:bg-base-300 cursor-pointer rounded-md';
       resultItem.dataset.index = String(index);
 
-      if (result.type === 'project') {
-        // Project item
-        const project = result.data;
-        const projectTitle = project.title || 'Untitled project';
-        const itemCount = Number.isFinite(project.itemCount)
-          ? project.itemCount
-          : 0;
-        const itemText = itemCount === 1 ? '1 item' : `${itemCount} items`;
-
-        resultItem.innerHTML = `
-          <div class="flex items-center gap-1">
-            <span>📚</span>
-            <span class="flex-1 truncate">${escapeHtml(projectTitle)}</span>
-          </div>
-          <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
-            Project • ${escapeHtml(itemText)}
-          </div>
-        `;
-
-        resultItem.addEventListener('click', () => {
-          void restoreProject(project.id, project.title);
-        });
-      } else if (result.type === 'bookmark') {
-        // Bookmark item
+      if (result.type === 'bookmark') {
         const bookmark = result.data;
-
         if (bookmark.url) {
-          // Bookmark item - show title and URL on separate lines
           const titleText = bookmark.title || bookmark.url;
           const truncatedUrl = truncateUrl(bookmark.url);
-
           resultItem.innerHTML = `
             <div class="flex items-center gap-1">
               <span>↗️</span>
@@ -1597,16 +1548,11 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
               ${escapeHtml(truncatedUrl)}
             </div>
           `;
-
           resultItem.addEventListener('click', () => {
-            if (bookmark.url) {
-              void openBookmark(bookmark.url);
-            }
+            void openBookmark(bookmark.url);
           });
         } else {
-          // Bookmark folder
           const folderTitle = bookmark.title || 'Untitled';
-
           resultItem.innerHTML = `
             <div class="flex items-center gap-1">
               <span>📂</span>
@@ -1614,19 +1560,54 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
               <span class="count-display">(0)</span>
             </div>
           `;
-
-          // Count direct children bookmarks and update text
           void countDirectChildrenBookmarks(bookmark).then((count) => {
             const countSpan = resultItem.querySelector('.count-display');
             if (countSpan) {
               countSpan.textContent = `(${count})`;
             }
           });
-
           resultItem.addEventListener('click', () => {
             void openFolderBookmarks(bookmark);
           });
         }
+      } else if (result.type === 'raindrop') {
+        const item = result.data;
+        const titleText = item.title || item.link;
+        const truncatedUrl = truncateUrl(item.link);
+        const collectionChip = item.collectionTitle
+          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+              ${escapeHtml(item.collectionTitle)}
+            </span>`
+          : '';
+
+        resultItem.innerHTML = `
+          <div class="flex items-center gap-1 overflow-hidden w-full">
+            <span>💧</span>
+            <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
+            ${collectionChip}
+          </div>
+          <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
+            ${escapeHtml(truncatedUrl)}
+          </div>
+        `;
+        resultItem.addEventListener('click', () => {
+          if (item.link) {
+            void openBookmark(item.link);
+          }
+        });
+      } else if (result.type === 'raindrop-collection') {
+        const collection = result.data;
+        const collectionTitle = collection.title || 'Untitled';
+        const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+        resultItem.innerHTML = `
+          <div class="flex items-center gap-1">
+            <span>📥</span>
+            <span class="flex-1 truncate">${escapeHtml(collectionTitle)}</span>
+          </div>
+        `;
+        resultItem.addEventListener('click', () => {
+          void openBookmark(collectionUrl);
+        });
       }
 
       resultsElement.appendChild(resultItem);
@@ -1635,29 +1616,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     highlightedIndex = -1;
   }
 
-  /**
-   * Restore a project from search results.
-   * @param {number} projectId
-   * @param {string} projectTitle
-   * @returns {Promise<void>}
-   */
-  async function restoreProject(projectId, projectTitle) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'projects:restoreProjectTabs',
-        projectId: projectId,
-        projectTitle: projectTitle,
-      });
 
-      if (response && response.ok) {
-        window.close();
-      } else {
-        console.error('[popup] Failed to restore project:', response?.error);
-      }
-    } catch (error) {
-      console.error('[popup] Failed to restore project:', error);
-    }
-  }
 
   /**
    * Opens all direct children bookmarks of a folder in separate tabs.
@@ -1722,23 +1681,54 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
    * @param {string} query
    */
   async function performSearch(query) {
-    // Search both bookmarks and projects in parallel
-    const [bookmarkResults, projectResults] = await Promise.all([
-      searchBookmarks(query),
-      searchProjects(query),
-    ]);
+    if (!query.trim()) {
+      currentResults = [];
+      resultsElement.innerHTML = '';
+      return;
+    }
 
-    // Merge results: projects first, then bookmarks
-    const mergedResults = [
-      ...projectResults.map((project) => ({ type: 'project', data: project })),
-      ...bookmarkResults.map((bookmark) => ({
+    // Search local bookmarks
+    const bookmarkResults = await searchBookmarks(query);
+
+    // Map to result format, filtering out folders (nodes without a URL)
+    const results = bookmarkResults
+      .filter((bookmark) => bookmark.url)
+      .map((bookmark) => ({
         type: 'bookmark',
         data: bookmark,
-      })),
-    ];
+      }));
 
-    // Limit to top 10 results
-    const topResults = mergedResults.slice(0, 10);
+    // Search Raindrop
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'mirror:search',
+        query,
+      });
+
+      if (response) {
+        if (Array.isArray(response.items)) {
+          response.items.forEach((item) => {
+            results.push({
+              type: 'raindrop',
+              data: item,
+            });
+          });
+        }
+        if (Array.isArray(response.collections)) {
+          response.collections.forEach((collection) => {
+            results.push({
+              type: 'raindrop-collection',
+              data: collection,
+            });
+          });
+        }
+      }
+    } catch (error) {
+      console.warn('[popup] Raindrop search failed:', error);
+    }
+
+    // Limit to top 20 results
+    const topResults = results.slice(0, 20);
     currentResults = topResults;
     renderSearchResults(topResults);
   }
@@ -1805,27 +1795,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     });
   }
 
-  /**
-   * Search projects and return matching results.
-   * @param {string} query
-   * @returns {Promise<any[]>}
-   */
-  async function searchProjects(query) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'projects:searchProjects',
-        query: query,
-      });
 
-      if (response && response.ok && Array.isArray(response.projects)) {
-        return response.projects;
-      }
-      return [];
-    } catch (error) {
-      console.error('[popup] Failed to search projects:', error);
-      return [];
-    }
-  }
 
   // Debounce search to improve performance and prevent excessive calls while typing.
   const debouncedSearch = debounce(performSearch, 300);
@@ -1854,13 +1824,7 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
         const highlightedResult = currentResults[highlightedIndex];
 
-        if (highlightedResult.type === 'project') {
-          // Project - restore it
-          void restoreProject(
-            highlightedResult.data.id,
-            highlightedResult.data.title,
-          );
-        } else if (highlightedResult.type === 'bookmark') {
+        if (highlightedResult.type === 'bookmark') {
           // Bookmark or folder
           const bookmark = highlightedResult.data;
           if (bookmark.url) {
@@ -1869,6 +1833,15 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
             // Bookmark folder - open all direct children bookmarks
             void openFolderBookmarks(bookmark);
           }
+        } else if (highlightedResult.type === 'raindrop') {
+          const item = highlightedResult.data;
+          if (item.link) {
+            void openBookmark(item.link);
+          }
+        } else if (highlightedResult.type === 'raindrop-collection') {
+          const collection = highlightedResult.data;
+          const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+          void openBookmark(collectionUrl);
         }
         return;
       }
