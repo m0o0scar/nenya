@@ -226,22 +226,10 @@ async function handleFetchSessionDetails(collectionId) {
     return { windows: [] };
   }
 
-  // 2. Separate meta item from tabs
-  const metaItem = items.find(
-    (item) => item.link === 'https://nenya.local/meta',
-  );
+  // 2. Separate meta item from tabs (legacy support: ignore meta item)
   const tabItems = items.filter(
     (item) => item.link !== 'https://nenya.local/meta',
   );
-
-  let metaData = { tabGroups: [] };
-  if (metaItem && metaItem.excerpt) {
-    try {
-      metaData = JSON.parse(metaItem.excerpt);
-    } catch (e) {
-      console.warn('[mirror] Failed to parse session meta data:', e);
-    }
-  }
 
   // 3. Group tabs by windowId and then by groupId
   const windowsMap = new Map();
@@ -268,6 +256,9 @@ async function handleFetchSessionDetails(collectionId) {
       pinned: tabData.pinned || false,
       index: tabData.index || 0,
       groupId: tabData.tabGroupId,
+      groupTitle: tabData.groupTitle,
+      groupColor: tabData.groupColor,
+      groupCollapsed: tabData.groupCollapsed,
     });
   });
 
@@ -282,16 +273,13 @@ async function handleFetchSessionDetails(collectionId) {
     win.items.forEach((tab) => {
       if (tab.groupId !== undefined && tab.groupId !== -1) {
         if (!processedGroupIds.has(tab.groupId)) {
-          const groupMeta = /** @type {any[]} */ (
-            metaData.tabGroups || []
-          ).find((g) => g.id === tab.groupId);
           const groupTabs = win.items.filter((t) => t.groupId === tab.groupId);
           tree.push({
             type: 'group',
             id: tab.groupId,
-            title: groupMeta?.title || 'Group',
-            color: groupMeta?.color || 'grey',
-            collapsed: groupMeta?.collapsed || false,
+            title: tab.groupTitle || 'Group',
+            color: tab.groupColor || 'grey',
+            collapsed: tab.groupCollapsed || false,
             tabs: groupTabs,
           });
           processedGroupIds.add(tab.groupId);
@@ -348,22 +336,12 @@ async function handleRestoreSession(collectionId) {
     return { success: true };
   }
 
-  // 2. Separate meta item from tabs
-  const metaItem = items.find(
-    (item) => item.link === 'https://nenya.local/meta',
-  );
+  // 2. Separate meta item from tabs (legacy support: ignore meta item)
   const tabItems = items.filter(
     (item) => item.link !== 'https://nenya.local/meta',
   );
 
-  let metaData = null;
-  if (metaItem && metaItem.excerpt) {
-    try {
-      metaData = JSON.parse(metaItem.excerpt);
-    } catch (e) {
-      console.warn('[mirror] Failed to parse session meta data:', e);
-    }
-  }
+  const groupDefinitions = new Map(); // groupId -> {title, color, collapsed, windowId}
 
   // 3. Group tabs by their original windowId
   const tabsByWindow = new Map();
@@ -380,6 +358,20 @@ async function handleRestoreSession(collectionId) {
     if (!tabsByWindow.has(windowId)) {
       tabsByWindow.set(windowId, []);
     }
+
+    if (tabData.tabGroupId && tabData.tabGroupId !== -1) {
+      // Ideally multiple tabs in the same group have the same info.
+      if (!groupDefinitions.has(tabData.tabGroupId)) {
+        groupDefinitions.set(tabData.tabGroupId, {
+          id: tabData.tabGroupId,
+          windowId: windowId,
+          title: tabData.groupTitle || 'Group',
+          color: tabData.groupColor || 'grey',
+          collapsed: tabData.groupCollapsed || false
+        });
+      }
+    }
+
     tabsByWindow.get(windowId).push({
       url: unwrapInternalUrl(item.link),
       pinned: tabData.pinned || false,
@@ -431,9 +423,9 @@ async function handleRestoreSession(collectionId) {
       }
     }
 
-    // Restore tab groups if metaData is available
-    if (metaData && metaData.tabGroups) {
-      const windowGroups = metaData.tabGroups.filter(
+    // Restore tab groups if definitions are available
+    if (groupDefinitions.size > 0) {
+      const windowGroups = Array.from(groupDefinitions.values()).filter(
         (g) => g.windowId === oldWindowId,
       );
 
@@ -684,7 +676,7 @@ function concludeActionBadge(handle, finalEmoji) {
 
   const isCurrent = Boolean(
     currentBadgeAnimationHandle &&
-      currentBadgeAnimationHandle.token === handle.token,
+    currentBadgeAnimationHandle.token === handle.token,
   );
   const isLatestStart = handle.token === lastStartedBadgeToken;
   if (isCurrent) {
@@ -1319,8 +1311,8 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         summary.failed += 1;
         summary.errors.push(
           entry.url +
-            ': ' +
-            (error instanceof Error ? error.message : String(error)),
+          ': ' +
+          (error instanceof Error ? error.message : String(error)),
         );
       }
     }
@@ -1568,9 +1560,9 @@ async function raindropRequest(path, tokens, init) {
   if (!response.ok) {
     throw new Error(
       'Raindrop request failed (' +
-        response.status +
-        '): ' +
-        response.statusText,
+      response.status +
+      '): ' +
+      response.statusText,
     );
   }
 
@@ -1638,9 +1630,9 @@ async function ensureRootFolder(parentId, title, stats) {
 function isPromiseLike(value) {
   return Boolean(
     value &&
-      typeof value === 'object' &&
-      'then' in value &&
-      typeof value.then === 'function',
+    typeof value === 'object' &&
+    'then' in value &&
+    typeof value.then === 'function',
   );
 }
 
@@ -2437,6 +2429,9 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
     const items = [];
 
+    const groupsMap = new Map();
+    groups.forEach((g) => groupsMap.set(g.id, g));
+
     // 1. Map tabs to raindrops
     for (const win of windows) {
       if (!win.tabs) continue;
@@ -2448,38 +2443,32 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           ? tab.url
           : wrapInternalUrl(tab.url);
 
+        const excerptData = {
+          tabId: tab.id,
+          tabGroupId: tab.groupId,
+          windowId: tab.windowId,
+          pinned: tab.pinned,
+          index: tab.index,
+        };
+
+        if (tab.groupId > -1 && groupsMap.has(tab.groupId)) {
+          const g = groupsMap.get(tab.groupId);
+          excerptData.groupTitle = g.title;
+          excerptData.groupColor = g.color;
+          excerptData.groupCollapsed = g.collapsed;
+        }
+
         items.push({
           link: finalUrl,
           title: tab.title || 'Untitled',
           collection: { $id: deviceCollectionId },
-          excerpt: JSON.stringify({
-            tabId: tab.id,
-            tabGroupId: tab.groupId,
-            windowId: tab.windowId,
-            pinned: tab.pinned,
-            index: tab.index,
-          }),
+          excerpt: JSON.stringify(excerptData),
         });
       }
     }
 
-    // 2. Map metadata to special raindrop
-    const metaData = {
-      tabGroups: groups.map((g) => ({
-        id: g.id,
-        windowId: g.windowId,
-        title: g.title,
-        color: g.color,
-        collapsed: g.collapsed,
-      })),
-    };
-
-    items.push({
-      link: 'https://nenya.local/meta',
-      title: 'meta',
-      collection: { $id: deviceCollectionId },
-      excerpt: JSON.stringify(metaData),
-    });
+    // 2. Map metadata to special raindrop (REMOVED)
+    // We no longer enable meta item, relying on per-tab info.
 
     // 3. Batch create raindrops
     console.log(
@@ -2564,7 +2553,7 @@ async function bookmarksGet(ids) {
   if (Array.isArray(ids) && ids.length > 0) {
     try {
       const maybe = chrome.bookmarks.get(
-        /** @type {[string, ...string[]]} */ (ids),
+        /** @type {[string, ...string[]]} */(ids),
       );
       if (isPromiseLike(maybe)) {
         return await /** @type {Promise<chrome.bookmarks.BookmarkTreeNode[]>} */ (
@@ -2577,7 +2566,7 @@ async function bookmarksGet(ids) {
 
     return new Promise((resolve, reject) => {
       chrome.bookmarks.get(
-        /** @type {[string, ...string[]]} */ (ids),
+        /** @type {[string, ...string[]]} */(ids),
         (nodes) => {
           const lastError = chrome.runtime.lastError;
           if (lastError) {
