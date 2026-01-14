@@ -1749,33 +1749,34 @@ async function ensureNenyaSessionsCollection() {
         (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
       );
 
-      if (!deviceCollection) {
-        console.log(`[mirror] Creating device collection: ${browserId}`);
-        const createResult = await raindropRequest('/collection', tokens, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            title: browserId,
-            parent: { $id: sessionsCollectionId },
-          }),
+      // Always delete old collection if it exists
+      if (deviceCollection) {
+        console.log(
+          `[mirror] Deleting existing device collection: ${browserId}`,
+        );
+        await raindropRequest(`/collection/${deviceCollection._id}`, tokens, {
+          method: 'DELETE',
         });
-        const deviceCollectionId = createResult?.item?._id;
-        console.log(`[mirror] Device collection created: ${browserId}`);
+      }
 
-        if (deviceCollectionId) {
-          await exportCurrentSessionToRaindrop(deviceCollectionId, tokens);
-        }
-      } else {
-        console.log(`[mirror] Device collection already exists: ${browserId}`);
-        // Check if empty and export if so
-        if (deviceCollection.count === 0) {
-          console.log(
-            `[mirror] Device collection is empty, exporting session: ${browserId}`,
-          );
-          await exportCurrentSessionToRaindrop(deviceCollection._id, tokens);
-        }
+      // Always create a new collection
+      console.log(`[mirror] Creating device collection: ${browserId}`);
+      const createResult = await raindropRequest('/collection', tokens, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: browserId,
+          parent: { $id: sessionsCollectionId },
+        }),
+      });
+      const deviceCollectionId = createResult?.item?._id;
+      console.log(`[mirror] Device collection created: ${browserId}`);
+
+      // Always export session to the new collection
+      if (deviceCollectionId) {
+        await exportCurrentSessionToRaindrop(deviceCollectionId, tokens);
       }
     } catch (error) {
       console.warn(
@@ -1821,6 +1822,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
             tabGroupId: tab.groupId,
             windowId: tab.windowId,
             pinned: tab.pinned,
+            index: tab.index,
           }),
         });
       }
@@ -1834,13 +1836,6 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
         title: g.title,
         color: g.color,
         collapsed: g.collapsed,
-      })),
-      tabOrder: windows.map((win) => ({
-        windowId: win.id,
-        tabIds: (win.tabs || [])
-          .sort((a, b) => (a.index || 0) - (b.index || 0))
-          .map((t) => t.id)
-          .filter((id) => typeof id === 'number'),
       })),
     };
 
