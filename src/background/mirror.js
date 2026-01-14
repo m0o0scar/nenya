@@ -1125,7 +1125,7 @@ export async function resetMirrorState(settingsData) {
 }
 
 /**
- * Save URLs to the Raindrop Unsorted collection and mirror them as bookmarks.
+ * Save URLs to the Raindrop Unsorted collection.
  * @param {SaveUnsortedEntry[]} entries
  * @param {{ pleaseParse?: boolean, skipUrlProcessing?: boolean, keepEntryTitle?: boolean }} [options]
  * @returns {Promise<SaveUnsortedResult>}
@@ -1233,16 +1233,6 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
       return finalize();
     }
 
-    const folders = await ensureUnsortedBookmarkFolder();
-    const children = await bookmarksGetChildren(folders.unsortedId);
-    /** @type {Map<string, chrome.bookmarks.BookmarkTreeNode>} */
-    const bookmarkByUrl = new Map();
-    children.forEach((child) => {
-      if (child.url) {
-        bookmarkByUrl.set(child.url, child);
-      }
-    });
-
     for (const entry of dedupeResult.entries) {
       try {
         const pleaseParse = options.pleaseParse || !entry.title;
@@ -1291,37 +1281,6 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           );
         }
 
-        const itemTitle =
-          typeof response.item.title === 'string' ? response.item.title : '';
-        const bookmarkTitle = normalizeBookmarkTitle(
-          entry.title || itemTitle,
-          entry.url,
-        );
-
-        const existing = bookmarkByUrl.get(entry.url);
-        if (existing) {
-          const currentTitle = normalizeBookmarkTitle(
-            existing.title,
-            entry.url,
-          );
-          if (currentTitle !== bookmarkTitle) {
-            const updatedNode = await bookmarksUpdate(existing.id, {
-              title: bookmarkTitle,
-            });
-            bookmarkByUrl.set(entry.url, updatedNode);
-            summary.updated += 1;
-          } else {
-            summary.skipped += 1;
-          }
-          continue;
-        }
-
-        const createdNode = await bookmarksCreate({
-          parentId: folders.unsortedId,
-          title: bookmarkTitle,
-          url: entry.url,
-        });
-        bookmarkByUrl.set(entry.url, createdNode);
         summary.created += 1;
       } catch (error) {
         summary.failed += 1;
