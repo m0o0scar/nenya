@@ -1665,7 +1665,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           link: finalUrl,
           title: tab.title || 'Untitled',
           collection: { $id: deviceCollectionId },
-          note: JSON.stringify({
+          excerpt: JSON.stringify({
             tabId: tab.id,
             tabGroupId: tab.groupId,
             windowId: tab.windowId,
@@ -1697,7 +1697,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       link: 'https://nenya.local/meta',
       title: 'meta',
       collection: { $id: deviceCollectionId },
-      note: JSON.stringify(metaData),
+      excerpt: JSON.stringify(metaData),
     });
 
     // 3. Batch create raindrops
