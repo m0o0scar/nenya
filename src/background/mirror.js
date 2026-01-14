@@ -1434,6 +1434,93 @@ async function handleRaindropSearch(query) {
   }
 }
 
+/**
+ * Check if a URL is valid for Raindrop (http/https).
+ * @param {string} url
+ * @returns {boolean}
+ */
+function isValidRaindropUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Wrap a non-http URL for storage in Raindrop.
+ * @param {string} url
+ * @returns {string}
+ */
+function wrapInternalUrl(url) {
+  return `https://nenya.local/tab?url=${encodeURIComponent(url)}`;
+}
+
+const BROWSER_ID_WORDS = [
+  'Tiger',
+  'Panda',
+  'Eagle',
+  'Dolphin',
+  'Wolf',
+  'Lion',
+  'Fox',
+  'Owl',
+  'Bear',
+  'Shark',
+  'Tokyo',
+  'Paris',
+  'London',
+  'Berlin',
+  'Oslo',
+  'Red',
+  'Blue',
+  'Green',
+  'Gold',
+  'Silver',
+  'Amber',
+  'Emerald',
+  'Sapphire',
+  'Ruby',
+  'Onyx',
+];
+
+/**
+ * Generate a stable unique browser ID and save it to storage.
+ * Format: "<Browser Brand> - <OS type> - <random word>"
+ * @returns {Promise<string>}
+ */
+async function getOrCreateBrowserId() {
+  const result = await chrome.storage.local.get('browserId');
+  if (result.browserId) {
+    return result.browserId;
+  }
+
+  // Get OS info
+  const platformInfo = await chrome.runtime.getPlatformInfo();
+  let os = 'UnknownOS';
+  if (platformInfo.os === 'mac') os = 'Mac';
+  else if (platformInfo.os === 'win') os = 'Windows';
+  else if (platformInfo.os === 'linux') os = 'Linux';
+  else if (platformInfo.os === 'cros') os = 'ChromeOS';
+  else if (platformInfo.os === 'android') os = 'Android';
+
+  // Determine Browser Brand (roughly)
+  let brand = 'Chrome';
+  const ua = navigator.userAgent;
+  if (ua.includes('Edg/')) brand = 'Edge';
+  else if (ua.includes('Brave/')) brand = 'Brave';
+  else if (ua.includes('OPR/') || ua.includes('Opera/')) brand = 'Opera';
+
+  // Pick random word
+  const word =
+    BROWSER_ID_WORDS[Math.floor(Math.random() * BROWSER_ID_WORDS.length)];
+
+  const browserId = `${brand} - ${os} - ${word}`;
+  await chrome.storage.local.set({ browserId });
+  return browserId;
+}
+
 /** @type {Promise<void> | null} */
 let ensureNenyaSessionsCollectionPromise = null;
 
@@ -1465,11 +1552,12 @@ async function ensureNenyaSessionsCollection() {
       );
 
       // 3. If no, create it
+      let sessionsCollectionId;
       if (!sessionsCollection) {
         console.log(
           `[mirror] Creating Raindrop collection: ${SESSIONS_COLLECTION_NAME}`,
         );
-        await raindropRequest('/collection', tokens, {
+        const createResult = await raindropRequest('/collection', tokens, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1478,11 +1566,65 @@ async function ensureNenyaSessionsCollection() {
             title: SESSIONS_COLLECTION_NAME,
           }),
         });
+        sessionsCollectionId = createResult?.item?._id;
         console.log(`[mirror] Collection created: ${SESSIONS_COLLECTION_NAME}`);
       } else {
+        sessionsCollectionId = sessionsCollection._id;
         console.log(
           `[mirror] Raindrop collection already exists: ${SESSIONS_COLLECTION_NAME}`,
         );
+      }
+
+      if (!sessionsCollectionId) {
+        throw new Error('Failed to obtain sessions collection ID');
+      }
+
+      // 4. Ensure device-specific collection
+      const browserId = await getOrCreateBrowserId();
+      console.log(`[mirror] Current Browser ID: ${browserId}`);
+
+      // Fetch children of "nenya / sessions"
+      const childrenResult = await raindropRequest(
+        '/collections/childrens',
+        tokens,
+      );
+      const childCollections = Array.isArray(childrenResult?.items)
+        ? childrenResult.items
+        : [];
+
+      const deviceCollection = childCollections.find(
+        (c) =>
+          c.title === browserId &&
+          c.parent?.$id === sessionsCollectionId,
+      );
+
+      if (!deviceCollection) {
+        console.log(`[mirror] Creating device collection: ${browserId}`);
+        const createResult = await raindropRequest('/collection', tokens, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            title: browserId,
+            parent: { $id: sessionsCollectionId },
+          }),
+        });
+        const deviceCollectionId = createResult?.item?._id;
+        console.log(`[mirror] Device collection created: ${browserId}`);
+
+        if (deviceCollectionId) {
+          await exportCurrentSessionToRaindrop(deviceCollectionId, tokens);
+        }
+      } else {
+        console.log(`[mirror] Device collection already exists: ${browserId}`);
+        // Check if empty and export if so
+        if (deviceCollection.count === 0) {
+          console.log(
+            `[mirror] Device collection is empty, exporting session: ${browserId}`,
+          );
+          await exportCurrentSessionToRaindrop(deviceCollection._id, tokens);
+        }
       }
     } catch (error) {
       console.warn(
@@ -1493,6 +1635,91 @@ async function ensureNenyaSessionsCollection() {
   })();
 
   return ensureNenyaSessionsCollectionPromise;
+}
+
+/**
+ * Export all open tabs and metadata to a specific device collection.
+ * @param {number} deviceCollectionId
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<void>}
+ */
+async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
+  try {
+    const windows = await chrome.windows.getAll({ populate: true });
+    const groups = await chrome.tabGroups.query({});
+
+    const items = [];
+
+    // 1. Map tabs to raindrops
+    for (const win of windows) {
+      if (!win.tabs) continue;
+
+      for (const tab of win.tabs) {
+        if (!tab.url) continue;
+
+        const finalUrl = isValidRaindropUrl(tab.url)
+          ? tab.url
+          : wrapInternalUrl(tab.url);
+
+        items.push({
+          link: finalUrl,
+          title: tab.title || 'Untitled',
+          collection: { $id: deviceCollectionId },
+          note: JSON.stringify({
+            tabId: tab.id,
+            tabGroupId: tab.groupId,
+            windowId: tab.windowId,
+            pinned: tab.pinned,
+          }),
+        });
+      }
+    }
+
+    // 2. Map metadata to special raindrop
+    const metaData = {
+      tabGroups: groups.map((g) => ({
+        id: g.id,
+        windowId: g.windowId,
+        title: g.title,
+        color: g.color,
+        collapsed: g.collapsed,
+      })),
+      tabOrder: windows.map((win) => ({
+        windowId: win.id,
+        tabIds: (win.tabs || [])
+          .sort((a, b) => (a.index || 0) - (b.index || 0))
+          .map((t) => t.id)
+          .filter((id) => typeof id === 'number'),
+      })),
+    };
+
+    items.push({
+      link: 'https://nenya.local/meta',
+      title: 'meta',
+      collection: { $id: deviceCollectionId },
+      note: JSON.stringify(metaData),
+    });
+
+    // 3. Batch create raindrops
+    console.log(`[mirror] Batching ${items.length} items to collection ${deviceCollectionId}`);
+    
+    // Raindrop batch API limit is 100 items per request
+    const CHUNK_SIZE = 100;
+    for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+      const chunk = items.slice(i, i + CHUNK_SIZE);
+      await raindropRequest('/raindrops', tokens, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ items: chunk }),
+      });
+    }
+
+    console.log(`[mirror] Session exported successfully to collection ${deviceCollectionId}`);
+  } catch (error) {
+    console.warn('[mirror] Failed to export current session:', error);
+  }
 }
 
 /**
