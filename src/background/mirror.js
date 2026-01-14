@@ -57,8 +57,6 @@
  * @property {boolean} unsortedSaved
  */
 
-
-
 /**
  * @typedef {Object} NotificationClipboardSettings
  * @property {boolean} enabled
@@ -108,7 +106,6 @@
  * @property {number} token
  */
 
-
 export {
   concludeActionBadge,
   setActionBadge,
@@ -152,7 +149,6 @@ const DEFAULT_BADGE_ANIMATION_DELAY = 300;
 
 const ANIMATION_DOWN_SEQUENCE = ['🔽', '⏬'];
 const ANIMATION_UP_SEQUENCE = ['🔼', '⏫'];
-
 
 /** @type {BadgeAnimationHandle | null} */
 let currentBadgeAnimationHandle = null;
@@ -742,7 +738,6 @@ async function notifyUnsortedSaveOutcome(summary) {
   );
 }
 
-
 /**
  * Reset stored timestamps and remove the current mirror root folder.
  * @param {{ settings: RootFolderSettings, map: Record<string, RootFolderSettings>, didMutate: boolean }} settingsData
@@ -1120,7 +1115,6 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-
 /**
  * Sanitize a bookmark folder title.
  * @param {unknown} value
@@ -1337,16 +1331,19 @@ async function handleRaindropSearch(query) {
       return { items: [], collections: [] };
     }
 
-    const [itemsResponse, rootCollections, childCollections] = await Promise.all([
-      raindropRequest(
-        `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
-        tokens,
-      ),
-      raindropRequest('/collections', tokens),
-      raindropRequest('/collections/childrens', tokens),
-    ]);
+    const [itemsResponse, rootCollections, childCollections] =
+      await Promise.all([
+        raindropRequest(
+          `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
+          tokens,
+        ),
+        raindropRequest('/collections', tokens),
+        raindropRequest('/collections/childrens', tokens),
+      ]);
 
-    const items = Array.isArray(itemsResponse?.items) ? itemsResponse.items : [];
+    const items = Array.isArray(itemsResponse?.items)
+      ? itemsResponse.items
+      : [];
     const allCollections = [
       ...(Array.isArray(rootCollections?.items) ? rootCollections.items : []),
       ...(Array.isArray(childCollections?.items) ? childCollections.items : []),
@@ -1386,7 +1383,10 @@ async function handleRaindropSearch(query) {
         const link = (item.link || '').toLowerCase();
 
         // If it's a Raindrop system/internal URL, ONLY match against the title
-        if (link.startsWith('https://api.raindrop.io')) {
+        if (
+          link.startsWith('https://api.raindrop.io') ||
+          link.startsWith('https://up.raindrop.io')
+        ) {
           return title.includes(queryLower);
         }
 
@@ -2029,7 +2029,7 @@ async function synchronizeFolderTree(remoteData, rootId, index, stats) {
     index,
     usedFolders,
     stats,
-    );
+  );
   addOrderEntry(orderByParent, rootId, unsortedFolder.id);
 
   await removeUnusedFolders(rootId, index, usedFolders, stats);
