@@ -753,6 +753,7 @@ const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
+const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
@@ -870,6 +871,18 @@ function renderSessions(sessions, container) {
     const actionsContainer = document.createElement('div');
     actionsContainer.className = 'flex items-center gap-1';
 
+    if (session.isCurrent) {
+      const editButton = document.createElement('button');
+      editButton.className =
+        'btn btn-square btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity';
+      editButton.innerHTML = '✏️';
+      editButton.title = 'Edit session name';
+      editButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void handleEditSessionName(session.id, session.title);
+      });
+      actionsContainer.appendChild(editButton);
+    }
 
     actionsContainer.appendChild(restoreButton);
 
@@ -895,6 +908,41 @@ function renderSessions(sessions, container) {
     sessionItem.appendChild(detailsContainer);
     container.appendChild(sessionItem);
   });
+}
+
+/**
+ * Handle editing a session's name.
+ * @param {number} collectionId
+ * @param {string} currentName
+ */
+async function handleEditSessionName(collectionId, currentName) {
+  const newName = window.prompt('Enter new session name:', currentName);
+
+  if (newName && newName.trim() && newName.trim() !== currentName) {
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: UPDATE_SESSION_NAME_MESSAGE,
+        collectionId,
+        oldName: currentName,
+        newName: newName.trim(),
+      });
+
+      if (response && response.ok) {
+        if (statusMessage) {
+          concludeStatus('Session name updated.', 'success', 3000, statusMessage);
+        }
+        // Refresh the sessions list to show the new name
+        await initializeSessions();
+      } else {
+        throw new Error(response?.error || 'Failed to update session name');
+      }
+    } catch (error) {
+      console.error('[popup] Error updating session name:', error);
+      if (statusMessage) {
+        concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
+      }
+    }
+  }
 }
 
 /**
