@@ -210,8 +210,8 @@ export async function showSaveToUnsortedDialog(tab) {
   const screenshotCheckbox = /** @type {HTMLInputElement | null} */ (document.getElementById(
     'saveToUnsortedScreenshotCheckbox',
   ));
-  const cancelButton = document.getElementById('saveToUnsortedCancelButton');
-  const confirmButton = document.getElementById('saveToUnsortedConfirmButton');
+  const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveToUnsortedCancelButton'));
+  const confirmButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveToUnsortedConfirmButton'));
 
   if (
     !modal ||
@@ -227,9 +227,18 @@ export async function showSaveToUnsortedDialog(tab) {
   titleInput.value = tab.title || '';
   screenshotCheckbox.checked = false;
 
+  // Store original button content for restoration
+  const originalConfirmButtonContent = confirmButton.innerHTML;
+
   const handleConfirm = async () => {
     const title = titleInput.value;
     const includeScreenshot = screenshotCheckbox.checked;
+
+    // Show loading state
+    const originalButtonContent = confirmButton.innerHTML;
+    confirmButton.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Saving...';
+    confirmButton.disabled = true;
+    cancelButton.disabled = true;
 
     const entries = [
       {
@@ -250,6 +259,11 @@ export async function showSaveToUnsortedDialog(tab) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       concludeStatus(message, 'error', 3000, /** @type {HTMLElement} */ (document.getElementById('statusMessage')));
+    } finally {
+      // Restore button state
+      confirmButton.innerHTML = originalButtonContent;
+      confirmButton.disabled = false;
+      cancelButton.disabled = false;
     }
     modal.close();
   };
@@ -258,18 +272,47 @@ export async function showSaveToUnsortedDialog(tab) {
     modal.close();
   };
 
+  const handleWindowKeyDown = (/** @type {KeyboardEvent} */ e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      modal.close();
+    }
+  };
+
+  const handleCancelEvent = (/** @type {Event} */ e) => {
+    e.preventDefault(); // Prevent default dialog close to handle it via our window listener
+    e.stopPropagation();
+  };
+
   confirmButton.addEventListener('click', handleConfirm, { once: true });
   cancelButton.addEventListener('click', handleCancel, { once: true });
+  window.addEventListener('keydown', handleWindowKeyDown, true);
+  modal.addEventListener('cancel', handleCancelEvent);
+
   modal.addEventListener(
     'close',
     () => {
       confirmButton.removeEventListener('click', handleConfirm);
       cancelButton.removeEventListener('click', handleCancel);
+      window.removeEventListener('keydown', handleWindowKeyDown, true);
+      modal.removeEventListener('cancel', handleCancelEvent);
+      // Restore button state in case modal was closed while loading
+      if (confirmButton.classList.contains('loading')) {
+        confirmButton.innerHTML = originalConfirmButtonContent;
+        confirmButton.disabled = false;
+        cancelButton.disabled = false;
+      }
     },
     { once: true },
   );
 
   modal.showModal();
+  // Focus input after modal is shown with a small delay to override browser default focus
+  setTimeout(() => {
+    titleInput.focus();
+    titleInput.select(); // Select all text for easy editing
+  }, 50);
 }
 
 /**

@@ -951,8 +951,8 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
 async function handleEditSessionName(collectionId, currentName) {
   const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('editSessionNameModal'));
   const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById('editSessionNameInput'));
-  const cancelButton = document.getElementById('editSessionNameCancelButton');
-  const confirmButton = document.getElementById('editSessionNameConfirmButton');
+  const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameCancelButton'));
+  const confirmButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameConfirmButton'));
 
   if (!modal || !nameInput || !cancelButton || !confirmButton) {
     console.error('Edit session name dialog elements not found');
@@ -967,6 +967,12 @@ async function handleEditSessionName(collectionId, currentName) {
   const handleConfirm = async () => {
     const newName = nameInput.value.trim();
     if (newName && newName !== currentName) {
+      // Show loading state
+      const originalButtonContent = confirmButton.innerHTML;
+      confirmButton.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Saving...';
+      confirmButton.disabled = true;
+      cancelButton.disabled = true;
+
       try {
         const response = await chrome.runtime.sendMessage({
           type: UPDATE_SESSION_NAME_MESSAGE,
@@ -988,6 +994,11 @@ async function handleEditSessionName(collectionId, currentName) {
         if (statusMessage) {
           concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
         }
+      } finally {
+        // Restore button state
+        confirmButton.innerHTML = originalButtonContent;
+        confirmButton.disabled = false;
+        cancelButton.disabled = false;
       }
     }
     modal.close();
@@ -997,15 +1008,46 @@ async function handleEditSessionName(collectionId, currentName) {
     modal.close();
   };
 
+  const handleWindowKeyDown = (/** @type {KeyboardEvent} */ e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      modal.close();
+    }
+  };
+
+  const handleCancelEvent = (/** @type {Event} */ e) => {
+    e.preventDefault(); // Prevent default dialog close to handle it via our window listener
+    e.stopPropagation();
+  };
+
+  // Store original button content for restoration
+  const originalConfirmButtonContent = confirmButton.innerHTML;
+
   confirmButton.addEventListener('click', handleConfirm, { once: true });
   cancelButton.addEventListener('click', handleCancel, { once: true });
+  window.addEventListener('keydown', handleWindowKeyDown, true);
+  modal.addEventListener('cancel', handleCancelEvent);
 
   modal.addEventListener('close', () => {
     confirmButton.removeEventListener('click', handleConfirm);
     cancelButton.removeEventListener('click', handleCancel);
+    window.removeEventListener('keydown', handleWindowKeyDown, true);
+    modal.removeEventListener('cancel', handleCancelEvent);
+    // Restore button state in case modal was closed while loading
+    if (confirmButton.classList.contains('loading')) {
+      confirmButton.innerHTML = originalConfirmButtonContent;
+      confirmButton.disabled = false;
+      cancelButton.disabled = false;
+    }
   }, { once: true });
 
   modal.showModal();
+  // Focus input after modal is shown with a small delay to override browser default focus
+  setTimeout(() => {
+    nameInput.focus();
+    nameInput.select(); // Select all text for easy editing
+  }, 50);
 }
 
 /**
