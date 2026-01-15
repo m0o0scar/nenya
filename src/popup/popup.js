@@ -981,6 +981,12 @@ async function fetchAndRenderSessionDetails(collectionId, container) {
 function renderSessionTree(details, container) {
   container.innerHTML = '';
 
+  if (!details.windows || details.windows.length === 0) {
+    container.innerHTML =
+      '<div class="text-xs text-base-content/50 p-2 italic text-center">No open tabs in this session</div>';
+    return;
+  }
+
   details.windows.forEach((win, index) => {
     const windowItem = document.createElement('div');
     windowItem.className = 'flex flex-col gap-1 mt-1';
