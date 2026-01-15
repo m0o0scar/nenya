@@ -1654,7 +1654,7 @@ async function handleRaindropSearch(query) {
     const [itemsResponse, rootCollections, childCollections] =
       await Promise.all([
         raindropRequest(
-          `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
+          `/raindrops/0?search=${encodeURIComponent(query)}&perpage=50&sort=score`,
           tokens,
         ),
         raindropRequest('/collections', tokens),
@@ -1705,6 +1705,10 @@ async function handleRaindropSearch(query) {
 
         const title = (item.title || '').toLowerCase();
         const link = (item.link || '').toLowerCase();
+        const excerpt = (item.excerpt || '').toLowerCase();
+        const tags = Array.isArray(item.tags)
+          ? item.tags.map((t) => String(t).toLowerCase())
+          : [];
 
         // If it's a Raindrop system/internal URL, ONLY match against the title
         if (
@@ -1714,8 +1718,12 @@ async function handleRaindropSearch(query) {
           return title.includes(queryLower);
         }
 
-        // Otherwise, match against title OR the non-domain part of the URL
-        if (title.includes(queryLower)) {
+        // Otherwise, match against title, excerpt, tags, OR the non-domain part of the URL
+        if (
+          title.includes(queryLower) ||
+          excerpt.includes(queryLower) ||
+          tags.some((t) => t.includes(queryLower))
+        ) {
           return true;
         }
 

@@ -2397,8 +2397,8 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       return true;
     });
 
-    // Limit to top 20 results
-    const topResults = uniqueResults.slice(0, 20);
+    // Limit to top 50 results
+    const topResults = uniqueResults.slice(0, 50);
     currentResults = topResults;
     renderSearchResults(topResults);
   }
