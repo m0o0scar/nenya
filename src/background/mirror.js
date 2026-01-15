@@ -106,6 +106,8 @@
  * @property {number} token
  */
 
+import { getSnapshots } from './tab-snapshots.js';
+
 export {
   concludeActionBadge,
   setActionBadge,
@@ -2450,6 +2452,37 @@ function hasTabChanged(item, tab, finalUrl, excerptData) {
   return false;
 }
 
+/**
+ * Upload a cover image to a Raindrop item from a tab snapshot thumbnail.
+ * @param {string} raindropId - The Raindrop item ID
+ * @param {string} thumbnailDataUrl - Base64 data URL of the thumbnail
+ * @param {Object} tokens - Raindrop authentication tokens
+ * @returns {Promise<void>}
+ */
+async function uploadCoverFromSnapshot(raindropId, thumbnailDataUrl, tokens) {
+  try {
+    if (!thumbnailDataUrl || thumbnailDataUrl.length === 0) {
+      return; // No thumbnail available
+    }
+
+    // Convert data URL to blob
+    const blob = await (await fetch(thumbnailDataUrl)).blob();
+    const formData = new FormData();
+    formData.append('cover', blob, 'screenshot.jpg');
+
+    await raindropRequest(`/raindrop/${raindropId}/cover`, tokens, {
+      method: 'PUT',
+      body: formData,
+    });
+  } catch (error) {
+    console.warn(
+      `[mirror] Failed to upload cover from snapshot for raindrop ${raindropId}:`,
+      error,
+    );
+    // Don't throw - cover upload failure shouldn't break the sync
+  }
+}
+
 async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
   try {
     const windows = await chrome.windows.getAll({ populate: true });
@@ -2579,13 +2612,14 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
           // Mark the matched item as processed (so it won't be deleted)
           processedRaindropIds.add(existingItem._id);
           if (hasTabChanged(existingItem, tab, finalUrl, metadata)) {
-            toUpdate.push({ id: existingItem._id, ...payload });
+            toUpdate.push({ id: existingItem._id, tabId: tab.id, ...payload });
           }
           // If item was matched by URL fallback but now has proper metadata,
           // we still update it to ensure it has the correct uniqueId in metadata
           // This handles the case where an item lost its metadata
         } else {
-          toCreate.push(payload);
+          // Store tabId with payload so we can match back after creation
+          toCreate.push({ tabId: tab.id, ...payload });
         }
       }
     }
@@ -2600,17 +2634,45 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
     // 4. Execute Batch Operations
 
+    // Get tab snapshots once for cover uploads
+    const snapshots = await getSnapshots();
+    const snapshotMap = new Map();
+    snapshots.forEach((snapshot) => {
+      if (snapshot.tabId && snapshot.thumbnail && snapshot.thumbnail.length > 0) {
+        snapshotMap.set(snapshot.tabId, snapshot.thumbnail);
+      }
+    });
+
     // Batch Create
     if (toCreate.length > 0) {
       const CHUNK_SIZE = 100;
       for (let i = 0; i < toCreate.length; i += CHUNK_SIZE) {
         const chunk = toCreate.slice(i, i + CHUNK_SIZE);
         console.log(`[mirror] Batch Creating ${chunk.length} items`);
-        await raindropRequest('/raindrops', tokens, {
+        
+        // Extract tabIds before sending (Raindrop API doesn't need them)
+        const tabIds = chunk.map((item) => item.tabId);
+        const itemsToCreate = chunk.map(({ tabId, ...item }) => item);
+        
+        const response = await raindropRequest('/raindrops', tokens, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ items: chunk }),
+          body: JSON.stringify({ items: itemsToCreate }),
         });
+
+        // Upload covers from tab snapshots for newly created items
+        if (response && response.items && Array.isArray(response.items)) {
+          for (let j = 0; j < response.items.length; j++) {
+            const createdItem = response.items[j];
+            const tabId = tabIds[j];
+            if (createdItem && createdItem._id && tabId) {
+              const thumbnail = snapshotMap.get(tabId);
+              if (thumbnail) {
+                await uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens);
+              }
+            }
+          }
+        }
       }
     }
 
@@ -2662,6 +2724,14 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
             // collection is not needed if not moving
           }),
         });
+
+        // Upload cover from tab snapshot if available
+        if (item.tabId) {
+          const thumbnail = snapshotMap.get(item.tabId);
+          if (thumbnail) {
+            await uploadCoverFromSnapshot(item.id, thumbnail, tokens);
+          }
+        }
       }
     }
 
