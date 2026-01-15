@@ -125,6 +125,26 @@
       </div>
     </div>
   </dialog>
+
+  <!-- Edit Session Name Modal -->
+  <dialog id="editSessionNameModal" class="modal">
+    <div class="modal-box">
+      <h3 class="font-bold text-lg">Edit Session Name</h3>
+      <div class="py-4 space-y-4">
+        <div>
+          <label class="label">
+            <span class="label-text">New Name</span>
+          </label>
+          <input id="editSessionNameInput" type="text" placeholder="Enter new session name"
+            class="input input-bordered w-full" />
+        </div>
+      </div>
+      <div class="modal-action">
+        <button id="editSessionNameCancelButton" class="btn">Cancel</button>
+        <button id="editSessionNameConfirmButton" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </dialog>
 </body>
 
 </html>
