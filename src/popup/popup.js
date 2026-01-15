@@ -2081,7 +2081,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     pinnedItems.forEach((item) => {
       const chip = document.createElement('div');
       chip.className =
-        'badge badge-lg bg-base-300 gap-2 cursor-pointer hover:bg-base-content/20';
+        'badge bg-base-300 gap-2 cursor-pointer hover:bg-base-content/20 pr-1';
       chip.innerHTML = `
         <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
         <button class="unpin-button btn btn-ghost btn-circle btn-xs">✕</button>
@@ -2303,7 +2303,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         <div class="flex items-center gap-1">
           <div class="relative w-4 h-4">
             <span class="icon absolute inset-0 transition-opacity duration-200 group-hover:opacity-0">${typeIcon}</span>
-            <button class="pin-button btn btn-ghost btn-xs absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">📌</button>
+            <button class="pin-button btn btn-ghost btn-xs absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 -ml-[2px] -mt-[2px]">📌</button>
           </div>
           <span class="flex-1 truncate">${escapeHtml(title)}</span>
           ${collectionChip}
