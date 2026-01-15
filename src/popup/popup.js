@@ -2218,10 +2218,17 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         const collection = result.data;
         const collectionTitle = collection.title || 'Untitled';
         const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+        const parentCollectionChip = collection.parentCollectionTitle
+          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+              ${escapeHtml(collection.parentCollectionTitle)}
+            </span>`
+          : '';
+
         resultItem.innerHTML = `
           <div class="flex items-center gap-1">
             <span>📥</span>
             <span class="flex-1 truncate">${escapeHtml(collectionTitle)}</span>
+            ${parentCollectionChip}
           </div>
         `;
         resultItem.addEventListener('click', () => {

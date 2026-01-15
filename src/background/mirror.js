@@ -1680,11 +1680,15 @@ async function handleRaindropSearch(query) {
       }
     });
 
-    // Create a map of collectionId -> title
+    // Create a map of collectionId -> title and collectionId -> parentId
     const collectionIdTitleMap = new Map();
+    const collectionIdParentMap = new Map();
     allCollections.forEach((c) => {
       if (c._id && c.title) {
         collectionIdTitleMap.set(c._id, c.title);
+      }
+      if (c._id && c.parent?.$id) {
+        collectionIdParentMap.set(c._id, c.parent.$id);
       }
     });
     // Add Unsorted
@@ -1729,11 +1733,19 @@ async function handleRaindropSearch(query) {
       });
 
     // Local filtering for collections: match title AND exclude specific collections
-    const filteredCollections = allCollections.filter(
-      (c) =>
-        c.title?.toLowerCase().includes(queryLower) &&
-        c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
-    );
+    const filteredCollections = allCollections
+      .filter(
+        (c) =>
+          c.title?.toLowerCase().includes(queryLower) &&
+          c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
+      )
+      .map((c) => {
+        const parentId = collectionIdParentMap.get(c._id);
+        if (parentId !== undefined) {
+          c.parentCollectionTitle = collectionIdTitleMap.get(parentId);
+        }
+        return c;
+      });
 
     // Special case: include virtual "Unsorted" collection if query matches "unsorted"
     if ('unsorted'.includes(queryLower)) {
