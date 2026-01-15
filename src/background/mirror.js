@@ -1670,6 +1670,7 @@ async function handleRaindropSearch(query) {
     ];
 
     const queryLower = query.toLowerCase();
+    const searchTerms = queryLower.split(' ').filter(term => term.length > 0);
     const EXCLUDED_COLLECTION_NAME = 'nenya / options backup';
 
     // Identify excluded collection IDs
@@ -1715,23 +1716,15 @@ async function handleRaindropSearch(query) {
           link.startsWith('https://api.raindrop.io') ||
           link.startsWith('https://up.raindrop.io')
         ) {
-          return title.includes(queryLower);
+          return searchTerms.every(term => title.includes(term));
         }
 
         // Otherwise, match against title, excerpt, tags, OR the non-domain part of the URL
-        if (
-          title.includes(queryLower) ||
-          excerpt.includes(queryLower) ||
-          tags.some((t) => t.includes(queryLower))
-        ) {
-          return true;
-        }
-
         const linkWithoutDomain = link
           .replace('https://raindrop.io', '')
           .replace('http://raindrop.io', '');
-
-        return linkWithoutDomain.includes(queryLower);
+        const searchableText = `${title} ${excerpt} ${tags.join(' ')} ${linkWithoutDomain}`;
+        return searchTerms.every(term => searchableText.includes(term));
       })
       .map((item) => {
         if (item.collectionId !== undefined) {
@@ -1759,9 +1752,11 @@ async function handleRaindropSearch(query) {
     // Local filtering for collections: match title AND exclude specific collections
     const filteredCollections = allCollections
       .filter(
-        (c) =>
-          c.title?.toLowerCase().includes(queryLower) &&
-          c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
+        (c) => {
+          const collectionTitle = (c.title || '').toLowerCase();
+          return collectionTitle !== EXCLUDED_COLLECTION_NAME &&
+            searchTerms.every(term => collectionTitle.includes(term));
+        },
       )
       .map((c) => {
         const parentId = collectionIdParentMap.get(c._id);
