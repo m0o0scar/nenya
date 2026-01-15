@@ -2045,10 +2045,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {HTMLDivElement} resultsElement
  */
 async function initializeBookmarksSearch(inputElement, resultsElement) {
+  const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
+  const PINNED_ITEMS_STORAGE_KEY = 'pinnedItems';
+
+  async function getPinnedItems() {
+    const result = await chrome.storage.local.get(PINNED_ITEMS_STORAGE_KEY);
+    return result[PINNED_ITEMS_STORAGE_KEY] || [];
+  }
+
+  async function savePinnedItems(items) {
+    await chrome.storage.local.set({ [PINNED_ITEMS_STORAGE_KEY]: items });
+  }
+
+  async function pinItem(item) {
+    const pinnedItems = await getPinnedItems();
+    const isPinned = pinnedItems.some((i) => i.url === item.url);
+    if (!isPinned) {
+      pinnedItems.push(item);
+      await savePinnedItems(pinnedItems);
+      await renderPinnedItems();
+    }
+  }
+
+  async function unpinItem(url) {
+    let pinnedItems = await getPinnedItems();
+    pinnedItems = pinnedItems.filter((i) => i.url !== url);
+    await savePinnedItems(pinnedItems);
+    await renderPinnedItems();
+  }
+
+  async function renderPinnedItems() {
+    if (!pinnedItemsContainer) return;
+    const pinnedItems = await getPinnedItems();
+    pinnedItemsContainer.innerHTML = '';
+    pinnedItems.forEach((item) => {
+      const chip = document.createElement('div');
+      chip.className =
+        'badge badge-lg bg-base-300 gap-2 cursor-pointer hover:bg-base-content/20';
+      chip.innerHTML = `
+        <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
+        <button class="unpin-button btn btn-ghost btn-circle btn-xs">✕</button>
+      `;
+      chip.addEventListener('click', (e) => {
+        if (e.target.classList.contains('unpin-button')) return;
+        void openBookmark(item.url);
+      });
+      const unpinButton = chip.querySelector('.unpin-button');
+      if (unpinButton) {
+        unpinButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void unpinItem(item.url);
+        });
+      }
+      pinnedItemsContainer.appendChild(chip);
+    });
+  }
+
   /** @type {number} */
   let highlightedIndex = -1;
   /** @type {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
+
+  // Initial render of pinned items
+  void renderPinnedItems();
 
   // Fetch and cache custom search engines once on initialization
   let customSearchEngines = [];
@@ -2191,89 +2250,94 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     resultsElement.innerHTML = '';
     results.forEach((result, index) => {
       const resultItem = document.createElement('div');
-      resultItem.className = 'p-2 hover:bg-base-300 cursor-pointer rounded-md';
+      resultItem.className =
+        'group p-2 hover:bg-base-300 cursor-pointer rounded-md';
       resultItem.dataset.index = String(index);
+
+      let title, url, typeIcon, itemType;
 
       if (result.type === 'bookmark') {
         const bookmark = result.data;
+        itemType = 'bookmark';
         if (bookmark.url) {
-          const titleText = bookmark.title || bookmark.url;
-          const truncatedUrl = truncateUrl(bookmark.url);
-          resultItem.innerHTML = `
-            <div class="flex items-center gap-1">
-              <span>↗️</span>
-              <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
-            </div>
-            <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
-              ${escapeHtml(truncatedUrl)}
-            </div>
-          `;
-          resultItem.addEventListener('click', () => {
-            void openBookmark(bookmark.url);
-          });
+          title = bookmark.title || bookmark.url;
+          url = bookmark.url;
+          typeIcon = '↗️';
         } else {
-          const folderTitle = bookmark.title || 'Untitled';
-          resultItem.innerHTML = `
-            <div class="flex items-center gap-1">
-              <span>📂</span>
-              <span>${escapeHtml(folderTitle)}</span>
-              <span class="count-display">(0)</span>
-            </div>
-          `;
-          void countDirectChildrenBookmarks(bookmark).then((count) => {
-            const countSpan = resultItem.querySelector('.count-display');
-            if (countSpan) {
-              countSpan.textContent = `(${count})`;
-            }
-          });
-          resultItem.addEventListener('click', () => {
-            void openFolderBookmarks(bookmark);
-          });
+          title = bookmark.title || 'Untitled';
+          url = `folder:${bookmark.id}`;
+          typeIcon = '📂';
         }
       } else if (result.type === 'raindrop') {
         const item = result.data;
-        const titleText = item.title || item.link;
-        const truncatedUrl = truncateUrl(item.link);
-        const collectionChip = item.collectionTitle
-          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
-              ${escapeHtml(item.collectionTitle)}
-            </span>`
-          : '';
-
-        resultItem.innerHTML = `
-          <div class="flex items-center gap-1 overflow-hidden w-full">
-            <span>💧</span>
-            <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
-            ${collectionChip}
-          </div>
-          <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
-            ${escapeHtml(truncatedUrl)}
-          </div>
-        `;
-        resultItem.addEventListener('click', () => {
-          if (item.link) {
-            void openBookmark(item.link);
-          }
-        });
+        itemType = 'raindrop';
+        title = item.title || item.link;
+        url = item.link;
+        typeIcon = '💧';
       } else if (result.type === 'raindrop-collection') {
         const collection = result.data;
-        const collectionTitle = collection.title || 'Untitled';
-        const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
-        const parentCollectionChip = collection.parentCollectionTitle
+        itemType = 'raindrop-collection';
+        title = collection.title || 'Untitled';
+        url = `https://app.raindrop.io/my/${collection._id}`;
+        typeIcon = '📥';
+      }
+
+      const truncatedUrl = url.startsWith('folder:')
+        ? ''
+        : truncateUrl(url);
+      const collectionChip =
+        result.type === 'raindrop' && result.data.collectionTitle
           ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
-              ${escapeHtml(collection.parentCollectionTitle)}
+              ${escapeHtml(result.data.collectionTitle)}
+            </span>`
+          : '';
+      const parentCollectionChip =
+        result.type === 'raindrop-collection' &&
+        result.data.parentCollectionTitle
+          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+              ${escapeHtml(result.data.parentCollectionTitle)}
             </span>`
           : '';
 
-        resultItem.innerHTML = `
-          <div class="flex items-center gap-1">
-            <span>📥</span>
-            <span class="flex-1 truncate">${escapeHtml(collectionTitle)}</span>
-            ${parentCollectionChip}
+      resultItem.innerHTML = `
+        <div class="flex items-center gap-1">
+          <div class="relative w-4 h-4">
+            <span class="icon absolute inset-0 transition-opacity duration-200 group-hover:opacity-0">${typeIcon}</span>
+            <button class="pin-button btn btn-ghost btn-xs absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">📌</button>
           </div>
-        `;
-        resultItem.addEventListener('click', () => {
-          void openBookmark(collectionUrl);
+          <span class="flex-1 truncate">${escapeHtml(title)}</span>
+          ${collectionChip}
+          ${parentCollectionChip}
+        </div>
+        ${
+          truncatedUrl
+            ? `<div class="text-[10px] text-base-content/60 truncate mt-1 ml-5">
+              ${escapeHtml(truncatedUrl)}
+            </div>`
+            : ''
+        }
+      `;
+
+      resultItem.addEventListener('click', (e) => {
+        if (e.target.classList.contains('pin-button')) return;
+
+        if (url.startsWith('folder:')) {
+          const folderId = url.split(':')[1];
+          chrome.bookmarks.get(folderId, (bookmarks) => {
+            if (bookmarks && bookmarks.length > 0) {
+              void openFolderBookmarks(bookmarks[0]);
+            }
+          });
+        } else {
+          void openBookmark(url);
+        }
+      });
+
+      const pinButton = resultItem.querySelector('.pin-button');
+      if (pinButton) {
+        pinButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void pinItem({ title, url, type: itemType });
         });
       }
 
