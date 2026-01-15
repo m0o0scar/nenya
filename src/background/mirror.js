@@ -125,6 +125,7 @@ export {
   handleFetchSessionDetails,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
+  handleUpdateSessionName,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -3946,3 +3947,40 @@ async function ensureUnsortedBookmarkFolder() {
  * @property {number | null} parentId
  * @property {CollectionNode[]} children
  */
+
+/**
+ * Update the name of a session collection.
+ * @param {number} collectionId
+ * @param {string} oldName
+ * @param {string} newName
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleUpdateSessionName(collectionId, oldName, newName) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // Update the collection title in Raindrop
+  await raindropRequest(
+    `/collection/${collectionId}`,
+    tokens,
+    {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: newName,
+      }),
+    }
+  );
+
+  // If the old name was the browserId, update it
+  const browserId = await getOrCreateBrowserId();
+  if (oldName === browserId) {
+    await chrome.storage.local.set({ browserId: newName });
+  }
+
+  return { success: true };
+}

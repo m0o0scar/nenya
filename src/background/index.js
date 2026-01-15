@@ -8,6 +8,7 @@ import {
   handleFetchSessions,
   handleRestoreSession,
   handleFetchSessionDetails,
+  handleUpdateSessionName,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   loadValidProviderTokens,
@@ -76,6 +77,7 @@ const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
+const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -2491,6 +2493,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ ok: false, error: error.message });
       }
     })();
+    return true;
+  }
+
+  if (message.type === UPDATE_SESSION_NAME_MESSAGE) {
+    const { collectionId, oldName, newName } = message;
+    handleUpdateSessionName(collectionId, oldName, newName)
+      .then((result) => {
+        sendResponse({ ok: true, ...result });
+      })
+      .catch((error) => {
+        console.error('[background] Update session name failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
     return true;
   }
 
