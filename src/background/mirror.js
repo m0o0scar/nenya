@@ -2431,6 +2431,11 @@ function hasTabChanged(item, tab, finalUrl, excerptData) {
   const oldData = getItemMetadata(item);
   if (Object.keys(oldData).length === 0) return true; // Force update if no metadata
 
+  // Check windowId (defensive check - shouldn't change for same uniqueId, but verify)
+  if (oldData.windowId !== excerptData.windowId) return true;
+  // Check tabId (defensive check)
+  if (oldData.tabId !== excerptData.tabId) return true;
+  
   if (oldData.pinned !== excerptData.pinned) return true;
   if (oldData.index !== excerptData.index) return true;
   if (oldData.tabGroupId !== excerptData.tabGroupId) return true;
@@ -2470,8 +2475,9 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     }
 
     // Maps for matching current tabs to existing Raindrop items
-    const metadataMap = new Map(); // uniqueId -> item
-    const urlMap = new Map(); // url -> Array<item>
+    const metadataMap = new Map(); // uniqueId -> item (keep only one per uniqueId)
+    const duplicateIdsByUniqueId = new Map(); // uniqueId -> Array<item._id> (track duplicates for deletion)
+    const urlMap = new Map(); // url -> Array<item> (only for items without metadata)
     const allExistingIds = new Set();
 
     existingItems.forEach((item) => {
@@ -2480,10 +2486,18 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
       if (data.tabId !== undefined && data.windowId !== undefined) {
         const uniqueId = getTabUniqueId(data.tabId, data.windowId);
         if (!metadataMap.has(uniqueId)) {
+          // First item with this uniqueId - keep it
           metadataMap.set(uniqueId, item);
+          duplicateIdsByUniqueId.set(uniqueId, []);
+        } else {
+          // Duplicate found - track it for deletion
+          const duplicates = duplicateIdsByUniqueId.get(uniqueId) || [];
+          duplicates.push(item._id);
+          duplicateIdsByUniqueId.set(uniqueId, duplicates);
         }
       } else {
         // If metadata is missing or invalid, index by URL as a fallback
+        // Only use this for items that truly have no metadata
         const url = item.link;
         if (!urlMap.has(url)) {
           urlMap.set(url, []);
@@ -2525,15 +2539,32 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
         if (tab.id === undefined || tab.windowId === undefined) continue;
         const uniqueId = getTabUniqueId(tab.id, tab.windowId);
         
-        // Match Strategy:
-        // A. Primary: Match by metadata (tabId-windowId)
-        // B. Secondary: Match by URL (fallback for when Raindrop overwrites excerpt)
+        // Match Strategy: Strictly match by uniqueId (tabId + windowId)
+        // Only use URL fallback if NO item exists with this uniqueId AND
+        // the item has no metadata (to handle edge cases where metadata was lost)
         let existingItem = metadataMap.get(uniqueId);
         
+        // Note: Duplicates for this uniqueId are tracked in duplicateIdsByUniqueId
+        // but NOT added to processedRaindropIds, so they will be deleted
+        
         if (!existingItem) {
+          // Only use URL fallback if we truly have no match by uniqueId
+          // AND the item has no metadata (to prevent incorrect matches)
           const itemsWithSameUrl = urlMap.get(finalUrl);
           if (itemsWithSameUrl && itemsWithSameUrl.length > 0) {
-            existingItem = itemsWithSameUrl.shift();
+            // Find an item that truly has no metadata (not just missing tabId/windowId)
+            const itemWithoutMetadata = itemsWithSameUrl.find((urlItem) => {
+              const urlItemData = getItemMetadata(urlItem);
+              return !urlItemData.tabId || !urlItemData.windowId;
+            });
+            if (itemWithoutMetadata) {
+              existingItem = itemWithoutMetadata;
+              // Remove from urlMap to prevent duplicate matches
+              const index = itemsWithSameUrl.indexOf(itemWithoutMetadata);
+              if (index > -1) {
+                itemsWithSameUrl.splice(index, 1);
+              }
+            }
           }
         }
 
@@ -2545,10 +2576,14 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
         };
 
         if (existingItem) {
+          // Mark the matched item as processed (so it won't be deleted)
           processedRaindropIds.add(existingItem._id);
           if (hasTabChanged(existingItem, tab, finalUrl, metadata)) {
             toUpdate.push({ id: existingItem._id, ...payload });
           }
+          // If item was matched by URL fallback but now has proper metadata,
+          // we still update it to ensure it has the correct uniqueId in metadata
+          // This handles the case where an item lost its metadata
         } else {
           toCreate.push(payload);
         }
