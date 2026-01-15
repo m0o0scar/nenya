@@ -911,38 +911,68 @@ function renderSessions(sessions, container) {
 }
 
 /**
- * Handle editing a session's name.
+ * Handle editing a session's name using a modal dialog.
  * @param {number} collectionId
  * @param {string} currentName
  */
 async function handleEditSessionName(collectionId, currentName) {
-  const newName = window.prompt('Enter new session name:', currentName);
+  const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('editSessionNameModal'));
+  const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById('editSessionNameInput'));
+  const cancelButton = document.getElementById('editSessionNameCancelButton');
+  const confirmButton = document.getElementById('editSessionNameConfirmButton');
 
-  if (newName && newName.trim() && newName.trim() !== currentName) {
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: UPDATE_SESSION_NAME_MESSAGE,
-        collectionId,
-        oldName: currentName,
-        newName: newName.trim(),
-      });
+  if (!modal || !nameInput || !cancelButton || !confirmButton) {
+    console.error('Edit session name dialog elements not found');
+    if (statusMessage) {
+      concludeStatus('Could not open edit dialog.', 'error', 3000, statusMessage);
+    }
+    return;
+  }
 
-      if (response && response.ok) {
-        if (statusMessage) {
-          concludeStatus('Session name updated.', 'success', 3000, statusMessage);
+  nameInput.value = currentName;
+
+  const handleConfirm = async () => {
+    const newName = nameInput.value.trim();
+    if (newName && newName !== currentName) {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          type: UPDATE_SESSION_NAME_MESSAGE,
+          collectionId,
+          oldName: currentName,
+          newName: newName,
+        });
+
+        if (response && response.ok) {
+          if (statusMessage) {
+            concludeStatus('Session name updated.', 'success', 3000, statusMessage);
+          }
+          await initializeSessions(); // Refresh the list
+        } else {
+          throw new Error(response?.error || 'Failed to update session name');
         }
-        // Refresh the sessions list to show the new name
-        await initializeSessions();
-      } else {
-        throw new Error(response?.error || 'Failed to update session name');
-      }
-    } catch (error) {
-      console.error('[popup] Error updating session name:', error);
-      if (statusMessage) {
-        concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
+      } catch (error) {
+        console.error('[popup] Error updating session name:', error);
+        if (statusMessage) {
+          concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
+        }
       }
     }
-  }
+    modal.close();
+  };
+
+  const handleCancel = () => {
+    modal.close();
+  };
+
+  confirmButton.addEventListener('click', handleConfirm, { once: true });
+  cancelButton.addEventListener('click', handleCancel, { once: true });
+
+  modal.addEventListener('close', () => {
+    confirmButton.removeEventListener('click', handleConfirm);
+    cancelButton.removeEventListener('click', handleCancel);
+  }, { once: true });
+
+  modal.showModal();
 }
 
 /**
