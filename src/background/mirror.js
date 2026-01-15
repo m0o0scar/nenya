@@ -128,6 +128,7 @@ export {
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
+  handleUploadCollectionCover,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -221,6 +222,7 @@ async function handleFetchSessions() {
       id: c._id,
       title: c.title,
       isCurrent: c.title === browserId,
+      cover: c.cover,
     }));
 }
 
@@ -4117,6 +4119,38 @@ async function handleUpdateSessionName(collectionId, oldName, newName) {
   if (oldName === browserId) {
     await chrome.storage.local.set({ browserId: newName });
   }
+
+  return { success: true };
+}
+
+/**
+ * Upload a cover image to a Raindrop collection.
+ * @param {number} collectionId - The collection ID
+ * @param {string} iconPath - Path to the icon file (relative to assets/browser-icons/)
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleUploadCollectionCover(collectionId, iconPath) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // Fetch the icon file and convert to blob
+  const iconUrl = chrome.runtime.getURL(`assets/browser-icons/${iconPath}`);
+  const response = await fetch(iconUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to load icon: ${iconPath}`);
+  }
+  
+  const blob = await response.blob();
+  const formData = new FormData();
+  formData.append('cover', blob, iconPath);
+
+  // Upload the cover
+  await raindropRequest(`/collection/${collectionId}/cover`, tokens, {
+    method: 'PUT',
+    body: formData,
+  });
 
   return { success: true };
 }

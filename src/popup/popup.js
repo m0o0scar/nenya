@@ -870,6 +870,15 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
     toggleIcon.textContent = '▶';
     leftSide.appendChild(toggleIcon);
 
+    // Add cover icon if available
+    const coverUrl = Array.isArray(session.cover) ? session.cover[0] : session.cover;
+    if (coverUrl && typeof coverUrl === 'string' && coverUrl.trim().length > 0) {
+      const iconImg = document.createElement('img');
+      iconImg.src = coverUrl;
+      iconImg.className = 'w-4 h-4 rounded-sm object-cover';
+      leftSide.appendChild(iconImg);
+    }
+
     const titleSpan = document.createElement('span');
     titleSpan.className = 'truncate font-medium text-sm';
     titleSpan.textContent = session.title;
@@ -953,8 +962,9 @@ async function handleEditSessionName(collectionId, currentName) {
   const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById('editSessionNameInput'));
   const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameCancelButton'));
   const confirmButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameConfirmButton'));
+  const iconPicker = /** @type {HTMLElement | null} */ (document.getElementById('editSessionIconPicker'));
 
-  if (!modal || !nameInput || !cancelButton || !confirmButton) {
+  if (!modal || !nameInput || !cancelButton || !confirmButton || !iconPicker) {
     console.error('Edit session name dialog elements not found');
     if (statusMessage) {
       concludeStatus('Could not open edit dialog.', 'error', 3000, statusMessage);
@@ -963,10 +973,38 @@ async function handleEditSessionName(collectionId, currentName) {
   }
 
   nameInput.value = currentName;
+  
+  // Track selected icon
+  let selectedIcon = '';
+  const iconOptions = iconPicker.querySelectorAll('.icon-option');
+  
+  // Reset icon selection UI
+  iconOptions.forEach((btn) => {
+    btn.classList.remove('btn-active');
+    if (btn.getAttribute('data-icon') === '') {
+      btn.classList.add('btn-active');
+    }
+  });
+  
+  // Handle icon selection using event delegation
+  const handleIconClick = (/** @type {Event} */ e) => {
+    const target = /** @type {HTMLElement} */ (e.target);
+    const btn = target.closest('.icon-option');
+    if (btn) {
+      selectedIcon = btn.getAttribute('data-icon') || '';
+      iconOptions.forEach((b) => b.classList.remove('btn-active'));
+      btn.classList.add('btn-active');
+    }
+  };
+  
+  iconPicker.addEventListener('click', handleIconClick);
 
   const handleConfirm = async () => {
     const newName = nameInput.value.trim();
-    if (newName && newName !== currentName) {
+    const nameChanged = newName && newName !== currentName;
+    const iconSelected = selectedIcon && selectedIcon !== '';
+    
+    if (nameChanged || iconSelected) {
       // Show loading state
       const originalButtonContent = confirmButton.innerHTML;
       confirmButton.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Saving...';
@@ -974,23 +1012,42 @@ async function handleEditSessionName(collectionId, currentName) {
       cancelButton.disabled = true;
 
       try {
-        const response = await chrome.runtime.sendMessage({
-          type: UPDATE_SESSION_NAME_MESSAGE,
-          collectionId,
-          oldName: currentName,
-          newName: newName,
-        });
+        // Update name if changed
+        if (nameChanged) {
+          const response = await chrome.runtime.sendMessage({
+            type: UPDATE_SESSION_NAME_MESSAGE,
+            collectionId,
+            oldName: currentName,
+            newName: newName,
+          });
 
-        if (response && response.ok) {
-          if (statusMessage) {
-            concludeStatus('Session name updated.', 'success', 3000, statusMessage);
+          if (!response || !response.ok) {
+            throw new Error(response?.error || 'Failed to update session name');
           }
-          await initializeSessions(); // Refresh the list
-        } else {
-          throw new Error(response?.error || 'Failed to update session name');
         }
+        
+        // Upload cover if icon selected
+        if (iconSelected) {
+          const uploadResponse = await chrome.runtime.sendMessage({
+            type: 'mirror:uploadCollectionCover',
+            collectionId,
+            iconPath: selectedIcon,
+          });
+
+          if (!uploadResponse || !uploadResponse.ok) {
+            throw new Error(uploadResponse?.error || 'Failed to upload cover');
+          }
+        }
+
+        if (statusMessage) {
+          const messages = [];
+          if (nameChanged) messages.push('Session name updated');
+          if (iconSelected) messages.push('Cover uploaded');
+          concludeStatus(messages.join('. ') + '.', 'success', 3000, statusMessage);
+        }
+        await initializeSessions(); // Refresh the list
       } catch (error) {
-        console.error('[popup] Error updating session name:', error);
+        console.error('[popup] Error updating session:', error);
         if (statusMessage) {
           concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
         }
@@ -1034,6 +1091,7 @@ async function handleEditSessionName(collectionId, currentName) {
     cancelButton.removeEventListener('click', handleCancel);
     window.removeEventListener('keydown', handleWindowKeyDown, true);
     modal.removeEventListener('cancel', handleCancelEvent);
+    iconPicker.removeEventListener('click', handleIconClick);
     // Restore button state in case modal was closed while loading
     if (confirmButton.classList.contains('loading')) {
       confirmButton.innerHTML = originalConfirmButtonContent;

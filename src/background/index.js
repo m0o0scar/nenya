@@ -9,6 +9,7 @@ import {
   handleRestoreSession,
   handleFetchSessionDetails,
   handleUpdateSessionName,
+  handleUploadCollectionCover,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   loadValidProviderTokens,
@@ -2518,6 +2519,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[background] Update session name failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === 'mirror:uploadCollectionCover') {
+    const { collectionId, iconPath } = message;
+    handleUploadCollectionCover(collectionId, iconPath)
+      .then((result) => {
+        sendResponse({ ok: true, ...result });
+      })
+      .catch((error) => {
+        console.error('[background] Upload collection cover failed:', error);
         sendResponse({ ok: false, error: error.message });
       });
     return true;
