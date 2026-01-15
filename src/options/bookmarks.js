@@ -480,6 +480,19 @@ async function processOAuthSuccess(message) {
   await refreshBackupStatus();
 
   await refreshBackupStatus();
+
+  // After successful login, ensure the session collection is created and exported
+  try {
+    await sendRuntimeMessage({
+      type: 'mirror:ensureSessionsCollection',
+    });
+    console.log('[bookmarks] Triggered session collection check after login.');
+  } catch (error) {
+    console.warn(
+      '[bookmarks] Failed to trigger session collection check after login:',
+      error,
+    );
+  }
 }
 
 /**
