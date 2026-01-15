@@ -40,6 +40,7 @@ const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
 const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
+const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
 
 const OPTION_KEYS = [
@@ -59,6 +60,7 @@ const OPTION_KEYS = [
   AUTO_GOOGLE_LOGIN_RULES_KEY,
   SCREENSHOT_SETTINGS_KEY,
   PINNED_SHORTCUTS_KEY,
+  PINNED_SEARCH_RESULTS_KEY,
   CUSTOM_SEARCH_ENGINES_KEY,
 ];
 
@@ -127,6 +129,7 @@ let initialized = false;
  * @property {any[]} autoGoogleLoginRules
  * @property {any} screenshotSettings
  * @property {any[]} pinnedShortcuts
+ * @property {any[]} pinnedSearchResults
  * @property {any[]} customSearchEngines
  */
 
@@ -281,6 +284,7 @@ async function buildBackupPayload() {
       autoSave: false,
     },
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
+    pinnedSearchResults: stored?.[PINNED_SEARCH_RESULTS_KEY] || [],
     customSearchEngines: stored?.[CUSTOM_SEARCH_ENGINES_KEY] || [],
   };
 
@@ -370,6 +374,7 @@ async function applyBackupPayload(payload) {
       autoSave: false,
     },
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
+    [PINNED_SEARCH_RESULTS_KEY]: payload.pinnedSearchResults || [],
     [CUSTOM_SEARCH_ENGINES_KEY]: payload.customSearchEngines || [],
   };
 

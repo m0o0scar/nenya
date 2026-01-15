@@ -879,6 +879,23 @@ function handleLifecycleEvent(trigger) {
 chrome.runtime.onInstalled.addListener(async (details) => {
   handleLifecycleEvent('install');
 
+  // Perform one-time migrations on install or update
+  if (details.reason === 'install' || details.reason === 'update') {
+    // Migration: pinnedItems -> pinnedSearchResults
+    try {
+      const oldKey = 'pinnedItems';
+      const newKey = 'pinnedSearchResults';
+      const storage = await chrome.storage.local.get([oldKey, newKey]);
+      if (storage[oldKey] && !storage[newKey]) {
+        await chrome.storage.local.set({ [newKey]: storage[oldKey] });
+        await chrome.storage.local.remove(oldKey);
+        console.log('[migration] Migrated pinnedItems to pinnedSearchResults.');
+      }
+    } catch (error) {
+      console.error('[migration] Pinned items migration failed:', error);
+    }
+  }
+
   if (details.reason === 'install' || details.reason === 'update') {
     // Restore split pages on extension reload/update (not on wake-up)
     // Use a small delay to ensure all initialization is complete
