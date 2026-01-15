@@ -769,13 +769,31 @@ async function initializeSessions() {
     return;
   }
 
+  // --- Preserve State ---
+  // 1. Save scroll position
+  const scrollPosition = sessionsList.scrollTop;
+
+  // 2. Save expanded session IDs
+  const expandedSessionIds = new Set();
+  sessionsList.querySelectorAll('.session-item').forEach((item) => {
+    const details = item.querySelector('.session-details');
+    if (details && !details.classList.contains('hidden')) {
+      const sessionId = item.dataset.sessionId;
+      if (sessionId) {
+        expandedSessionIds.add(sessionId);
+      }
+    }
+  });
+  // --- End Preserve State ---
+
   // 1. Load and render cached sessions immediately if available
   try {
     const result = await chrome.storage.local.get(SESSIONS_CACHE_KEY);
     const cachedSessions = result[SESSIONS_CACHE_KEY];
     if (Array.isArray(cachedSessions) && cachedSessions.length > 0) {
       sessionsSection.classList.remove('hidden');
-      renderSessions(cachedSessions, sessionsList);
+      renderSessions(cachedSessions, sessionsList, expandedSessionIds);
+      sessionsList.scrollTop = scrollPosition; // Restore scroll after initial render
     }
   } catch (err) {
     console.warn('[popup] Failed to load sessions cache:', err);
@@ -794,7 +812,7 @@ async function initializeSessions() {
     if (response && response.ok && Array.isArray(response.sessions)) {
       if (response.sessions.length > 0) {
         sessionsSection.classList.remove('hidden');
-        renderSessions(response.sessions, sessionsList);
+        renderSessions(response.sessions, sessionsList, expandedSessionIds);
         // Update cache
         await chrome.storage.local.set({ [SESSIONS_CACHE_KEY]: response.sessions });
       } else {
@@ -819,6 +837,10 @@ async function initializeSessions() {
     if (loadingIndicator) {
       loadingIndicator.classList.add('hidden');
     }
+    // --- Restore State ---
+    // Restore scroll position after final render
+    sessionsList.scrollTop = scrollPosition;
+    // --- End Restore State ---
   }
 }
 
@@ -826,13 +848,15 @@ async function initializeSessions() {
  * Render the sessions list.
  * @param {Array<{id: number, title: string, isCurrent: boolean}>} sessions
  * @param {HTMLElement} container
+ * @param {Set<string>} [expandedSessionIds=new Set()]
  */
-function renderSessions(sessions, container) {
+function renderSessions(sessions, container, expandedSessionIds = new Set()) {
   container.innerHTML = '';
 
   sessions.forEach((session) => {
     const sessionItem = document.createElement('div');
-    sessionItem.className = 'flex flex-col gap-1';
+    sessionItem.className = 'session-item flex flex-col gap-1';
+    sessionItem.dataset.sessionId = String(session.id);
 
     const header = document.createElement('div');
     header.className =
@@ -890,7 +914,16 @@ function renderSessions(sessions, container) {
     header.appendChild(actionsContainer);
 
     const detailsContainer = document.createElement('div');
-    detailsContainer.className = 'pl-4 hidden';
+    detailsContainer.className = 'session-details pl-4 hidden';
+
+    const isExpanded = expandedSessionIds.has(String(session.id));
+    if (isExpanded) {
+      detailsContainer.classList.remove('hidden');
+      toggleIcon.classList.add('rotate-90');
+      // Fetch details immediately if it was already expanded
+      void fetchAndRenderSessionDetails(session.id, detailsContainer);
+    }
+
 
     header.addEventListener('click', () => {
       const isHidden = detailsContainer.classList.contains('hidden');
