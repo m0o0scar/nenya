@@ -870,18 +870,6 @@ function renderSessions(sessions, container) {
     const actionsContainer = document.createElement('div');
     actionsContainer.className = 'flex items-center gap-1';
 
-    if (session.isCurrent) {
-      const saveButton = document.createElement('button');
-      saveButton.className =
-        'btn btn-square btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity';
-      saveButton.innerHTML = '💾';
-      saveButton.title = 'Sync current session to this collection';
-      saveButton.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void handleSaveSession(session.id, saveButton);
-      });
-      actionsContainer.appendChild(saveButton);
-    }
 
     actionsContainer.appendChild(restoreButton);
 
