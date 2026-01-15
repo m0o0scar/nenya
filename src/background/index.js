@@ -2496,6 +2496,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === 'mirror:ensureSessionsCollection') {
+    void (async () => {
+      try {
+        await ensureNenyaSessionsCollection();
+        sendResponse({ ok: true });
+      } catch (error) {
+        console.warn(
+          '[background] Failed to ensure sessions collection after login:',
+          error,
+        );
+        sendResponse({ ok: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
   if (message.type === UPDATE_SESSION_NAME_MESSAGE) {
     const { collectionId, oldName, newName } = message;
     handleUpdateSessionName(collectionId, oldName, newName)
