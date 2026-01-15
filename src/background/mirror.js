@@ -1651,19 +1651,30 @@ async function handleRaindropSearch(query) {
       return { items: [], collections: [] };
     }
 
-    const [itemsResponse, rootCollections, childCollections] =
-      await Promise.all([
-        raindropRequest(
-          `/raindrops/0?search=${encodeURIComponent(query)}&perpage=10`,
-          tokens,
-        ),
-        raindropRequest('/collections', tokens),
-        raindropRequest('/collections/childrens', tokens),
-      ]);
+    const collectionsPromise = Promise.all([
+      raindropRequest('/collections', tokens),
+      raindropRequest('/collections/childrens', tokens),
+    ]);
 
-    const items = Array.isArray(itemsResponse?.items)
-      ? itemsResponse.items
-      : [];
+    const itemsPromise = (async () => {
+      const pagePromises = [];
+      // Fetch up to 200 recent items
+      for (let i = 0; i < 4; i++) {
+        pagePromises.push(
+          raindropRequest(`/raindrops/0?perpage=50&page=${i}`, tokens),
+        );
+      }
+      const itemResponses = await Promise.all(pagePromises);
+      return itemResponses.flatMap((response) =>
+        Array.isArray(response?.items) ? response.items : [],
+      );
+    })();
+
+    const [[rootCollections, childCollections], items] = await Promise.all([
+      collectionsPromise,
+      itemsPromise,
+    ]);
+
     const allCollections = [
       ...(Array.isArray(rootCollections?.items) ? rootCollections.items : []),
       ...(Array.isArray(childCollections?.items) ? childCollections.items : []),
@@ -1691,7 +1702,6 @@ async function handleRaindropSearch(query) {
     collectionIdTitleMap.set(-1, 'Unsorted');
 
     // Filter items: add collection names AND exclude those in specific collections
-    // AND refine URL matching to ignore Raindrop system URLs
     const filteredItems = items
       .filter((item) => {
         // Exclude specific collections
@@ -1701,25 +1711,14 @@ async function handleRaindropSearch(query) {
 
         const title = (item.title || '').toLowerCase();
         const link = (item.link || '').toLowerCase();
+        const domain = (item.domain || '').toLowerCase();
 
-        // If it's a Raindrop system/internal URL, ONLY match against the title
-        if (
-          link.startsWith('https://api.raindrop.io') ||
-          link.startsWith('https://up.raindrop.io')
-        ) {
-          return title.includes(queryLower);
-        }
-
-        // Otherwise, match against title OR the non-domain part of the URL
-        if (title.includes(queryLower)) {
-          return true;
-        }
-
-        const linkWithoutDomain = link
-          .replace('https://raindrop.io', '')
-          .replace('http://raindrop.io', '');
-
-        return linkWithoutDomain.includes(queryLower);
+        // Perform a substring search on title, domain, and link
+        return (
+          title.includes(queryLower) ||
+          domain.includes(queryLower) ||
+          link.includes(queryLower)
+        );
       })
       .map((item) => {
         if (item.collectionId !== undefined) {
