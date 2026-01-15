@@ -2193,11 +2193,6 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         const item = result.data;
         const titleText = item.title || item.link;
         const truncatedUrl = truncateUrl(item.link);
-        const parentCollectionChip = item.parentCollectionTitle
-          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
-              ${escapeHtml(item.parentCollectionTitle)}
-            </span>`
-          : '';
         const collectionChip = item.collectionTitle
           ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
               ${escapeHtml(item.collectionTitle)}
@@ -2208,7 +2203,6 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
           <div class="flex items-center gap-1 overflow-hidden w-full">
             <span>💧</span>
             <span class="flex-1 truncate">${escapeHtml(titleText)}</span>
-            ${parentCollectionChip}
             ${collectionChip}
           </div>
           <div class="text-[10px] text-base-content/60 truncate mt-1 ml-4">
@@ -2224,10 +2218,17 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
         const collection = result.data;
         const collectionTitle = collection.title || 'Untitled';
         const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+        const parentCollectionChip = collection.parentCollectionTitle
+          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+              ${escapeHtml(collection.parentCollectionTitle)}
+            </span>`
+          : '';
+
         resultItem.innerHTML = `
           <div class="flex items-center gap-1">
             <span>📥</span>
             <span class="flex-1 truncate">${escapeHtml(collectionTitle)}</span>
+            ${parentCollectionChip}
           </div>
         `;
         resultItem.addEventListener('click', () => {

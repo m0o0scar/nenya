@@ -1728,20 +1728,24 @@ async function handleRaindropSearch(query) {
       .map((item) => {
         if (item.collectionId !== undefined) {
           item.collectionTitle = collectionIdTitleMap.get(item.collectionId);
-          const parentId = collectionIdParentMap.get(item.collectionId);
-          if (parentId !== undefined) {
-            item.parentCollectionTitle = collectionIdTitleMap.get(parentId);
-          }
         }
         return item;
       });
 
     // Local filtering for collections: match title AND exclude specific collections
-    const filteredCollections = allCollections.filter(
-      (c) =>
-        c.title?.toLowerCase().includes(queryLower) &&
-        c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
-    );
+    const filteredCollections = allCollections
+      .filter(
+        (c) =>
+          c.title?.toLowerCase().includes(queryLower) &&
+          c.title?.toLowerCase() !== EXCLUDED_COLLECTION_NAME,
+      )
+      .map((c) => {
+        const parentId = collectionIdParentMap.get(c._id);
+        if (parentId !== undefined) {
+          c.parentCollectionTitle = collectionIdTitleMap.get(parentId);
+        }
+        return c;
+      });
 
     // Special case: include virtual "Unsorted" collection if query matches "unsorted"
     if ('unsorted'.includes(queryLower)) {
