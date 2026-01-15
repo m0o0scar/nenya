@@ -371,7 +371,7 @@ async function loadAndRenderShortcuts() {
 
 // Initialize bookmarks search functionality
 if (bookmarksSearchInput && bookmarksSearchResults) {
-  initializeBookmarksSearch(bookmarksSearchInput, bookmarksSearchResults);
+  void initializeBookmarksSearch(bookmarksSearchInput, bookmarksSearchResults);
 }
 
 if (!statusMessage) {
@@ -2044,11 +2044,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {HTMLInputElement} inputElement
  * @param {HTMLDivElement} resultsElement
  */
-function initializeBookmarksSearch(inputElement, resultsElement) {
+async function initializeBookmarksSearch(inputElement, resultsElement) {
   /** @type {number} */
   let highlightedIndex = -1;
   /** @type {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
+
+  // Fetch and cache custom search engines once on initialization
+  let customSearchEngines = [];
+  try {
+    customSearchEngines = await getCustomSearchEngines();
+  } catch (error) {
+    console.error('[popup] Failed to load custom search engines:', error);
+  }
 
   /**
    * Opens a bookmark, reusing the current tab if it's empty.
@@ -2526,7 +2534,12 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     }
     const query = target.value;
     highlightedIndex = -1; // Reset highlight when query changes
-    if (query.length > 2) {
+
+    const isCustomSearch = customSearchEngines.some((engine) =>
+      query.toLowerCase().startsWith(engine.shortcut.toLowerCase() + ' '),
+    );
+
+    if (query.length >= 4 && !isCustomSearch) {
       debouncedSearch(query);
     } else {
       resultsElement.innerHTML = '';
