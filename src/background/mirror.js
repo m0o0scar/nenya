@@ -1740,6 +1740,22 @@ async function handleRaindropSearch(query) {
         return item;
       });
 
+    // Sort items: Raindrop system URLs (api/up) to the bottom
+    filteredItems.sort((a, b) => {
+      const aLink = (a.link || '').toLowerCase();
+      const bLink = (b.link || '').toLowerCase();
+      const aIsSystem =
+        aLink.startsWith('https://api.raindrop.io') ||
+        aLink.startsWith('https://up.raindrop.io');
+      const bIsSystem =
+        bLink.startsWith('https://api.raindrop.io') ||
+        bLink.startsWith('https://up.raindrop.io');
+
+      if (aIsSystem && !bIsSystem) return 1;
+      if (!aIsSystem && bIsSystem) return -1;
+      return 0; // Maintain original relative order (stability)
+    });
+
     // Local filtering for collections: match title AND exclude specific collections
     const filteredCollections = allCollections
       .filter(
