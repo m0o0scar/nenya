@@ -2346,6 +2346,14 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
       return;
     }
 
+    // Show loading indicator
+    resultsElement.innerHTML = `
+      <div class="p-2 flex items-center justify-center text-base-content/60">
+        <span class="loading loading-spinner loading-xs mr-2"></span>
+        <span>searching ...</span>
+      </div>
+    `;
+
     // Search local bookmarks
     const bookmarkResults = await searchBookmarks(query);
 
@@ -2433,7 +2441,15 @@ function initializeBookmarksSearch(inputElement, resultsElement) {
     // Limit to top 50 results
     const topResults = uniqueResults.slice(0, 50);
     currentResults = topResults;
-    renderSearchResults(topResults);
+    if (topResults.length === 0) {
+      resultsElement.innerHTML = `
+        <div class="p-2 text-center text-base-content/60">
+          No results found
+        </div>
+      `;
+    } else {
+      renderSearchResults(topResults);
+    }
   }
 
   /**
