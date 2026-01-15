@@ -2419,9 +2419,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const { group } = message;
     void (async () => {
       try {
-        const newWindow = await chrome.windows.create({ focused: true });
-        const windowId = newWindow.id;
-        if (windowId === undefined) throw new Error('Failed to create window');
+        const currentWindow = await chrome.windows.getCurrent();
+        const windowId = currentWindow.id;
+        if (windowId === undefined) {
+          throw new Error('Could not get current window');
+        }
 
         const tabIds = [];
         for (const tab of group.tabs) {
@@ -2429,15 +2431,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             windowId,
             url: tab.url,
             pinned: tab.pinned,
+            active: false, // Open tabs in the background
           });
           if (newTab && newTab.id !== undefined) {
             tabIds.push(newTab.id);
           }
-        }
-
-        // Remove the default blank tab
-        if (newWindow.tabs && newWindow.tabs[0] && newWindow.tabs[0].id !== undefined) {
-          await chrome.tabs.remove(newWindow.tabs[0].id);
         }
 
         if (tabIds.length > 0) {
@@ -2463,7 +2461,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const { url, pinned } = message;
     void (async () => {
       try {
-        await chrome.windows.create({ url, focused: true });
+        await chrome.tabs.create({ url, pinned, active: true });
         sendResponse({ ok: true });
       } catch (error) {
         console.error('[background] Restore tab failed:', error);
