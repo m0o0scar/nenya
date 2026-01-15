@@ -1680,11 +1680,15 @@ async function handleRaindropSearch(query) {
       }
     });
 
-    // Create a map of collectionId -> title
+    // Create a map of collectionId -> title and collectionId -> parentId
     const collectionIdTitleMap = new Map();
+    const collectionIdParentMap = new Map();
     allCollections.forEach((c) => {
       if (c._id && c.title) {
         collectionIdTitleMap.set(c._id, c.title);
+      }
+      if (c._id && c.parent?.$id) {
+        collectionIdParentMap.set(c._id, c.parent.$id);
       }
     });
     // Add Unsorted
@@ -1724,6 +1728,10 @@ async function handleRaindropSearch(query) {
       .map((item) => {
         if (item.collectionId !== undefined) {
           item.collectionTitle = collectionIdTitleMap.get(item.collectionId);
+          const parentId = collectionIdParentMap.get(item.collectionId);
+          if (parentId !== undefined) {
+            item.parentCollectionTitle = collectionIdTitleMap.get(parentId);
+          }
         }
         return item;
       });
