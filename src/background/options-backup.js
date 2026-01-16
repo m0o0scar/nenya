@@ -707,6 +707,48 @@ async function loadChunks(tokens, collectionId) {
  * Execute a manual backup.
  * @returns {Promise<{ ok: boolean, errors: string[], state: BackupState }>}
  */
+export async function runAutomaticRestore() {
+  await ensureInitialized();
+
+  // Check if options page is open
+  const extensionId = chrome.runtime.id;
+  const optionsUrl = `chrome-extension://${extensionId}/src/options/index.html`;
+  const tabs = await chrome.tabs.query({ url: optionsUrl });
+  if (tabs.length > 0) {
+    return;
+  }
+
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    return;
+  }
+
+  try {
+    const { primaryId, legacyId } = await findBackupCollectionIds(tokens);
+    const targetCollectionId = primaryId ?? legacyId;
+
+    if (!targetCollectionId) {
+      return;
+    }
+
+    const { lastModified } = await loadChunks(tokens, targetCollectionId);
+    if (!lastModified) {
+      return;
+    }
+    const state = await loadState();
+    if (state.lastBackupAt && state.lastBackupAt >= lastModified) {
+      return;
+    }
+    await runManualRestore();
+  } catch (error) {
+    console.warn('[options-backup] Automatic restore failed:', error);
+  }
+}
+
+/**
+ * Execute a manual backup.
+ * @returns {Promise<{ ok: boolean, errors: string[], state: BackupState }>}
+ */
 export async function runManualBackup() {
   await ensureInitialized();
 

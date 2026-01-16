@@ -18,6 +18,7 @@ import {
 import {
   initializeOptionsBackupService,
   handleOptionsBackupMessage,
+  runAutomaticRestore,
 } from './options-backup.js';
 import {
   initializeAutoReloadFeature,
@@ -874,6 +875,9 @@ function handleLifecycleEvent(trigger) {
   setupClipboardContextMenus();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
+  chrome.alarms.create('options-backup-check', {
+    periodInMinutes: 1,
+  });
 }
 
 chrome.runtime.onInstalled.addListener(async (details) => {
@@ -1456,7 +1460,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   void (async () => {
-    await handleAutoReloadAlarm(alarm);
+    if (alarm.name === 'options-backup-check') {
+      await runAutomaticRestore();
+    } else {
+      await handleAutoReloadAlarm(alarm);
+    }
   })();
 });
 
