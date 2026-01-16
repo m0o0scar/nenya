@@ -2146,15 +2146,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  */
 async function initializeBookmarksSearch(inputElement, resultsElement) {
   const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
-  const PINNED_ITEMS_STORAGE_KEY = 'pinnedItems';
+  const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
 
   async function getPinnedItems() {
-    const result = await chrome.storage.local.get(PINNED_ITEMS_STORAGE_KEY);
-    return result[PINNED_ITEMS_STORAGE_KEY] || [];
+    const result = await chrome.storage.local.get(
+      PINNED_SEARCH_RESULTS_STORAGE_KEY,
+    );
+    return result[PINNED_SEARCH_RESULTS_STORAGE_KEY] || [];
   }
 
   async function savePinnedItems(items) {
-    await chrome.storage.local.set({ [PINNED_ITEMS_STORAGE_KEY]: items });
+    await chrome.storage.local.set({
+      [PINNED_SEARCH_RESULTS_STORAGE_KEY]: items,
+    });
   }
 
   async function pinItem(item) {
