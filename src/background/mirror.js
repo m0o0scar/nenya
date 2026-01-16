@@ -192,6 +192,7 @@ function getItemMetadata(item) {
 
 /**
  * Fetch all sessions (child collections of "nenya / sessions").
+ * Deletes sessions older than one month.
  * @returns {Promise<Array<{id: number, title: string, isCurrent: boolean}>>}
  */
 async function handleFetchSessions() {
@@ -211,8 +212,48 @@ async function handleFetchSessions() {
     ? childrenResult.items
     : [];
 
-  return childCollections
-    .filter((c) => c.parent?.$id === sessionsCollectionId)
+  const sessions = childCollections.filter(
+    (c) => c.parent?.$id === sessionsCollectionId,
+  );
+
+  // Identify sessions older than one month
+  const oneMonthAgo = new Date();
+  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+  const oneMonthAgoTime = oneMonthAgo.getTime();
+
+  const oldSessions = sessions.filter((c) => {
+    // Never delete current browser session
+    if (c.title === browserId) return false;
+
+    const lastUpdate = new Date(c.lastUpdate).getTime();
+    return lastUpdate < oneMonthAgoTime;
+  });
+
+  if (oldSessions.length > 0) {
+    const idsToDelete = oldSessions.map((c) => c._id);
+    console.log(
+      `[mirror] Batch deleting ${oldSessions.length} old sessions:`,
+      idsToDelete,
+    );
+    try {
+      await raindropRequest('/collections', tokens, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ ids: idsToDelete }),
+      });
+    } catch (error) {
+      console.warn('[mirror] Failed to batch delete old sessions:', error);
+    }
+  }
+
+  // Filter out the deleted sessions from the result
+  const remainingSessions = sessions.filter(
+    (c) => !oldSessions.some((old) => old._id === c._id),
+  );
+
+  return remainingSessions
     .sort((a, b) => {
       const timeA = new Date(a.lastUpdate).getTime();
       const timeB = new Date(b.lastUpdate).getTime();
