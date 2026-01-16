@@ -235,17 +235,16 @@ async function handleFetchSessions() {
       `[mirror] Batch deleting ${oldSessions.length} old sessions:`,
       idsToDelete,
     );
-    try {
-      await raindropRequest('/collections', tokens, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ ids: idsToDelete }),
-      });
-    } catch (error) {
+    // No need to await deletion to finish, allowing faster rendering of remaining sessions
+    void raindropRequest('/collections', tokens, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ ids: idsToDelete }),
+    }).catch((error) => {
       console.warn('[mirror] Failed to batch delete old sessions:', error);
-    }
+    });
   }
 
   // Filter out the deleted sessions from the result
