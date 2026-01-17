@@ -746,6 +746,51 @@ export async function runAutomaticRestore() {
 }
 
 /**
+ * Execute a startup sync comparing local and Raindrop versions.
+ * @returns {Promise<void>}
+ */
+export async function runStartupSync() {
+  await ensureInitialized();
+
+  // Check if options page is open
+  const extensionId = chrome.runtime.id;
+  const optionsUrl = `chrome-extension://${extensionId}/src/options/index.html`;
+  const tabs = await chrome.tabs.query({ url: optionsUrl });
+  if (tabs.length > 0) {
+    return;
+  }
+
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    return;
+  }
+
+  try {
+    const { primaryId, legacyId } = await findBackupCollectionIds(tokens);
+    const targetCollectionId = primaryId ?? legacyId;
+
+    let raindropLastModified = 0;
+    if (targetCollectionId) {
+      const { lastModified } = await loadChunks(tokens, targetCollectionId);
+      raindropLastModified = lastModified || 0;
+    }
+
+    const state = await loadState();
+    const localLastBackupAt = state.lastBackupAt || 0;
+
+    if (raindropLastModified > localLastBackupAt || localLastBackupAt === 0) {
+      // If Raindrop is newer, or local has no timestamp (considered old version)
+      await runManualRestore();
+    } else if (localLastBackupAt > raindropLastModified) {
+      // If local is newer
+      await runManualBackup();
+    }
+  } catch (error) {
+    console.warn('[options-backup] Startup sync failed:', error);
+  }
+}
+
+/**
  * Execute a manual backup.
  * @returns {Promise<{ ok: boolean, errors: string[], state: BackupState }>}
  */
