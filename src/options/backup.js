@@ -228,13 +228,6 @@ async function runAction(messageType, successMessage) {
  * Initialize floating backup controls.
  * @returns {void}
  */
-const debouncedBackup = debounce(() => {
-  void runAction(
-    OPTIONS_BACKUP_MESSAGES.BACKUP_NOW,
-    'Options automatically backed up to Raindrop.',
-  );
-}, 2000);
-
 function initializeBackupControls() {
   if (!backupButton || !restoreButton || !statusElement) {
     return;
@@ -252,18 +245,6 @@ function initializeBackupControls() {
       OPTIONS_BACKUP_MESSAGES.RESTORE_NOW,
       'Options restored from Raindrop backup.',
     );
-  });
-
-  chrome.storage.local.onChanged.addListener((changes) => {
-    const backupStateKey = 'optionsBackupState';
-    const keys = Object.keys(changes);
-    if (keys.length === 1 && keys[0] === backupStateKey) {
-      return;
-    }
-    // Check if any key other than backup state changed
-    if (keys.some((key) => key !== backupStateKey)) {
-      debouncedBackup();
-    }
   });
 
   void refreshStatus();

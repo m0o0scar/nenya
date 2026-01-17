@@ -19,6 +19,7 @@ import {
   initializeOptionsBackupService,
   handleOptionsBackupMessage,
   runAutomaticRestore,
+  runStartupSync,
 } from './options-backup.js';
 import {
   initializeAutoReloadFeature,
@@ -875,6 +876,7 @@ function handleLifecycleEvent(trigger) {
   setupClipboardContextMenus();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
+  void runStartupSync();
   chrome.alarms.create('options-backup-check', {
     periodInMinutes: 1,
   });
