@@ -2148,6 +2148,28 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
   const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
 
+  const PINNED_COLOR_PALETTE = [
+    { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
+    { bg: '#fed7aa', text: '#9a3412' }, // orange-200 / orange-900
+    { bg: '#fef08a', text: '#854d0e' }, // yellow-200 / yellow-900
+    { bg: '#bbf7d0', text: '#166534' }, // green-200 / green-900
+    { bg: '#99f6e4', text: '#0f766e' }, // teal-200 / teal-900
+    { bg: '#bae6fd', text: '#075985' }, // sky-200 / sky-900
+    { bg: '#c7d2fe', text: '#3730a3' }, // indigo-200 / indigo-900
+    { bg: '#e9d5ff', text: '#6b21a8' }, // purple-200 / purple-900
+    { bg: '#fbcfe8', text: '#9d174d' }, // pink-200 / pink-900
+    { bg: '#fecdd3', text: '#9f1239' }, // rose-200 / rose-900
+  ];
+
+  function getStableColor(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const index = Math.abs(hash) % PINNED_COLOR_PALETTE.length;
+    return PINNED_COLOR_PALETTE[index];
+  }
+
   async function getPinnedItems() {
     const result = await chrome.storage.local.get(
       PINNED_SEARCH_RESULTS_STORAGE_KEY,
@@ -2183,12 +2205,15 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     const pinnedItems = await getPinnedItems();
     pinnedItemsContainer.innerHTML = '';
     pinnedItems.forEach((item) => {
+      const colors = getStableColor(item.url);
       const chip = document.createElement('div');
       chip.className =
-        'badge bg-base-300 gap-2 cursor-pointer hover:bg-base-content/20 pr-1';
+        'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none';
+      chip.style.backgroundColor = colors.bg;
+      chip.style.color = colors.text;
       chip.innerHTML = `
         <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
-        <button class="unpin-button btn btn-ghost btn-circle btn-xs">✕</button>
+        <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
       `;
       chip.addEventListener('click', (e) => {
         if (e.target.classList.contains('unpin-button')) return;
