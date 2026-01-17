@@ -6,6 +6,7 @@ import {
   fetchRaindropItems,
   pushNotification,
 } from './mirror.js';
+import { debounce } from '../shared/debounce.js';
 import {
   getBookmarkFolderPath,
   ensureBookmarkFolderPath,
@@ -85,6 +86,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
 };
 
 let initialized = false;
+let isRestoring = false;
 
 /**
  * @typedef {Object} BackupState
@@ -845,6 +847,13 @@ export async function runManualBackup() {
 export async function runManualRestore() {
   await ensureInitialized();
 
+  isRestoring = true;
+  const resetRestoring = () => {
+    setTimeout(() => {
+      isRestoring = false;
+    }, 2000);
+  };
+
   const tokens = await loadValidProviderTokens();
   if (!tokens) {
     return {
@@ -865,6 +874,7 @@ export async function runManualRestore() {
         draft.lastError = 'No backup found in Raindrop.';
         draft.lastErrorAt = Date.now();
       });
+      resetRestoring();
       return {
         ok: false,
         errors: ['No backup found in Raindrop.'],
@@ -904,8 +914,10 @@ export async function runManualRestore() {
         draft.lastBackupAt = lastModified;
       }
     });
+    resetRestoring();
     return { ok: true, errors: [], state };
   } catch (error) {
+    resetRestoring();
     const message =
       error instanceof Error ? error.message : String(error ?? 'Unknown error');
     const state = await updateState((draft) => {
@@ -926,6 +938,13 @@ export async function runManualRestore() {
  */
 export async function resetOptionsToDefaults() {
   await ensureInitialized();
+
+  isRestoring = true;
+  const resetRestoring = () => {
+    setTimeout(() => {
+      isRestoring = false;
+    }, 2000);
+  };
 
   await chrome.storage.local.set({
     [ROOT_FOLDER_SETTINGS_KEY]: {
@@ -957,6 +976,7 @@ export async function resetOptionsToDefaults() {
     draft.lastErrorAt = undefined;
   });
 
+  resetRestoring();
   return { ok: true, errors: [], state };
 }
 
@@ -1058,6 +1078,36 @@ export function handleOptionsBackupMessage(message, sendResponse) {
  */
 export async function initializeOptionsBackupService() {
   await ensureInitialized();
+  setupAutoBackupListener();
+}
+
+/**
+ * Set up a listener for option changes to trigger auto-backup.
+ * @returns {void}
+ */
+function setupAutoBackupListener() {
+  const debouncedBackup = debounce(() => {
+    void runManualBackup().catch((error) => {
+      console.warn('[options-backup] Auto-backup failed:', error);
+    });
+  }, 5000); // 5 second debounce for background auto-backup
+
+  chrome.storage.local.onChanged.addListener((changes) => {
+    if (isRestoring) {
+      return;
+    }
+
+    const keys = Object.keys(changes);
+    if (keys.length === 1 && keys[0] === STATE_STORAGE_KEY) {
+      return;
+    }
+
+    // Check if any changed key is in OPTION_KEYS
+    const hasOptionChanges = keys.some((key) => OPTION_KEYS.includes(key));
+    if (hasOptionChanges) {
+      debouncedBackup();
+    }
+  });
 }
 
 /**
