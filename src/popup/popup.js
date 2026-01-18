@@ -757,7 +757,13 @@ const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
- * Format a timestamp as MM/DD HH:mm (24h).
+ * Format a timestamp based on proximity to current time.
+ * - within same day: HH:mm
+ * - yesterday: Yesterday, HH:mm
+ * - within 7 days: ddd, HH:mm
+ * - within 30 days: N days ago, HH:mm
+ * - within same year: MMM D, HH:mm
+ * - others: YYYY MMM D, HH:mm
  * @param {string | number | undefined} value
  * @returns {string}
  */
@@ -768,11 +774,55 @@ function formatTimestamp(value) {
   try {
     const date = new Date(value);
     if (isNaN(date.getTime())) return '—';
-    const M = String(date.getMonth() + 1).padStart(2, '0');
-    const D = String(date.getDate()).padStart(2, '0');
-    const h = String(date.getHours()).padStart(2, '0');
-    const m = String(date.getMinutes()).padStart(2, '0');
-    return `${M}/${D} ${h}:${m}`;
+
+    const now = new Date();
+    const isSameDay = (d1, d2) =>
+      d1.getFullYear() === d2.getFullYear() &&
+      d1.getMonth() === d2.getMonth() &&
+      d1.getDate() === d2.getDate();
+
+    const isYesterday = (d1, d2) => {
+      const yesterday = new Date(d1);
+      yesterday.setDate(d1.getDate() - 1);
+      return isSameDay(yesterday, d2);
+    };
+
+    const diffMs = now.getTime() - date.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    const HH = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    const timeStr = `${HH}:${mm}`;
+
+    if (isSameDay(now, date)) {
+      return timeStr;
+    }
+
+    if (isYesterday(now, date)) {
+      return `Yesterday, ${timeStr}`;
+    }
+
+    if (diffDays < 7) {
+      const ddd = new Intl.DateTimeFormat('en', { weekday: 'short' }).format(
+        date,
+      );
+      return `${ddd}, ${timeStr}`;
+    }
+
+    if (diffDays < 30) {
+      return `${diffDays} days ago, ${timeStr}`;
+    }
+
+    if (date.getFullYear() === now.getFullYear()) {
+      const MMM = new Intl.DateTimeFormat('en', { month: 'short' }).format(date);
+      const D = date.getDate();
+      return `${MMM} ${D}, ${timeStr}`;
+    }
+
+    const YYYY = date.getFullYear();
+    const MMM = new Intl.DateTimeFormat('en', { month: 'short' }).format(date);
+    const D = date.getDate();
+    return `${YYYY} ${MMM} ${D}, ${timeStr}`;
   } catch (error) {
     return '—';
   }
