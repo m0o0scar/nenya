@@ -755,6 +755,7 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
+const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
@@ -1508,6 +1509,53 @@ async function handleRestoreTab(tab, button) {
   } finally {
     button.innerHTML = originalContent;
     button.disabled = false;
+  }
+}
+
+/**
+ * Handle updating a Raindrop item's URL to the current tab's URL.
+ * @param {any} item
+ * @param {HTMLButtonElement} button
+ */
+async function handleEditRaindropUrl(item, button) {
+  if (button.classList.contains('loading')) return;
+
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-[10px]"></span>';
+  button.classList.add('loading');
+
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const currentTab = tabs?.[0];
+    if (!currentTab || !currentTab.url) {
+      throw new Error('No active tab URL found');
+    }
+
+    const response = await chrome.runtime.sendMessage({
+      type: UPDATE_RAINDROP_URL_MESSAGE,
+      id: item._id,
+      url: currentTab.url,
+    });
+
+    if (response && response.ok) {
+      button.innerHTML = '✅';
+      if (statusMessage) {
+        concludeStatus('Raindrop URL updated', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Failed to update URL');
+    }
+  } catch (error) {
+    console.error('[popup] Update raindrop URL failed:', error);
+    button.innerHTML = '❌';
+    if (statusMessage) {
+      concludeStatus('Error: ' + error.message, 'error', 4000, statusMessage);
+    }
+  } finally {
+    setTimeout(() => {
+      button.innerHTML = originalContent;
+      button.classList.remove('loading');
+    }, 2000);
   }
 }
 
@@ -2536,9 +2584,13 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             </span>`
           : '';
 
-      const openAllButton =
+      const openAllButtonHtml =
         result.type === 'raindrop-collection'
           ? `<button class="open-all-button btn btn-ghost btn-xs hidden group-hover:inline-flex h-[18px] ml-1" title="Open all items in this collection">🗂️</button>`
+          : '';
+      const editButtonHtml =
+        result.type === 'raindrop'
+          ? `<button class="edit-raindrop-button btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200" title="Update URL to current tab">✏️</button>`
           : '';
 
       resultItem.innerHTML = `
@@ -2550,7 +2602,8 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           <span class="flex-1 truncate">${escapeHtml(title)}</span>
           ${collectionChip}
           ${parentCollectionChip}
-          ${openAllButton}
+          ${openAllButtonHtml}
+          ${editButtonHtml}
         </div>
         ${
           truncatedUrl
@@ -2563,8 +2616,9 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
       resultItem.addEventListener('click', (e) => {
         if (
-          e.target.classList.contains('pin-button') ||
-          e.target.classList.contains('open-all-button')
+          (e.target && e.target.closest('.pin-button')) ||
+          (e.target && e.target.closest('.open-all-button')) ||
+          (e.target && e.target.closest('.edit-raindrop-button'))
         )
           return;
 
@@ -2592,6 +2646,14 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             });
             window.close();
           }
+        });
+      }
+
+      const editButton = resultItem.querySelector('.edit-raindrop-button');
+      if (editButton) {
+        editButton.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void handleEditRaindropUrl(result.data, editButton);
         });
       }
 
