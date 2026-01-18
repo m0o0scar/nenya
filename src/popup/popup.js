@@ -2803,11 +2803,26 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
   // Handle Alt + Number shortcuts to open pinned items
   window.addEventListener('keydown', async (event) => {
-    if (event.altKey && event.key >= '1' && event.key <= '9') {
-      const index = parseInt(event.key, 10) - 1;
+    // Determine the digit from either event.key or event.code
+    // event.code (e.g., 'Digit1') is more reliable on different keyboard layouts and OSes (like Mac)
+    let digit = null;
+    if (event.key >= '1' && event.key <= '9') {
+      digit = event.key;
+    } else if (event.code.startsWith('Digit')) {
+      const d = event.code.substring(5);
+      if (d >= '1' && d <= '9') {
+        digit = d;
+      }
+    }
+
+    if (event.altKey && digit) {
+      const index = parseInt(digit, 10) - 1;
+      // We must call preventDefault() synchronously before any await
+      // to ensure the browser's default action is blocked.
+      event.preventDefault();
+
       const pinnedItems = await getPinnedItems();
       if (index >= 0 && index < pinnedItems.length) {
-        event.preventDefault();
         const item = pinnedItems[index];
         void openBookmark(item.url);
       }
