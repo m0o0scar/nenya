@@ -231,6 +231,7 @@ export async function showSaveToUnsortedDialog(tab) {
   const originalConfirmButtonContent = confirmButton.innerHTML;
 
   const handleConfirm = async () => {
+    if (confirmButton.disabled) return;
     const title = titleInput.value;
     const includeScreenshot = screenshotCheckbox.checked;
 
@@ -277,6 +278,14 @@ export async function showSaveToUnsortedDialog(tab) {
       e.preventDefault();
       e.stopPropagation();
       modal.close();
+    } else if (e.key === 'Enter') {
+      // If a button is focused, let the browser handle the Enter key to click it
+      if (document.activeElement instanceof HTMLButtonElement) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      void handleConfirm();
     }
   };
 
