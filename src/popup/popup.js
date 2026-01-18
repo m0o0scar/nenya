@@ -1038,10 +1038,11 @@ async function handleEditSessionName(collectionId, currentName) {
   iconPicker.addEventListener('click', handleIconClick);
 
   const handleConfirm = async () => {
+    if (confirmButton.disabled) return;
     const newName = nameInput.value.trim();
     const nameChanged = newName && newName !== currentName;
     const iconSelected = selectedIcon && selectedIcon !== '';
-    
+
     if (nameChanged || iconSelected) {
       // Show loading state
       const originalButtonContent = confirmButton.innerHTML;
@@ -1108,6 +1109,14 @@ async function handleEditSessionName(collectionId, currentName) {
       e.preventDefault();
       e.stopPropagation();
       modal.close();
+    } else if (e.key === 'Enter') {
+      // If a button is focused, let the browser handle the Enter key to click it
+      if (document.activeElement instanceof HTMLButtonElement) {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
+      void handleConfirm();
     }
   };
 
