@@ -757,6 +757,28 @@ const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
+ * Format a timestamp as MM/DD HH:mm (24h).
+ * @param {string | number | undefined} value
+ * @returns {string}
+ */
+function formatTimestamp(value) {
+  if (!value) {
+    return '—';
+  }
+  try {
+    const date = new Date(value);
+    if (isNaN(date.getTime())) return '—';
+    const M = String(date.getMonth() + 1).padStart(2, '0');
+    const D = String(date.getDate()).padStart(2, '0');
+    const h = String(date.getHours()).padStart(2, '0');
+    const m = String(date.getMinutes()).padStart(2, '0');
+    return `${M}/${D} ${h}:${m}`;
+  } catch (error) {
+    return '—';
+  }
+}
+
+/**
  * Initialize the sessions list in the popup.
  * @returns {Promise<void>}
  */
@@ -879,17 +901,33 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
       leftSide.appendChild(iconImg);
     }
 
+    const titleContainer = document.createElement('div');
+    titleContainer.className = 'flex flex-col overflow-hidden';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'flex items-center gap-2';
+
     const titleSpan = document.createElement('span');
     titleSpan.className = 'truncate font-medium text-sm';
     titleSpan.textContent = session.title;
-    leftSide.appendChild(titleSpan);
+    titleRow.appendChild(titleSpan);
 
     if (session.isCurrent) {
       const chip = document.createElement('span');
-      chip.className = 'badge badge-sm badge-primary text-[10px] h-4';
+      chip.className = 'badge badge-sm badge-primary text-[10px] h-4 shrink-0';
       chip.textContent = 'Current';
-      leftSide.appendChild(chip);
+      titleRow.appendChild(chip);
     }
+    titleContainer.appendChild(titleRow);
+
+    if (session.lastUpdate) {
+      const lastUpdateSpan = document.createElement('span');
+      lastUpdateSpan.className = 'text-[10px] opacity-50 truncate';
+      lastUpdateSpan.textContent = `Last update: ${formatTimestamp(session.lastUpdate)}`;
+      titleContainer.appendChild(lastUpdateSpan);
+    }
+
+    leftSide.appendChild(titleContainer);
 
     const restoreButton = document.createElement('button');
     restoreButton.className =

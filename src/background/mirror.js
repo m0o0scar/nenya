@@ -263,6 +263,7 @@ async function handleFetchSessions() {
       title: c.title,
       isCurrent: c.title === browserId,
       cover: c.cover,
+      lastUpdate: c.lastUpdate,
     }));
 }
 
