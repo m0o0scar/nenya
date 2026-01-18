@@ -2147,6 +2147,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function initializeBookmarksSearch(inputElement, resultsElement) {
   const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
   const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
+  const SEARCH_RESULT_WEIGHTS_KEY = 'searchResultWeights';
+
+  /**
+   * Increments the weight of a search result URL in local storage.
+   * @param {string} url
+   * @returns {Promise<void>}
+   */
+  async function updateSearchResultWeight(url) {
+    if (!url) return;
+    try {
+      const result = await chrome.storage.local.get(SEARCH_RESULT_WEIGHTS_KEY);
+      const weights = result[SEARCH_RESULT_WEIGHTS_KEY] || {};
+      weights[url] = (weights[url] || 0) + 1;
+      await chrome.storage.local.set({ [SEARCH_RESULT_WEIGHTS_KEY]: weights });
+    } catch (error) {
+      console.warn('[popup] Failed to update search result weight:', error);
+    }
+  }
 
   const PINNED_COLOR_PALETTE = [
     { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
@@ -2385,19 +2403,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
       let title, url, typeIcon, itemType;
 
-      if (result.type === 'bookmark') {
-        const bookmark = result.data;
-        itemType = 'bookmark';
-        if (bookmark.url) {
-          title = bookmark.title || bookmark.url;
-          url = bookmark.url;
-          typeIcon = '↗️';
-        } else {
-          title = bookmark.title || 'Untitled';
-          url = `folder:${bookmark.id}`;
-          typeIcon = '📂';
-        }
-      } else if (result.type === 'raindrop') {
+      if (result.type === 'raindrop') {
         const item = result.data;
         itemType = 'raindrop';
         title = item.title || item.link;
@@ -2450,16 +2456,8 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       resultItem.addEventListener('click', (e) => {
         if (e.target.classList.contains('pin-button')) return;
 
-        if (url.startsWith('folder:')) {
-          const folderId = url.split(':')[1];
-          chrome.bookmarks.get(folderId, (bookmarks) => {
-            if (bookmarks && bookmarks.length > 0) {
-              void openFolderBookmarks(bookmarks[0]);
-            }
-          });
-        } else {
-          void openBookmark(url);
-        }
+        void updateSearchResultWeight(url);
+        void openBookmark(url);
       });
 
       const pinButton = resultItem.querySelector('.pin-button');
@@ -2555,16 +2553,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       </div>
     `;
 
-    // Search local bookmarks
-    const bookmarkResults = await searchBookmarks(query);
-
-    // Map to result format, filtering out folders (nodes without a URL)
-    const results = bookmarkResults
-      .filter((bookmark) => bookmark.url)
-      .map((bookmark) => ({
-        type: 'bookmark',
-        data: bookmark,
-      }));
+    const results = [];
 
     // Search Raindrop
     try {
@@ -2616,15 +2605,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       let url = '';
       let title = '';
 
-      if (result.type === 'bookmark') {
-        url = (result.data.url || '').toLowerCase();
-        title = (result.data.title || '').toLowerCase();
-      } else if (result.type === 'raindrop') {
+      if (result.type === 'raindrop') {
         url = (result.data.link || '').toLowerCase();
         title = (result.data.title || '').toLowerCase();
       }
 
-      // Skip items without URL (shouldn't happen for bookmarks/raindrops, but safety check)
+      // Skip items without URL (shouldn't happen for raindrops, but safety check)
       if (!url) {
         return true;
       }
@@ -2639,6 +2625,44 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       return true;
     });
 
+    // Fetch weights for sorting
+    let weights = {};
+    try {
+      const weightResult = await chrome.storage.local.get(SEARCH_RESULT_WEIGHTS_KEY);
+      weights = weightResult[SEARCH_RESULT_WEIGHTS_KEY] || {};
+    } catch (error) {
+      console.warn('[popup] Failed to fetch weights for sorting:', error);
+    }
+
+    // Sort results by weight (DESC), lastUpdate (DESC), title (ASC), url (ASC)
+    uniqueResults.sort((a, b) => {
+      const urlA = a.type === 'raindrop' ? a.data.link : `https://app.raindrop.io/my/${a.data._id}`;
+      const urlB = b.type === 'raindrop' ? b.data.link : `https://app.raindrop.io/my/${b.data._id}`;
+
+      const weightA = weights[urlA] || 0;
+      const weightB = weights[urlB] || 0;
+
+      if (weightA !== weightB) {
+        return weightB - weightA;
+      }
+
+      const lastUpdateA = new Date(a.data.lastUpdate || 0).getTime();
+      const lastUpdateB = new Date(b.data.lastUpdate || 0).getTime();
+
+      if (lastUpdateA !== lastUpdateB) {
+        return lastUpdateB - lastUpdateA;
+      }
+
+      const titleA = (a.data.title || '').toLowerCase();
+      const titleB = (b.data.title || '').toLowerCase();
+
+      if (titleA !== titleB) {
+        return titleA.localeCompare(titleB);
+      }
+
+      return urlA.localeCompare(urlB);
+    });
+
     // Limit to top 50 results
     const topResults = uniqueResults.slice(0, 50);
     currentResults = topResults;
@@ -2651,68 +2675,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     } else {
       renderSearchResults(topResults);
     }
-  }
-
-  /**
-   * Search bookmarks and return results.
-   * @param {string} query
-   * @returns {Promise<chrome.bookmarks.BookmarkTreeNode[]>}
-   */
-  function searchBookmarks(query) {
-    return new Promise((resolve) => {
-      chrome.bookmarks.search(query, (results) => {
-        // Deduplicate results by title and URL (case insensitive) to prevent duplicates
-        // Keep only the first occurrence of items with the same title and URL
-        const seenKeys = new Set();
-        const uniqueResults = results.filter((item) => {
-          if (!item.id) {
-            return false;
-          }
-          // Create a key from title and URL (case insensitive)
-          const title = (item.title || '').toLowerCase();
-          const url = (item.url || '').toLowerCase();
-          const key = `${title}|${url}`;
-
-          if (seenKeys.has(key)) {
-            return false;
-          }
-          seenKeys.add(key);
-          return true;
-        });
-
-        // Sort to prioritize title matches over URL matches
-        const lowerQuery = query.toLowerCase();
-        uniqueResults.sort((a, b) => {
-          const aTitleMatch =
-            a.title?.toLowerCase().includes(lowerQuery) ?? false;
-          const bTitleMatch =
-            b.title?.toLowerCase().includes(lowerQuery) ?? false;
-          const aUrlMatch = a.url?.toLowerCase().includes(lowerQuery) ?? false;
-          const bUrlMatch = b.url?.toLowerCase().includes(lowerQuery) ?? false;
-
-          // Prioritize bookmarks over folders if both match
-          if (aTitleMatch && bTitleMatch) {
-            if (a.url && !b.url) return -1; // Bookmark comes before folder
-            if (!a.url && b.url) return 1; // Folder comes after bookmark
-          }
-
-          // If both have title matches or both don't, keep original order
-          if (aTitleMatch === bTitleMatch) {
-            // If neither has title match, prioritize URL matches
-            if (!aTitleMatch && !bTitleMatch) {
-              if (aUrlMatch && !bUrlMatch) return -1;
-              if (!aUrlMatch && bUrlMatch) return 1;
-            }
-            return 0;
-          }
-
-          // Prioritize title matches
-          return aTitleMatch ? -1 : 1;
-        });
-
-        resolve(uniqueResults);
-      });
-    });
   }
 
 
@@ -2749,23 +2711,16 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       if (highlightedIndex >= 0 && highlightedIndex < currentResults.length) {
         const highlightedResult = currentResults[highlightedIndex];
 
-        if (highlightedResult.type === 'bookmark') {
-          // Bookmark or folder
-          const bookmark = highlightedResult.data;
-          if (bookmark.url) {
-            void openBookmark(bookmark.url);
-          } else {
-            // Bookmark folder - open all direct children bookmarks
-            void openFolderBookmarks(bookmark);
-          }
-        } else if (highlightedResult.type === 'raindrop') {
+        if (highlightedResult.type === 'raindrop') {
           const item = highlightedResult.data;
           if (item.link) {
+            void updateSearchResultWeight(item.link);
             void openBookmark(item.link);
           }
         } else if (highlightedResult.type === 'raindrop-collection') {
           const collection = highlightedResult.data;
           const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
+          void updateSearchResultWeight(collectionUrl);
           void openBookmark(collectionUrl);
         }
         return;
