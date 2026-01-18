@@ -2260,7 +2260,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     if (!pinnedItemsContainer) return;
     const pinnedItems = await getPinnedItems();
     pinnedItemsContainer.innerHTML = '';
-    pinnedItems.forEach((item) => {
+    pinnedItems.forEach((item, index) => {
       const colors = getStableColor(item.url);
       const chip = document.createElement('div');
       chip.className =
@@ -2268,6 +2268,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       chip.style.backgroundColor = colors.bg;
       chip.style.color = colors.text;
       chip.innerHTML = `
+        <span class="text-[10px] opacity-70 font-bold">${index + 1}</span>
         <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
         <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
       `;
@@ -2834,6 +2835,34 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             ? highlightedIndex - 1
             : currentResults.length - 1;
         updateHighlight(highlightedIndex);
+      }
+    }
+  });
+
+  // Handle Alt + Number shortcuts to open pinned items
+  window.addEventListener('keydown', async (event) => {
+    // Determine the digit from either event.key or event.code
+    // event.code (e.g., 'Digit1') is more reliable on different keyboard layouts and OSes (like Mac)
+    let digit = null;
+    if (event.key >= '1' && event.key <= '9') {
+      digit = event.key;
+    } else if (event.code.startsWith('Digit')) {
+      const d = event.code.substring(5);
+      if (d >= '1' && d <= '9') {
+        digit = d;
+      }
+    }
+
+    if (event.altKey && digit) {
+      const index = parseInt(digit, 10) - 1;
+      // We must call preventDefault() synchronously before any await
+      // to ensure the browser's default action is blocked.
+      event.preventDefault();
+
+      const pinnedItems = await getPinnedItems();
+      if (index >= 0 && index < pinnedItems.length) {
+        const item = pinnedItems[index];
+        void openBookmark(item.url);
       }
     }
   });
