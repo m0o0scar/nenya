@@ -752,6 +752,7 @@ const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
+const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
@@ -2532,6 +2533,11 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             </span>`
           : '';
 
+      const openAllButton =
+        result.type === 'raindrop-collection'
+          ? `<button class="open-all-button btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200 ml-1" title="Open all items in this collection">🗂️</button>`
+          : '';
+
       resultItem.innerHTML = `
         <div class="flex items-center gap-1">
           <div class="relative w-4 h-4">
@@ -2541,6 +2547,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           <span class="flex-1 truncate">${escapeHtml(title)}</span>
           ${collectionChip}
           ${parentCollectionChip}
+          ${openAllButton}
         </div>
         ${
           truncatedUrl
@@ -2552,7 +2559,11 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       `;
 
       resultItem.addEventListener('click', (e) => {
-        if (e.target.classList.contains('pin-button')) return;
+        if (
+          e.target.classList.contains('pin-button') ||
+          e.target.classList.contains('open-all-button')
+        )
+          return;
 
         void updateSearchResultWeight(url);
         void openBookmark(url);
@@ -2563,6 +2574,21 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         pinButton.addEventListener('click', (e) => {
           e.stopPropagation();
           void pinItem({ title, url, type: itemType });
+        });
+      }
+
+      const openAllBtn = resultItem.querySelector('.open-all-button');
+      if (openAllBtn && result.type === 'raindrop-collection') {
+        openAllBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const collectionId = result.data._id;
+          if (collectionId !== undefined) {
+            void chrome.runtime.sendMessage({
+              type: OPEN_ALL_ITEMS_MESSAGE,
+              collectionId,
+            });
+            window.close();
+          }
         });
       }
 
