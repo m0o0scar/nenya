@@ -2222,7 +2222,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     if (!pinnedItemsContainer) return;
     const pinnedItems = await getPinnedItems();
     pinnedItemsContainer.innerHTML = '';
-    pinnedItems.forEach((item) => {
+    pinnedItems.forEach((item, index) => {
       const colors = getStableColor(item.url);
       const chip = document.createElement('div');
       chip.className =
@@ -2230,6 +2230,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       chip.style.backgroundColor = colors.bg;
       chip.style.color = colors.text;
       chip.innerHTML = `
+        <span class="text-[10px] opacity-70 font-bold">${index + 1}</span>
         <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
         <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
       `;
@@ -2796,6 +2797,19 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             ? highlightedIndex - 1
             : currentResults.length - 1;
         updateHighlight(highlightedIndex);
+      }
+    }
+  });
+
+  // Handle Alt + Number shortcuts to open pinned items
+  window.addEventListener('keydown', async (event) => {
+    if (event.altKey && event.key >= '1' && event.key <= '9') {
+      const index = parseInt(event.key, 10) - 1;
+      const pinnedItems = await getPinnedItems();
+      if (index >= 0 && index < pinnedItems.length) {
+        event.preventDefault();
+        const item = pinnedItems[index];
+        void openBookmark(item.url);
       }
     }
   });
