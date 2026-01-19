@@ -67,6 +67,7 @@ import {
 } from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
+import { startRecording, stopRecording, getIsRecording } from './recording.js';
 
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
@@ -3512,6 +3513,13 @@ function setupContextMenus() {
   });
 }
 
+// Handle action button click (used to stop recording when popup is disabled)
+chrome.action.onClicked.addListener(async () => {
+  if (getIsRecording()) {
+    await stopRecording();
+  }
+});
+
 if (chrome.contextMenus) {
   chrome.contextMenus.onClicked.addListener(async (info, tab) => {
     const menuItemId = String(info.menuItemId);
@@ -3655,6 +3663,14 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Start recording
+    if (menuItemId === OTHER_MENU_IDS.START_RECORDING) {
+      if (tab && tab.id) {
+        void startRecording(tab.id);
+      }
       return;
     }
 
