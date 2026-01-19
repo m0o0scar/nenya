@@ -13,16 +13,3 @@ body {
 #projectsErrorContainer.flex {
   display: flex;
 }
-
-/* Drag and drop for pinned search results */
-#pinnedItemsContainer {
-  user-select: none;
-}
-
-#pinnedItemsContainer .badge {
-  cursor: grab;
-}
-
-#pinnedItemsContainer .badge:active {
-  cursor: grabbing;
-}

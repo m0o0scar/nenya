@@ -92,7 +92,7 @@ async function ensureOffscreenDocument() {
   // @ts-ignore
   await chrome.offscreen.createDocument({
     url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: ['TAB_CAPTURE'],
+    reasons: ['USER_MEDIA'],
     justification: 'Recording tab content'
   });
 }

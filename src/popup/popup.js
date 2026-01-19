@@ -2407,9 +2407,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     await renderPinnedItems();
   }
 
-  /** @type {number} */
-  let draggedItemIndex = -1;
-
   async function renderPinnedItems() {
     if (!pinnedItemsContainer) return;
     const pinnedItems = await getPinnedItems();
@@ -2418,17 +2415,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       const colors = getStableColor(item.url);
       const chip = document.createElement('div');
       chip.className =
-        'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none transition-all duration-200';
+        'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none';
       chip.style.backgroundColor = colors.bg;
       chip.style.color = colors.text;
-      chip.setAttribute('draggable', 'true');
       chip.innerHTML = `
-        <span class="text-[10px] opacity-70 font-bold pointer-events-none">${
-          index + 1
-        }</span>
-        <span class="truncate max-w-xs pointer-events-none">${escapeHtml(
-          item.title,
-        )}</span>
+        <span class="text-[10px] opacity-70 font-bold">${index + 1}</span>
+        <span class="truncate max-w-xs">${escapeHtml(item.title)}</span>
         <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
       `;
       chip.addEventListener('click', (e) => {
@@ -2442,62 +2434,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           void unpinItem(item.url);
         });
       }
-
-      // Drag and Drop listeners
-      chip.addEventListener('dragstart', (e) => {
-        draggedItemIndex = index;
-        chip.classList.add('opacity-40');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', index.toString());
-        }
-      });
-
-      chip.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = 'move';
-        }
-        return false;
-      });
-
-      chip.addEventListener('dragenter', () => {
-        if (index !== draggedItemIndex) {
-          chip.classList.add('scale-105', 'ring-2', 'ring-primary');
-        }
-      });
-
-      chip.addEventListener('dragleave', () => {
-        chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
-      });
-
-      chip.addEventListener('drop', async (e) => {
-        e.stopPropagation();
-        chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
-
-        const fromIndex = draggedItemIndex;
-        const toIndex = index;
-
-        if (fromIndex !== toIndex && fromIndex !== -1) {
-          const items = await getPinnedItems();
-          const movedItem = items.splice(fromIndex, 1)[0];
-          items.splice(toIndex, 0, movedItem);
-          await savePinnedItems(items);
-          await renderPinnedItems();
-        }
-        return false;
-      });
-
-      chip.addEventListener('dragend', () => {
-        chip.classList.remove(
-          'opacity-40',
-          'scale-105',
-          'ring-2',
-          'ring-primary',
-        );
-        draggedItemIndex = -1;
-      });
-
       pinnedItemsContainer.appendChild(chip);
     });
   }
@@ -2755,10 +2691,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           const collectionId = result.data._id;
           const collectionTitle = result.data.title;
           if (collectionId !== undefined) {
-            // Read URL from data attribute to get the latest value
-            const itemUrl = resultItem.dataset.url || url;
-            void updateSearchResultWeight(itemUrl);
-
             void chrome.runtime.sendMessage({
               type: OPEN_ALL_ITEMS_MESSAGE,
               collectionId,
