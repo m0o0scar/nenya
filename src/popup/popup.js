@@ -2538,7 +2538,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
       const openAllButton =
         result.type === 'raindrop-collection'
-          ? `<button class="open-all-button btn btn-ghost btn-xs hidden group-hover:inline-flex ml-1" title="Open all items in this collection">🗂️</button>`
+          ? `<button class="open-all-button btn btn-ghost btn-xs hidden group-hover:inline-flex h-[18px] ml-1" title="Open all items in this collection">🗂️</button>`
           : '';
 
       resultItem.innerHTML = `
