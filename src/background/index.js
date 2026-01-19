@@ -7,6 +7,7 @@ import {
   ensureNenyaSessionsCollection,
   handleFetchSessions,
   handleRestoreSession,
+  handleOpenAllItemsInCollection,
   handleFetchSessionDetails,
   handleUpdateSessionName,
   handleUploadCollectionCover,
@@ -79,6 +80,7 @@ const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
+const RESTORE_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
@@ -2322,6 +2324,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           error,
         );
         sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === RESTORE_ALL_ITEMS_MESSAGE) {
+    const collectionId = Number(message.collectionId);
+    if (!Number.isFinite(collectionId)) {
+      sendResponse({ ok: false, error: 'Invalid collection ID' });
+      return false;
+    }
+    handleOpenAllItemsInCollection(collectionId)
+      .then(() => {
+        sendResponse({ ok: true });
+      })
+      .catch((error) => {
+        console.error('[background] Open all items failed:', error);
+        sendResponse({ ok: false, error: error.message });
       });
     return true;
   }

@@ -124,6 +124,7 @@ export {
   ensureNenyaSessionsCollection,
   handleFetchSessions,
   handleRestoreSession,
+  handleOpenAllItemsInCollection,
   handleFetchSessionDetails,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
@@ -515,6 +516,48 @@ async function handleRestoreSession(collectionId) {
 
   return { success: true };
 }
+
+/**
+ * Fetch and open all items in a Raindrop collection.
+ * @param {number} collectionId
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleOpenAllItemsInCollection(collectionId) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  const items = [];
+  let page = 0;
+  let hasMore = true;
+
+  while (hasMore) {
+    const response = await raindropRequest(
+      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+      tokens,
+    );
+    const pageItems = Array.isArray(response?.items) ? response.items : [];
+    items.push(...pageItems);
+
+    if (pageItems.length < FETCH_PAGE_SIZE) {
+      hasMore = false;
+    } else {
+      page += 1;
+    }
+  }
+
+  // Open all links in new tabs (inactive)
+  for (const item of items) {
+    if (item.link) {
+      const url = unwrapInternalUrl(item.link);
+      chrome.tabs.create({ url, active: false });
+    }
+  }
+
+  return { success: true };
+}
+
 import {
   getValidTokens,
   TOKEN_VALIDATION_MESSAGE,
