@@ -107,6 +107,10 @@
  */
 
 import { getSnapshots } from './tab-snapshots.js';
+import {
+  getValidTokens,
+  TOKEN_VALIDATION_MESSAGE,
+} from '../shared/tokenRefresh.js';
 
 export {
   concludeActionBadge,
@@ -130,6 +134,7 @@ export {
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
   handleUploadCollectionCover,
+  handleUpdateRaindropUrl,
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
@@ -558,10 +563,36 @@ async function handleOpenAllItemsInCollection(collectionId) {
   return { success: true };
 }
 
-import {
-  getValidTokens,
-  TOKEN_VALIDATION_MESSAGE,
-} from '../shared/tokenRefresh.js';
+/**
+ * Update the URL of a Raindrop item.
+ * @param {number} id - The Raindrop item ID
+ * @param {string} url - The new URL
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleUpdateRaindropUrl(id, url) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+  if (!id) {
+    throw new Error('Invalid Raindrop item ID');
+  }
+
+  const finalUrl = isValidRaindropUrl(url) ? url : wrapInternalUrl(url);
+
+  await raindropRequest(`/raindrop/${id}`, tokens, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      link: finalUrl,
+    }),
+  });
+
+  return { success: true };
+}
+
 
 const PROVIDER_ID = 'raindrop';
 const STORAGE_KEY_TOKENS = 'cloudAuthTokens';

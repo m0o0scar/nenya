@@ -11,6 +11,7 @@ import {
   handleFetchSessionDetails,
   handleUpdateSessionName,
   handleUploadCollectionCover,
+  handleUpdateRaindropUrl,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   loadValidProviderTokens,
@@ -83,6 +84,7 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const RESTORE_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
+const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
 const COLLECT_PAGE_CONTENT_MESSAGE = 'collect-page-content-as-markdown';
@@ -2340,6 +2342,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[background] Open all items failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+  
+  if (message.type === UPDATE_RAINDROP_URL_MESSAGE) {
+    const { id, url } = message;
+    handleUpdateRaindropUrl(id, url)
+      .then((result) => {
+        sendResponse({ ok: true, ...result });
+      })
+      .catch((error) => {
+        console.error('[background] Update Raindrop URL failed:', error);
         sendResponse({ ok: false, error: error.message });
       });
     return true;

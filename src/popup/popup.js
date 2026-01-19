@@ -755,6 +755,7 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
+const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
 /**
@@ -1508,6 +1509,96 @@ async function handleRestoreTab(tab, button) {
   } finally {
     button.innerHTML = originalContent;
     button.disabled = false;
+  }
+}
+
+/**
+ * Handle updating a Raindrop item's URL to the current tab's URL.
+ * @param {any} item
+ * @param {HTMLButtonElement} button
+ * @param {HTMLElement} resultItem
+ * @param {Array<{type: string, data: any}>} currentResults
+ */
+async function handleEditRaindropUrl(item, button, resultItem, currentResults) {
+  if (button.classList.contains('loading')) return;
+
+  const originalContent = button.innerHTML;
+  button.innerHTML = '<span class="loading loading-spinner loading-[10px]"></span>';
+  button.classList.add('loading');
+
+  try {
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    const currentTab = tabs?.[0];
+    if (!currentTab || !currentTab.url) {
+      throw new Error('No active tab URL found');
+    }
+
+    const newUrl = currentTab.url;
+
+    const response = await chrome.runtime.sendMessage({
+      type: UPDATE_RAINDROP_URL_MESSAGE,
+      id: item._id,
+      url: newUrl,
+    });
+
+    if (response && response.ok) {
+      // Update the item's link property in the stored data
+      item.link = newUrl;
+
+      // Update the DOM element
+      if (resultItem) {
+        // Update the data-url attribute (used by click handler)
+        const htmlElement = /** @type {HTMLElement} */ (resultItem);
+        htmlElement.dataset.url = newUrl;
+
+        // Update the displayed truncated URL
+        const urlDisplay = resultItem.querySelector('.search-result-url');
+        if (urlDisplay) {
+          // Calculate truncated URL (max 60 chars)
+          const truncatedUrl = newUrl.length <= 60
+            ? newUrl
+            : newUrl.substring(0, 57) + '...';
+          urlDisplay.textContent = truncatedUrl;
+        } else if (newUrl && !newUrl.startsWith('folder:')) {
+          // If URL display doesn't exist but should, create it
+          const urlDiv = document.createElement('div');
+          urlDiv.className = 'text-[10px] text-base-content/60 truncate mt-1 ml-5 search-result-url';
+          const truncatedUrl = newUrl.length <= 60
+            ? newUrl
+            : newUrl.substring(0, 57) + '...';
+          urlDiv.textContent = truncatedUrl;
+          resultItem.appendChild(urlDiv);
+        }
+      }
+
+      // Update currentResults array so re-renders use the new URL
+      if (currentResults) {
+        const resultIndex = currentResults.findIndex(
+          (r) => r.type === 'raindrop' && r.data._id === item._id
+        );
+        if (resultIndex >= 0) {
+          currentResults[resultIndex].data.link = newUrl;
+        }
+      }
+
+      button.innerHTML = '✅';
+      if (statusMessage) {
+        concludeStatus('Raindrop URL updated', 'success', 3000, statusMessage);
+      }
+    } else {
+      throw new Error(response?.error || 'Failed to update URL');
+    }
+  } catch (error) {
+    console.error('[popup] Update raindrop URL failed:', error);
+    button.innerHTML = '❌';
+    if (statusMessage) {
+      concludeStatus('Error: ' + error.message, 'error', 4000, statusMessage);
+    }
+  } finally {
+    setTimeout(() => {
+      button.innerHTML = originalContent;
+      button.classList.remove('loading');
+    }, 2000);
   }
 }
 
@@ -2536,9 +2627,13 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             </span>`
           : '';
 
-      const openAllButton =
+      const openAllButtonHtml =
         result.type === 'raindrop-collection'
           ? `<button class="open-all-button btn btn-ghost btn-xs hidden group-hover:inline-flex h-[18px] ml-1" title="Open all items in this collection">🗂️</button>`
+          : '';
+      const editButtonHtml =
+        result.type === 'raindrop'
+          ? `<button class="edit-raindrop-button btn btn-ghost btn-xs hidden group-hover:inline-flex transition-opacity h-[18px] ml-1 duration-200" title="Update URL to current tab">✏️</button>`
           : '';
 
       resultItem.innerHTML = `
@@ -2550,33 +2645,42 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           <span class="flex-1 truncate">${escapeHtml(title)}</span>
           ${collectionChip}
           ${parentCollectionChip}
-          ${openAllButton}
+          ${openAllButtonHtml}
+          ${editButtonHtml}
         </div>
         ${
           truncatedUrl
-            ? `<div class="text-[10px] text-base-content/60 truncate mt-1 ml-5">
+            ? `<div class="text-[10px] text-base-content/60 truncate mt-1 ml-5 search-result-url">
               ${escapeHtml(truncatedUrl)}
             </div>`
             : ''
         }
       `;
 
+      // Store URL in data attribute for easy updates
+      resultItem.dataset.url = url;
+
       resultItem.addEventListener('click', (e) => {
         if (
-          e.target.classList.contains('pin-button') ||
-          e.target.classList.contains('open-all-button')
+          (e.target && e.target.closest('.pin-button')) ||
+          (e.target && e.target.closest('.open-all-button')) ||
+          (e.target && e.target.closest('.edit-raindrop-button'))
         )
           return;
 
-        void updateSearchResultWeight(url);
-        void openBookmark(url);
+        // Read URL from data attribute to get the latest value
+        const itemUrl = resultItem.dataset.url || url;
+        void updateSearchResultWeight(itemUrl);
+        void openBookmark(itemUrl);
       });
 
       const pinButton = resultItem.querySelector('.pin-button');
       if (pinButton) {
         pinButton.addEventListener('click', (e) => {
           e.stopPropagation();
-          void pinItem({ title, url, type: itemType });
+          // Read URL from data attribute to get the latest value
+          const itemUrl = resultItem.dataset.url || url;
+          void pinItem({ title, url: itemUrl, type: itemType });
         });
       }
 
@@ -2592,6 +2696,15 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             });
             window.close();
           }
+        });
+      }
+
+      const editButton = resultItem.querySelector('.edit-raindrop-button');
+      if (editButton) {
+        const editBtn = /** @type {HTMLButtonElement} */ (editButton);
+        editBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          void handleEditRaindropUrl(result.data, editBtn, resultItem, currentResults);
         });
       }
 
