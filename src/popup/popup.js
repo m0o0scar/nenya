@@ -2590,7 +2590,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           : '';
       const editButtonHtml =
         result.type === 'raindrop'
-          ? `<button class="edit-raindrop-button btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200" title="Update URL to current tab">✏️</button>`
+          ? `<button class="edit-raindrop-button btn btn-ghost btn-xs hidden group-hover:inline-flex transition-opacity h-[18px] ml-1 duration-200" title="Update URL to current tab">✏️</button>`
           : '';
 
       resultItem.innerHTML = `
