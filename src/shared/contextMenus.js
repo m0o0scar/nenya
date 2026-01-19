@@ -223,7 +223,7 @@ async function createRaindropMenu() {
 async function createSendToLLMMenu() {
   await createMenuItem({
     id: PARENT_MENU_IDS.SEND_TO_LLM,
-    title: 'Send page content to LLM',
+    title: 'Send to LLM',
     contexts: ['page'],
   });
 
