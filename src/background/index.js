@@ -81,7 +81,7 @@ const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
 const RESTORE_WINDOW_MESSAGE = 'mirror:restoreWindow';
 const RESTORE_GROUP_MESSAGE = 'mirror:restoreGroup';
 const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
-const RESTORE_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
+const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
@@ -2330,13 +2330,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === RESTORE_ALL_ITEMS_MESSAGE) {
+  if (message.type === OPEN_ALL_ITEMS_MESSAGE) {
     const collectionId = Number(message.collectionId);
+    const collectionTitle = message.collectionTitle;
     if (!Number.isFinite(collectionId)) {
       sendResponse({ ok: false, error: 'Invalid collection ID' });
       return false;
     }
-    handleOpenAllItemsInCollection(collectionId)
+    handleOpenAllItemsInCollection(collectionId, collectionTitle)
       .then(() => {
         sendResponse({ ok: true });
       })

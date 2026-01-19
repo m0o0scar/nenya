@@ -525,9 +525,10 @@ async function handleRestoreSession(collectionId) {
 /**
  * Fetch and open all items in a Raindrop collection.
  * @param {number} collectionId
+ * @param {string} [collectionTitle]
  * @returns {Promise<{success: boolean}>}
  */
-async function handleOpenAllItemsInCollection(collectionId) {
+async function handleOpenAllItemsInCollection(collectionId, collectionTitle) {
   const tokens = await loadValidProviderTokens();
   if (!tokens) {
     throw new Error('No Raindrop connection found');
@@ -553,10 +554,45 @@ async function handleOpenAllItemsInCollection(collectionId) {
   }
 
   // Open all links in new tabs (inactive)
-  for (const item of items) {
-    if (item.link) {
+  const tabPromises = items
+    .filter((item) => item.link)
+    .map((item) => {
       const url = unwrapInternalUrl(item.link);
-      chrome.tabs.create({ url, active: false });
+      return chrome.tabs.create({ url, active: false });
+    });
+
+  const createdTabs = await Promise.all(tabPromises);
+  const tabIds = createdTabs
+    .map((tab) => tab.id)
+    .filter((id) => id !== undefined);
+
+  if (tabIds.length > 0) {
+    const groupId = await /** @type {Promise<number>} */ (
+      chrome.tabs.group({ tabIds })
+    );
+
+    let title = collectionTitle;
+    if (!title) {
+      if (collectionId === -1) {
+        title = 'Unsorted';
+      } else {
+        try {
+          const collectionResponse = await raindropRequest(
+            `/collection/${collectionId}`,
+            tokens,
+          );
+          title = collectionResponse?.item?.title;
+        } catch (e) {
+          console.warn(
+            '[mirror] Failed to fetch collection title for grouping:',
+            e,
+          );
+        }
+      }
+    }
+
+    if (title) {
+      await chrome.tabGroups.update(groupId, { title });
     }
   }
 

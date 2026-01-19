@@ -2689,10 +2689,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         openAllBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           const collectionId = result.data._id;
+          const collectionTitle = result.data.title;
           if (collectionId !== undefined) {
             void chrome.runtime.sendMessage({
               type: OPEN_ALL_ITEMS_MESSAGE,
               collectionId,
+              collectionTitle,
             });
             window.close();
           }
