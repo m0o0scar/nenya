@@ -2512,6 +2512,9 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         const collection = result.data;
         itemType = 'raindrop-collection';
         title = collection.title || 'Untitled';
+        if (typeof collection.count === 'number') {
+          title += ` (${collection.count})`;
+        }
         url = `https://app.raindrop.io/my/${collection._id}`;
         typeIcon = '📥';
       }
