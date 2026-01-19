@@ -2691,6 +2691,10 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           const collectionId = result.data._id;
           const collectionTitle = result.data.title;
           if (collectionId !== undefined) {
+            // Read URL from data attribute to get the latest value
+            const itemUrl = resultItem.dataset.url || url;
+            void updateSearchResultWeight(itemUrl);
+
             void chrome.runtime.sendMessage({
               type: OPEN_ALL_ITEMS_MESSAGE,
               collectionId,
