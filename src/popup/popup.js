@@ -2672,6 +2672,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         }
         url = `https://app.raindrop.io/my/${collection._id}`;
         typeIcon = '📥';
+      } else if (result.type === 'bookmark') {
+        const bookmark = result.data;
+        itemType = 'bookmark';
+        title = bookmark.title || bookmark.url;
+        url = bookmark.url;
+        typeIcon = '🔖';
       }
 
       const truncatedUrl = url.startsWith('folder:')
@@ -2843,57 +2849,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   }
 
   /**
-   * Performs a bookmark search and renders the results.
-   * Prioritizes bookmarks with title matches over URL matches.
-   * Includes both bookmarks and folders in results.
-   * @param {string} query
+   * Deduplicate and sort search results.
+   * @param {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} results
+   * @param {Object} weights
+   * @returns {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>}
    */
-  async function performSearch(query) {
-    if (!query.trim()) {
-      currentResults = [];
-      resultsElement.innerHTML = '';
-      return;
-    }
-
-    // Show loading indicator
-    resultsElement.innerHTML = `
-      <div class="p-2 flex items-center justify-center text-base-content/60">
-        <span class="loading loading-spinner loading-xs mr-2"></span>
-        <span>searching ...</span>
-      </div>
-    `;
-
-    const results = [];
-
-    // Search Raindrop
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'mirror:search',
-        query,
-      });
-
-      if (response) {
-        if (Array.isArray(response.items)) {
-          response.items.forEach((item) => {
-            results.push({
-              type: 'raindrop',
-              data: item,
-            });
-          });
-        }
-        if (Array.isArray(response.collections)) {
-          response.collections.forEach((collection) => {
-            results.push({
-              type: 'raindrop-collection',
-              data: collection,
-            });
-          });
-        }
-      }
-    } catch (error) {
-      console.warn('[popup] Raindrop search failed:', error);
-    }
-
+  function processSearchResults(results, weights) {
     // Deduplicate items with same URL and title (case-insensitive)
     // For collections, deduplicate by _id
     const seenKeys = new Set();
@@ -2918,6 +2879,9 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       if (result.type === 'raindrop') {
         url = (result.data.link || '').toLowerCase();
         title = (result.data.title || '').toLowerCase();
+      } else if (result.type === 'bookmark') {
+        url = (result.data.url || '').toLowerCase();
+        title = (result.data.title || '').toLowerCase();
       }
 
       // Skip items without URL (shouldn't happen for raindrops, but safety check)
@@ -2935,19 +2899,24 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       return true;
     });
 
-    // Fetch weights for sorting
-    let weights = {};
-    try {
-      const weightResult = await chrome.storage.local.get(SEARCH_RESULT_WEIGHTS_KEY);
-      weights = weightResult[SEARCH_RESULT_WEIGHTS_KEY] || {};
-    } catch (error) {
-      console.warn('[popup] Failed to fetch weights for sorting:', error);
-    }
-
     // Sort results by weight (DESC), lastUpdate (DESC), title (ASC), url (ASC)
     uniqueResults.sort((a, b) => {
-      const urlA = a.type === 'raindrop' ? a.data.link : `https://app.raindrop.io/my/${a.data._id}`;
-      const urlB = b.type === 'raindrop' ? b.data.link : `https://app.raindrop.io/my/${b.data._id}`;
+      let urlA, urlB;
+      if (a.type === 'raindrop') {
+        urlA = a.data.link;
+      } else if (a.type === 'raindrop-collection') {
+        urlA = `https://app.raindrop.io/my/${a.data._id}`;
+      } else if (a.type === 'bookmark') {
+        urlA = a.data.url;
+      }
+      
+      if (b.type === 'raindrop') {
+        urlB = b.data.link;
+      } else if (b.type === 'raindrop-collection') {
+        urlB = `https://app.raindrop.io/my/${b.data._id}`;
+      } else if (b.type === 'bookmark') {
+        urlB = b.data.url;
+      }
 
       const weightA = weights[urlA] || 0;
       const weightB = weights[urlB] || 0;
@@ -2956,8 +2925,8 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         return weightB - weightA;
       }
 
-      const lastUpdateA = new Date(a.data.lastUpdate || 0).getTime();
-      const lastUpdateB = new Date(b.data.lastUpdate || 0).getTime();
+      const lastUpdateA = new Date(a.data.lastUpdate || a.data.dateAdded || 0).getTime();
+      const lastUpdateB = new Date(b.data.lastUpdate || b.data.dateAdded || 0).getTime();
 
       if (lastUpdateA !== lastUpdateB) {
         return lastUpdateB - lastUpdateA;
@@ -2973,17 +2942,138 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       return urlA.localeCompare(urlB);
     });
 
-    // Limit to top 50 results
-    const topResults = uniqueResults.slice(0, 50);
-    currentResults = topResults;
-    if (topResults.length === 0) {
-      resultsElement.innerHTML = `
-        <div class="p-2 text-center text-base-content/60">
-          No results found
-        </div>
-      `;
-    } else {
-      renderSearchResults(topResults);
+    return uniqueResults.slice(0, 50); // Limit to top 50 results
+  }
+
+  /**
+   * Performs a bookmark search and renders the results.
+   * Local bookmarks are rendered immediately (fast), then Raindrop results are added (slower).
+   * @param {string} query
+   */
+  async function performSearch(query) {
+    if (!query.trim()) {
+      currentResults = [];
+      resultsElement.innerHTML = '';
+      return;
+    }
+
+    // Show loading indicator
+    resultsElement.innerHTML = `
+      <div class="p-2 flex items-center justify-center text-base-content/60">
+        <span class="loading loading-spinner loading-xs mr-2"></span>
+        <span>searching ...</span>
+      </div>
+    `;
+
+    const results = [];
+    
+    // URLs to exclude from search results (internal/system URLs)
+    const excludedUrlPatterns = [
+      'nenya.local',
+      'api.raindrop.io',
+      'up.raindrop.io',
+    ];
+    
+    // Fetch weights once for sorting
+    let weights = {};
+    try {
+      const weightResult = await chrome.storage.local.get(SEARCH_RESULT_WEIGHTS_KEY);
+      weights = weightResult[SEARCH_RESULT_WEIGHTS_KEY] || {};
+    } catch (error) {
+      console.warn('[popup] Failed to fetch weights for sorting:', error);
+    }
+
+    // Search local bookmarks FIRST (fast, local API)
+    try {
+      const bookmarks = await chrome.bookmarks.search(query);
+      // Filter out folders (items without URL) and internal/system URLs
+      bookmarks
+        .filter((bookmark) => {
+          if (!bookmark.url) {
+            return false;
+          }
+          // Check if URL contains any excluded pattern
+          const url = bookmark.url.toLowerCase();
+          return !excludedUrlPatterns.some((pattern) => url.includes(pattern));
+        })
+        .forEach((bookmark) => {
+          results.push({
+            type: 'bookmark',
+            data: {
+              id: bookmark.id,
+              title: bookmark.title,
+              url: bookmark.url,
+              dateAdded: bookmark.dateAdded,
+            },
+          });
+        });
+
+      // Render local bookmarks IMMEDIATELY
+      if (results.length > 0) {
+        const topResults = processSearchResults(results, weights);
+        currentResults = topResults;
+        renderSearchResults(topResults);
+      }
+    } catch (error) {
+      console.warn('[popup] Local bookmark search failed:', error);
+    }
+
+    // Search Raindrop (slower, network request)
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'mirror:search',
+        query,
+      });
+
+      if (response) {
+        if (Array.isArray(response.items)) {
+          response.items.forEach((item) => {
+            // Filter out internal/system URLs
+            if (item.link) {
+              const url = item.link.toLowerCase();
+              if (excludedUrlPatterns.some((pattern) => url.includes(pattern))) {
+                return; // Skip this item
+              }
+            }
+            results.push({
+              type: 'raindrop',
+              data: item,
+            });
+          });
+        }
+        if (Array.isArray(response.collections)) {
+          response.collections.forEach((collection) => {
+            results.push({
+              type: 'raindrop-collection',
+              data: collection,
+            });
+          });
+        }
+      }
+
+      // Re-render with ALL results (local bookmarks + Raindrop)
+      const topResults = processSearchResults(results, weights);
+      currentResults = topResults;
+      
+      if (topResults.length === 0) {
+        resultsElement.innerHTML = `
+          <div class="p-2 text-center text-base-content/60">
+            No results found
+          </div>
+        `;
+      } else {
+        renderSearchResults(topResults);
+      }
+    } catch (error) {
+      console.warn('[popup] Raindrop search failed:', error);
+      // If Raindrop fails but we have local bookmarks, keep showing them
+      if (results.length === 0) {
+        resultsElement.innerHTML = `
+          <div class="p-2 text-center text-base-content/60">
+            No results found
+          </div>
+        `;
+      }
     }
   }
 
@@ -3032,6 +3122,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
           void updateSearchResultWeight(collectionUrl);
           void openBookmark(collectionUrl);
+        } else if (highlightedResult.type === 'bookmark') {
+          const bookmark = highlightedResult.data;
+          if (bookmark.url) {
+            void updateSearchResultWeight(bookmark.url);
+            void openBookmark(bookmark.url);
+          }
         }
         return;
       }
