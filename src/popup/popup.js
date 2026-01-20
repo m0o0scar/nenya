@@ -2857,20 +2857,26 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   function processSearchResults(results, weights) {
     // Deduplicate items with same URL and title (case-insensitive)
     // For collections, deduplicate by _id
-    const seenKeys = new Set();
+    // For items with same URL, prefer raindrop over bookmark
+    const urlMap = new Map(); // Map<url (lowercase), result>
+    const seenKeys = new Set(); // For title|url deduplication
     const seenCollectionIds = new Set();
-    const uniqueResults = results.filter((result) => {
+    const uniqueResults = [];
+
+    for (const result of results) {
       // Collections: deduplicate by _id
       if (result.type === 'raindrop-collection') {
         const collectionId = result.data._id;
         if (collectionId === undefined || collectionId === null) {
-          return true; // Keep collections without IDs (shouldn't happen)
+          uniqueResults.push(result); // Keep collections without IDs (shouldn't happen)
+          continue;
         }
         if (seenCollectionIds.has(collectionId)) {
-          return false;
+          continue; // Skip duplicate collection
         }
         seenCollectionIds.add(collectionId);
-        return true;
+        uniqueResults.push(result);
+        continue;
       }
 
       let url = '';
@@ -2886,18 +2892,39 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
       // Skip items without URL (shouldn't happen for raindrops, but safety check)
       if (!url) {
-        return true;
+        uniqueResults.push(result);
+        continue;
       }
 
-      // Create a key from title and URL
+      // Check if we've seen this URL before
+      const existingResult = urlMap.get(url);
+      if (existingResult) {
+        // If current is raindrop and existing is bookmark, replace bookmark with raindrop
+        if (result.type === 'raindrop' && existingResult.type === 'bookmark') {
+          // Remove the bookmark from uniqueResults
+          const bookmarkIndex = uniqueResults.indexOf(existingResult);
+          if (bookmarkIndex !== -1) {
+            uniqueResults.splice(bookmarkIndex, 1);
+          }
+          // Add the raindrop item
+          urlMap.set(url, result);
+          uniqueResults.push(result);
+        }
+        // Otherwise, skip the current item (keep existing)
+        continue;
+      }
+
+      // Create a key from title and URL for additional deduplication
       const key = `${title}|${url}`;
-
       if (seenKeys.has(key)) {
-        return false;
+        continue; // Skip duplicate title|url combination
       }
+
+      // First time seeing this URL, add it
+      urlMap.set(url, result);
       seenKeys.add(key);
-      return true;
-    });
+      uniqueResults.push(result);
+    }
 
     // Sort results by weight (DESC), lastUpdate (DESC), title (ASC), url (ASC)
     uniqueResults.sort((a, b) => {
