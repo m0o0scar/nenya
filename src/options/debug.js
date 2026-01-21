@@ -1,3 +1,5 @@
+import { getValidTokens } from '../shared/tokenRefresh.js';
+
 /**
  * Debug utilities for development and testing
  */
@@ -72,6 +74,9 @@ function showDebugStatus(message, isError = false) {
  */
 function initDebug() {
   const reloadAllButton = document.getElementById('debugReloadAllTabsButton');
+  const refreshRaindropButton = document.getElementById(
+    'debugRefreshRaindropTokenButton',
+  );
 
   if (reloadAllButton) {
     reloadAllButton.addEventListener('click', async () => {
@@ -88,6 +93,28 @@ function initDebug() {
         showDebugStatus(result.message, false);
       } else {
         showDebugStatus(result.message, true);
+      }
+    });
+  }
+
+  if (refreshRaindropButton) {
+    refreshRaindropButton.addEventListener('click', async () => {
+      refreshRaindropButton.disabled = true;
+      showDebugStatus('Attempting to refresh Raindrop token...', false);
+
+      try {
+        const result = await getValidTokens('raindrop');
+        if (result.tokens && !result.needsReauth) {
+          showDebugStatus('Raindrop token refreshed successfully.', false);
+        } else if (result.error) {
+          showDebugStatus(`Refresh failed: ${result.error}`, true);
+        } else {
+          showDebugStatus('Refresh failed: Unknown error', true);
+        }
+      } catch (error) {
+        showDebugStatus(`Refresh failed: ${error.message}`, true);
+      } finally {
+        refreshRaindropButton.disabled = false;
       }
     });
   }
