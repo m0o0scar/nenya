@@ -2685,14 +2685,22 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         : truncateUrl(url);
       const collectionChip =
         result.type === 'raindrop' && result.data.collectionTitle
-          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+          ? `<span class="px-1.5 py-0.5 text-[9px] ${
+              result.data.isSession
+                ? 'badge badge-accent h-auto'
+                : 'bg-base-200 text-base-content/70'
+            } rounded-md whitespace-nowrap ml-1 font-medium">
               ${escapeHtml(result.data.collectionTitle)}
             </span>`
           : '';
       const parentCollectionChip =
         result.type === 'raindrop-collection' &&
         result.data.parentCollectionTitle
-          ? `<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">
+          ? `<span class="px-1.5 py-0.5 text-[9px] ${
+              result.data.isSession
+                ? 'badge badge-accent h-auto'
+                : 'bg-base-200 text-base-content/70'
+            } rounded-md whitespace-nowrap ml-1 font-medium">
               ${escapeHtml(result.data.parentCollectionTitle)}
             </span>`
           : '';
