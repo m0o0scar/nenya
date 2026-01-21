@@ -134,6 +134,8 @@ const SHORTCUT_CONFIG = {
 };
 
 const STORAGE_KEY = 'pinnedShortcuts';
+const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
+const SEARCH_RESULT_WEIGHTS_KEY = 'searchResultWeights';
 
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
@@ -148,6 +150,8 @@ const DEFAULT_PINNED_SHORTCUTS = [
 const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
   document.getElementById('shortcutsContainer')
 );
+
+const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
 
 // Keep references to buttons for backward compatibility
 let getMarkdownButton = null;
@@ -381,11 +385,16 @@ if (!statusMessage) {
 // Initialize shortcuts on page load
 void loadAndRenderShortcuts();
 
-// Listen for storage changes to update buttons dynamically
+// Listen for storage changes to update UI dynamically
 if (chrome?.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes[STORAGE_KEY]) {
-      void loadAndRenderShortcuts();
+    if (namespace === 'local') {
+      if (changes[STORAGE_KEY]) {
+        void loadAndRenderShortcuts();
+      }
+      if (changes[PINNED_SEARCH_RESULTS_STORAGE_KEY]) {
+        void renderPinnedItems();
+      }
     }
   });
 }
@@ -757,6 +766,205 @@ const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
+
+const PINNED_COLOR_PALETTE = [
+  { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
+  { bg: '#fed7aa', text: '#9a3412' }, // orange-200 / orange-900
+  { bg: '#fef08a', text: '#854d0e' }, // yellow-200 / yellow-900
+  { bg: '#bbf7d0', text: '#166534' }, // green-200 / green-900
+  { bg: '#99f6e4', text: '#0f766e' }, // teal-200 / teal-900
+  { bg: '#bae6fd', text: '#075985' }, // sky-200 / sky-900
+  { bg: '#c7d2fe', text: '#3730a3' }, // indigo-200 / indigo-900
+  { bg: '#e9d5ff', text: '#6b21a8' }, // purple-200 / purple-900
+  { bg: '#fbcfe8', text: '#9d174d' }, // pink-200 / pink-900
+  { bg: '#fecdd3', text: '#9f1239' }, // rose-200 / rose-900
+];
+
+/**
+ * Escapes HTML special characters to prevent XSS.
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+/**
+ * Opens a bookmark, reusing the current tab if it's empty.
+ * @param {string} url - The URL of the bookmark to open.
+ * @returns {Promise<void>}
+ */
+async function openBookmark(url) {
+  try {
+    const tabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    if (tabs.length > 0) {
+      const currentTab = tabs[0];
+      // Check if the current tab is a new tab page or a blank page across different browsers.
+      const newTabUrls = [
+        'chrome://newtab/', // Chrome
+        'about:newtab', // Firefox
+        'edge://newtab/', // Edge
+        'about:blank', // All browsers
+      ];
+      if (
+        currentTab.id &&
+        (!currentTab.url || newTabUrls.includes(currentTab.url))
+      ) {
+        await chrome.tabs.update(currentTab.id, { url });
+      } else {
+        await chrome.tabs.create({ url });
+      }
+    } else {
+      // Fallback to creating a new tab if no active tab is found.
+      await chrome.tabs.create({ url });
+    }
+    window.close();
+  } catch (error) {
+    console.error('Error opening bookmark:', error);
+    // Fallback in case of error
+    chrome.tabs.create({ url });
+    window.close();
+  }
+}
+
+function getStableColor(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const index = Math.abs(hash) % PINNED_COLOR_PALETTE.length;
+  return PINNED_COLOR_PALETTE[index];
+}
+
+async function getPinnedItems() {
+  const result = await chrome.storage.local.get(
+    PINNED_SEARCH_RESULTS_STORAGE_KEY,
+  );
+  return result[PINNED_SEARCH_RESULTS_STORAGE_KEY] || [];
+}
+
+async function savePinnedItems(items) {
+  await chrome.storage.local.set({
+    [PINNED_SEARCH_RESULTS_STORAGE_KEY]: items,
+  });
+}
+
+async function pinItem(item) {
+  const pinnedItems = await getPinnedItems();
+  const isPinned = pinnedItems.some((i) => i.url === item.url);
+  if (!isPinned) {
+    pinnedItems.push(item);
+    await savePinnedItems(pinnedItems);
+    await renderPinnedItems();
+  }
+}
+
+async function unpinItem(url) {
+  let pinnedItems = await getPinnedItems();
+  pinnedItems = pinnedItems.filter((i) => i.url !== url);
+  await savePinnedItems(pinnedItems);
+  await renderPinnedItems();
+}
+
+/** @type {number} */
+let draggedItemIndex = -1;
+
+async function renderPinnedItems() {
+  if (!pinnedItemsContainer) return;
+  const pinnedItems = await getPinnedItems();
+  pinnedItemsContainer.innerHTML = '';
+  pinnedItems.forEach((item, index) => {
+    const colors = getStableColor(item.url);
+    const chip = document.createElement('div');
+    chip.className =
+      'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none transition-all duration-200';
+    chip.style.backgroundColor = colors.bg;
+    chip.style.color = colors.text;
+    chip.setAttribute('draggable', 'true');
+    chip.innerHTML = `
+      <span class="text-[10px] opacity-70 font-bold pointer-events-none">${
+        index + 1
+      }</span>
+      <span class="truncate max-w-xs pointer-events-none">${escapeHtml(
+        item.title,
+      )}</span>
+      <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
+    `;
+    chip.addEventListener('click', (e) => {
+      if (e.target.classList.contains('unpin-button')) return;
+      void openBookmark(item.url);
+    });
+    const unpinButton = chip.querySelector('.unpin-button');
+    if (unpinButton) {
+      unpinButton.addEventListener('click', (e) => {
+        e.stopPropagation();
+        void unpinItem(item.url);
+      });
+    }
+
+    // Drag and Drop listeners
+    chip.addEventListener('dragstart', (e) => {
+      draggedItemIndex = index;
+      chip.classList.add('opacity-40');
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+      }
+    });
+
+    chip.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'move';
+      }
+      return false;
+    });
+
+    chip.addEventListener('dragenter', () => {
+      if (index !== draggedItemIndex) {
+        chip.classList.add('scale-105', 'ring-2', 'ring-primary');
+      }
+    });
+
+    chip.addEventListener('dragleave', () => {
+      chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
+    });
+
+    chip.addEventListener('drop', async (e) => {
+      e.stopPropagation();
+      chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
+
+      const fromIndex = draggedItemIndex;
+      const toIndex = index;
+
+      if (fromIndex !== toIndex && fromIndex !== -1) {
+        const items = await getPinnedItems();
+        const movedItem = items.splice(fromIndex, 1)[0];
+        items.splice(toIndex, 0, movedItem);
+        await savePinnedItems(items);
+        await renderPinnedItems();
+      }
+      return false;
+    });
+
+    chip.addEventListener('dragend', () => {
+      chip.classList.remove(
+        'opacity-40',
+        'scale-105',
+        'ring-2',
+        'ring-primary',
+      );
+      draggedItemIndex = -1;
+    });
+
+    pinnedItemsContainer.appendChild(chip);
+  });
+}
 
 /**
  * Format a timestamp based on proximity to current time.
@@ -1533,6 +1741,7 @@ async function handleEditRaindropUrl(item, button, resultItem, currentResults) {
       throw new Error('No active tab URL found');
     }
 
+    const oldUrl = item.link;
     const newUrl = currentTab.url;
 
     const response = await chrome.runtime.sendMessage({
@@ -1544,6 +1753,25 @@ async function handleEditRaindropUrl(item, button, resultItem, currentResults) {
     if (response && response.ok) {
       // Update the item's link property in the stored data
       item.link = newUrl;
+
+      // Sync with pinned search results
+      try {
+        const pinnedItems = await getPinnedItems();
+        let pinnedChanged = false;
+        const updatedPinnedItems = pinnedItems.map((pinned) => {
+          if (pinned.url === oldUrl) {
+            pinnedChanged = true;
+            return { ...pinned, url: newUrl };
+          }
+          return pinned;
+        });
+
+        if (pinnedChanged) {
+          await savePinnedItems(updatedPinnedItems);
+        }
+      } catch (pinnedError) {
+        console.warn('[popup] Failed to sync pinned search result:', pinnedError);
+      }
 
       // Update the DOM element
       if (resultItem) {
@@ -2334,10 +2562,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @param {HTMLDivElement} resultsElement
  */
 async function initializeBookmarksSearch(inputElement, resultsElement) {
-  const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
-  const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
-  const SEARCH_RESULT_WEIGHTS_KEY = 'searchResultWeights';
-
   /**
    * Increments the weight of a search result URL in local storage.
    * @param {string} url
@@ -2355,152 +2579,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     }
   }
 
-  const PINNED_COLOR_PALETTE = [
-    { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
-    { bg: '#fed7aa', text: '#9a3412' }, // orange-200 / orange-900
-    { bg: '#fef08a', text: '#854d0e' }, // yellow-200 / yellow-900
-    { bg: '#bbf7d0', text: '#166534' }, // green-200 / green-900
-    { bg: '#99f6e4', text: '#0f766e' }, // teal-200 / teal-900
-    { bg: '#bae6fd', text: '#075985' }, // sky-200 / sky-900
-    { bg: '#c7d2fe', text: '#3730a3' }, // indigo-200 / indigo-900
-    { bg: '#e9d5ff', text: '#6b21a8' }, // purple-200 / purple-900
-    { bg: '#fbcfe8', text: '#9d174d' }, // pink-200 / pink-900
-    { bg: '#fecdd3', text: '#9f1239' }, // rose-200 / rose-900
-  ];
-
-  function getStableColor(str) {
-    let hash = 0;
-    for (let i = 0; i < str.length; i++) {
-      hash = str.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const index = Math.abs(hash) % PINNED_COLOR_PALETTE.length;
-    return PINNED_COLOR_PALETTE[index];
-  }
-
-  async function getPinnedItems() {
-    const result = await chrome.storage.local.get(
-      PINNED_SEARCH_RESULTS_STORAGE_KEY,
-    );
-    return result[PINNED_SEARCH_RESULTS_STORAGE_KEY] || [];
-  }
-
-  async function savePinnedItems(items) {
-    await chrome.storage.local.set({
-      [PINNED_SEARCH_RESULTS_STORAGE_KEY]: items,
-    });
-  }
-
-  async function pinItem(item) {
-    const pinnedItems = await getPinnedItems();
-    const isPinned = pinnedItems.some((i) => i.url === item.url);
-    if (!isPinned) {
-      pinnedItems.push(item);
-      await savePinnedItems(pinnedItems);
-      await renderPinnedItems();
-    }
-  }
-
-  async function unpinItem(url) {
-    let pinnedItems = await getPinnedItems();
-    pinnedItems = pinnedItems.filter((i) => i.url !== url);
-    await savePinnedItems(pinnedItems);
-    await renderPinnedItems();
-  }
-
-  /** @type {number} */
-  let draggedItemIndex = -1;
-
-  async function renderPinnedItems() {
-    if (!pinnedItemsContainer) return;
-    const pinnedItems = await getPinnedItems();
-    pinnedItemsContainer.innerHTML = '';
-    pinnedItems.forEach((item, index) => {
-      const colors = getStableColor(item.url);
-      const chip = document.createElement('div');
-      chip.className =
-        'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none transition-all duration-200';
-      chip.style.backgroundColor = colors.bg;
-      chip.style.color = colors.text;
-      chip.setAttribute('draggable', 'true');
-      chip.innerHTML = `
-        <span class="text-[10px] opacity-70 font-bold pointer-events-none">${
-          index + 1
-        }</span>
-        <span class="truncate max-w-xs pointer-events-none">${escapeHtml(
-          item.title,
-        )}</span>
-        <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
-      `;
-      chip.addEventListener('click', (e) => {
-        if (e.target.classList.contains('unpin-button')) return;
-        void openBookmark(item.url);
-      });
-      const unpinButton = chip.querySelector('.unpin-button');
-      if (unpinButton) {
-        unpinButton.addEventListener('click', (e) => {
-          e.stopPropagation();
-          void unpinItem(item.url);
-        });
-      }
-
-      // Drag and Drop listeners
-      chip.addEventListener('dragstart', (e) => {
-        draggedItemIndex = index;
-        chip.classList.add('opacity-40');
-        if (e.dataTransfer) {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', index.toString());
-        }
-      });
-
-      chip.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = 'move';
-        }
-        return false;
-      });
-
-      chip.addEventListener('dragenter', () => {
-        if (index !== draggedItemIndex) {
-          chip.classList.add('scale-105', 'ring-2', 'ring-primary');
-        }
-      });
-
-      chip.addEventListener('dragleave', () => {
-        chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
-      });
-
-      chip.addEventListener('drop', async (e) => {
-        e.stopPropagation();
-        chip.classList.remove('scale-105', 'ring-2', 'ring-primary');
-
-        const fromIndex = draggedItemIndex;
-        const toIndex = index;
-
-        if (fromIndex !== toIndex && fromIndex !== -1) {
-          const items = await getPinnedItems();
-          const movedItem = items.splice(fromIndex, 1)[0];
-          items.splice(toIndex, 0, movedItem);
-          await savePinnedItems(items);
-          await renderPinnedItems();
-        }
-        return false;
-      });
-
-      chip.addEventListener('dragend', () => {
-        chip.classList.remove(
-          'opacity-40',
-          'scale-105',
-          'ring-2',
-          'ring-primary',
-        );
-        draggedItemIndex = -1;
-      });
-
-      pinnedItemsContainer.appendChild(chip);
-    });
-  }
 
   /** @type {number} */
   let highlightedIndex = -1;
@@ -2518,46 +2596,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     console.error('[popup] Failed to load custom search engines:', error);
   }
 
-  /**
-   * Opens a bookmark, reusing the current tab if it's empty.
-   * @param {string} url - The URL of the bookmark to open.
-   * @returns {Promise<void>}
-   */
-  async function openBookmark(url) {
-    try {
-      const tabs = await chrome.tabs.query({
-        active: true,
-        currentWindow: true,
-      });
-      if (tabs.length > 0) {
-        const currentTab = tabs[0];
-        // Check if the current tab is a new tab page or a blank page across different browsers.
-        const newTabUrls = [
-          'chrome://newtab/', // Chrome
-          'about:newtab', // Firefox
-          'edge://newtab/', // Edge
-          'about:blank', // All browsers
-        ];
-        if (
-          currentTab.id &&
-          (!currentTab.url || newTabUrls.includes(currentTab.url))
-        ) {
-          await chrome.tabs.update(currentTab.id, { url });
-        } else {
-          await chrome.tabs.create({ url });
-        }
-      } else {
-        // Fallback to creating a new tab if no active tab is found.
-        await chrome.tabs.create({ url });
-      }
-      window.close();
-    } catch (error) {
-      console.error('Error opening bookmark:', error);
-      // Fallback in case of error
-      chrome.tabs.create({ url });
-      window.close();
-    }
-  }
 
   /**
    * Updates the visual highlight of search results.
@@ -2619,16 +2657,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     });
   }
 
-  /**
-   * Escapes HTML special characters to prevent XSS.
-   * @param {string} text
-   * @returns {string}
-   */
-  function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
-  }
 
   /**
    * Truncates a URL to a maximum length, adding ellipsis if needed.
