@@ -1,3 +1,5 @@
+import { getValidTokens } from '../shared/tokenRefresh.js';
+
 /**
  * Debug utilities for development and testing
  */
@@ -72,6 +74,9 @@ function showDebugStatus(message, isError = false) {
  */
 function initDebug() {
   const reloadAllButton = document.getElementById('debugReloadAllTabsButton');
+  const refreshRaindropButton = document.getElementById(
+    'debugRefreshRaindropTokenButton',
+  );
 
   if (reloadAllButton) {
     reloadAllButton.addEventListener('click', async () => {
@@ -88,6 +93,38 @@ function initDebug() {
         showDebugStatus(result.message, false);
       } else {
         showDebugStatus(result.message, true);
+      }
+    });
+  }
+
+  if (refreshRaindropButton) {
+    refreshRaindropButton.addEventListener('click', async () => {
+      refreshRaindropButton.disabled = true;
+      showDebugStatus('Attempting to refresh Raindrop token...', false);
+
+      try {
+        // Force refresh by clearing access token and setting expiry to 0
+        const STORAGE_KEY_TOKENS = 'cloudAuthTokens';
+        const storageResult = await chrome.storage.sync.get(STORAGE_KEY_TOKENS);
+        const tokensMap = storageResult[STORAGE_KEY_TOKENS] || {};
+        if (tokensMap['raindrop']) {
+          tokensMap['raindrop'].accessToken = '';
+          tokensMap['raindrop'].expiresAt = 0;
+          await chrome.storage.sync.set({ [STORAGE_KEY_TOKENS]: tokensMap });
+        }
+
+        const result = await getValidTokens('raindrop');
+        if (result.tokens && !result.needsReauth) {
+          showDebugStatus('Raindrop token refreshed successfully.', false);
+        } else if (result.error) {
+          showDebugStatus(`Refresh failed: ${result.error}`, true);
+        } else {
+          showDebugStatus('Refresh failed: Unknown error', true);
+        }
+      } catch (error) {
+        showDebugStatus(`Refresh failed: ${error.message}`, true);
+      } finally {
+        refreshRaindropButton.disabled = false;
       }
     });
   }

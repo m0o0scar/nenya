@@ -9,6 +9,7 @@
 
 const STORAGE_KEY_TOKENS = 'cloudAuthTokens';
 const OAUTH_REFRESH_URL = 'https://ohauth.vercel.app/oauth/refresh';
+const RAINDROP_REFRESH_URL = 'https://oh-auth.vercel.app/auth/raindrop/refresh';
 
 /**
  * Attempt to refresh the access token using the refresh token.
@@ -23,15 +24,18 @@ export async function refreshAccessToken(providerId, refreshToken) {
   }
 
   try {
-    const response = await fetch(OAUTH_REFRESH_URL, {
+    const isRaindrop = providerId === 'raindrop';
+    const url = isRaindrop ? RAINDROP_REFRESH_URL : OAUTH_REFRESH_URL;
+    const body = isRaindrop
+      ? { refresh_token: refreshToken }
+      : { provider: providerId, refresh_token: refreshToken };
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        provider: providerId,
-        refresh_token: refreshToken,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
