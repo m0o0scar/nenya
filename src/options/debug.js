@@ -103,6 +103,16 @@ function initDebug() {
       showDebugStatus('Attempting to refresh Raindrop token...', false);
 
       try {
+        // Force refresh by clearing access token and setting expiry to 0
+        const STORAGE_KEY_TOKENS = 'cloudAuthTokens';
+        const storageResult = await chrome.storage.sync.get(STORAGE_KEY_TOKENS);
+        const tokensMap = storageResult[STORAGE_KEY_TOKENS] || {};
+        if (tokensMap['raindrop']) {
+          tokensMap['raindrop'].accessToken = '';
+          tokensMap['raindrop'].expiresAt = 0;
+          await chrome.storage.sync.set({ [STORAGE_KEY_TOKENS]: tokensMap });
+        }
+
         const result = await getValidTokens('raindrop');
         if (result.tokens && !result.needsReauth) {
           showDebugStatus('Raindrop token refreshed successfully.', false);
