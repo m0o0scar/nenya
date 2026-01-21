@@ -1835,9 +1835,14 @@ async function handleRaindropSearch(query) {
     });
 
     // Create a map of collectionId -> title and collectionId -> parentId
+    const SESSIONS_COLLECTION_NAME = 'nenya / sessions';
+    let sessionsCollectionId = null;
     const collectionIdTitleMap = new Map();
     const collectionIdParentMap = new Map();
     allCollections.forEach((c) => {
+      if (c.title === SESSIONS_COLLECTION_NAME) {
+        sessionsCollectionId = c._id;
+      }
       if (c._id && c.title) {
         collectionIdTitleMap.set(c._id, c.title);
       }
@@ -1882,6 +1887,11 @@ async function handleRaindropSearch(query) {
       .map((item) => {
         if (item.collectionId !== undefined) {
           item.collectionTitle = collectionIdTitleMap.get(item.collectionId);
+          // Check if this collection is a session (child of "nenya / sessions")
+          const parentId = collectionIdParentMap.get(item.collectionId);
+          if (sessionsCollectionId && parentId === sessionsCollectionId) {
+            item.isSession = true;
+          }
         }
         return item;
       });
@@ -1915,6 +1925,9 @@ async function handleRaindropSearch(query) {
         const parentId = collectionIdParentMap.get(c._id);
         if (parentId !== undefined) {
           c.parentCollectionTitle = collectionIdTitleMap.get(parentId);
+          if (sessionsCollectionId && parentId === sessionsCollectionId) {
+            c.isSession = true;
+          }
         }
         return c;
       });
