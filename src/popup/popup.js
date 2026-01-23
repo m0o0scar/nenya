@@ -2822,8 +2822,15 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
       resultsElement.appendChild(resultItem);
     });
-    // Reset highlight when results are re-rendered
-    highlightedIndex = -1;
+
+    // Restore highlight if index is valid for new results
+    if (highlightedIndex >= 0) {
+      if (highlightedIndex < results.length) {
+        updateHighlight(highlightedIndex);
+      } else {
+        highlightedIndex = -1;
+      }
+    }
   }
 
 
