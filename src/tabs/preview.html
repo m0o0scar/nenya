@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Recording Preview - Nenya</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../libs/daisyui@5.css">
+  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <script src="../libs/tailwindcss@4.js"></script>
+  <style>
+    body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        background-color: oklch(var(--b2));
+    }
+  </style>
+</head>
+<body class="bg-base-200">
+  <div class="card w-full max-w-4xl bg-base-100 shadow-xl">
+    <div class="card-body">
+      <h2 class="card-title justify-center">Recording Preview</h2>
+      <div class="flex justify-center my-4">
+        <video id="previewVideo" controls class="w-full max-h-[70vh] rounded-lg shadow-sm" autoplay></video>
+      </div>
+      <div class="card-actions justify-center">
+        <a id="downloadLink" class="btn btn-primary btn-lg gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download MP4
+        </a>
+      </div>
+    </div>
+  </div>
+  <script src="preview.js" type="module"></script>
+</body>
+</html>

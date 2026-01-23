@@ -6,3 +6,4 @@ package-lock.json export-ignore
 /docs export-ignore
 /references export-ignore
 /node_modules export-ignore
+*.wasm filter=lfs diff=lfs merge=lfs -text

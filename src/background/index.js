@@ -71,6 +71,11 @@ import {
   initRaindropExport,
   exportRaindropItemsToBookmarks,
 } from './raindrop-export.js';
+import {
+  handleStartRecording,
+  handleActionClick,
+  handleRecorderMessage,
+} from './recorder.js';
 
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
@@ -1480,6 +1485,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
       await handleAutoReloadAlarm(alarm);
     }
   })();
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  void handleActionClick();
 });
 
 // ============================================================================
@@ -3118,6 +3127,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     void handleOpenInPopup();
     return true;
   }
+
+  if (message.type === 'RECORDING_COMPLETE') {
+    void handleRecorderMessage(message);
+    return true;
+  }
+
   if (message.type === 'auto-google-login:checkTabActive') {
     void (async () => {
       try {
@@ -3675,6 +3690,14 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Start recording
+    if (menuItemId === OTHER_MENU_IDS.START_RECORDING) {
+      if (tab) {
+        void handleStartRecording(tab);
+      }
       return;
     }
 
