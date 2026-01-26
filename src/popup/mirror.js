@@ -197,6 +197,7 @@ export function showLoginMessage(
  * @typedef {Object} SaveUnsortedEntry
  * @property {string} url
  * @property {string} [title]
+ * @property {string} [excerpt]
  */
 
 /**
@@ -207,6 +208,7 @@ export function showLoginMessage(
 export async function showSaveToUnsortedDialog(tab) {
   const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('saveToUnsortedModal'));
   const titleInput = /** @type {HTMLInputElement | null} */ (document.getElementById('saveToUnsortedTitleInput'));
+  const descriptionInput = /** @type {HTMLTextAreaElement | null} */ (document.getElementById('saveToUnsortedDescriptionInput'));
   const screenshotCheckbox = /** @type {HTMLInputElement | null} */ (document.getElementById(
     'saveToUnsortedScreenshotCheckbox',
   ));
@@ -216,6 +218,7 @@ export async function showSaveToUnsortedDialog(tab) {
   if (
     !modal ||
     !titleInput ||
+    !descriptionInput ||
     !screenshotCheckbox ||
     !cancelButton ||
     !confirmButton
@@ -225,6 +228,7 @@ export async function showSaveToUnsortedDialog(tab) {
   }
 
   titleInput.value = tab.title || '';
+  descriptionInput.value = '';
   screenshotCheckbox.checked = false;
 
   // Store original button content for restoration
@@ -233,6 +237,7 @@ export async function showSaveToUnsortedDialog(tab) {
   const handleConfirm = async () => {
     if (confirmButton.disabled) return;
     const title = titleInput.value;
+    const description = descriptionInput.value;
     const includeScreenshot = screenshotCheckbox.checked;
 
     // Show loading state
@@ -245,6 +250,7 @@ export async function showSaveToUnsortedDialog(tab) {
       {
         url: tab.url,
         title: title,
+        excerpt: description,
         includeScreenshot: includeScreenshot,
         tabId: tab.id,
         windowId: tab.windowId,

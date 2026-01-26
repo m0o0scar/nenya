@@ -74,6 +74,7 @@
  * @typedef {Object} SaveUnsortedEntry
  * @property {string} url
  * @property {string} [title]
+ * @property {string} [excerpt]
  * @property {string} [cover]
  * @property {boolean} [includeScreenshot]
  * @property {number} [tabId]
@@ -1343,6 +1344,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
       sanitized.push({
         url: finalUrl,
         title: typeof entry?.title === 'string' ? entry.title.trim() : '',
+        excerpt: typeof entry?.excerpt === 'string' ? entry.excerpt.trim() : '',
         cover:
           typeof entry?.cover === 'string' && entry.cover.trim().length > 0
             ? entry.cover.trim()
@@ -1398,6 +1400,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
           ...(pleaseParse ? { pleaseParse: {} } : {}),
           ...(entry.cover ? { cover: entry.cover } : {}),
           ...(entry.title ? { title: entry.title } : {}),
+          ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
         };
 
         const response = await raindropRequest('/raindrop', tokens, {
