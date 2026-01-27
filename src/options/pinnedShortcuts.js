@@ -183,62 +183,77 @@ function render() {
         'flex items-center gap-3 p-3 rounded-lg border border-base-300 bg-base-200 hover:bg-base-300 transition-colors';
       item.dataset.shortcutId = shortcutId;
 
+      item.draggable = true;
+      item.classList.add('cursor-grab');
       item.innerHTML = `
         <div class="flex items-center gap-2 flex-1">
-          <span class="text-2xl">${shortcut.emoji}</span>
+          <span class="text-2xl select-none">${shortcut.emoji}</span>
           <div class="flex-1">
-            <div class="font-medium text-sm">${shortcut.tooltip}</div>
-            <div class="text-xs text-base-content/60">${shortcut.id}</div>
+            <div class="font-medium text-sm select-none">${shortcut.tooltip}</div>
+            <div class="text-xs text-base-content/60 select-none">${shortcut.id}</div>
           </div>
         </div>
         <div class="flex items-center gap-2">
-          <button class="btn btn-sm btn-ghost btn-square move-up" type="button" ${
-            index === 0 ? 'disabled' : ''
-          }>
-            ⬆️
-          </button>
-          <button class="btn btn-sm btn-ghost btn-square move-down" type="button" ${
-            index === pinnedShortcuts.length - 1 ? 'disabled' : ''
-          }>
-            ⬇️
-          </button>
+          <div class="cursor-grab text-base-content/30 hover:text-base-content/60 px-2" title="Drag to reorder">
+            ⋮⋮
+          </div>
           <button class="btn btn-sm btn-error btn-square remove" type="button">
             ❌
           </button>
         </div>
       `;
 
-      // Add event listeners
-      const moveUpBtn = item.querySelector('.move-up');
-      const moveDownBtn = item.querySelector('.move-down');
+      // Add drag and drop listeners
+      item.addEventListener('dragstart', (e) => {
+        if (!e.dataTransfer) return;
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', index.toString());
+        item.classList.add('opacity-50');
+      });
+
+      item.addEventListener('dragend', () => {
+        item.classList.remove('opacity-50');
+        // Clean up visual cues
+        pinnedList.querySelectorAll('.border-primary').forEach((el) => {
+          el.classList.remove('border-primary');
+        });
+      });
+
+      item.addEventListener('dragover', (e) => {
+        if (!e.dataTransfer) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        item.classList.add('border-primary');
+      });
+
+      item.addEventListener('dragleave', () => {
+        item.classList.remove('border-primary');
+      });
+
+      item.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (!e.dataTransfer) return;
+
+        item.classList.remove('border-primary');
+
+        const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        const targetIndex = index;
+
+        if (
+          !Number.isNaN(sourceIndex) &&
+          sourceIndex !== targetIndex &&
+          sourceIndex >= 0 &&
+          sourceIndex < pinnedShortcuts.length
+        ) {
+          const newShortcuts = [...pinnedShortcuts];
+          const [movedItem] = newShortcuts.splice(sourceIndex, 1);
+          newShortcuts.splice(targetIndex, 0, movedItem);
+          void updateShortcuts(newShortcuts);
+        }
+      });
+
+      // Add remove listener
       const removeBtn = item.querySelector('.remove');
-
-      if (moveUpBtn) {
-        moveUpBtn.addEventListener('click', () => {
-          if (index > 0) {
-            const newShortcuts = [...pinnedShortcuts];
-            [newShortcuts[index - 1], newShortcuts[index]] = [
-              newShortcuts[index],
-              newShortcuts[index - 1],
-            ];
-            void updateShortcuts(newShortcuts);
-          }
-        });
-      }
-
-      if (moveDownBtn) {
-        moveDownBtn.addEventListener('click', () => {
-          if (index < pinnedShortcuts.length - 1) {
-            const newShortcuts = [...pinnedShortcuts];
-            [newShortcuts[index], newShortcuts[index + 1]] = [
-              newShortcuts[index + 1],
-              newShortcuts[index],
-            ];
-            void updateShortcuts(newShortcuts);
-          }
-        });
-      }
-
       if (removeBtn) {
         removeBtn.addEventListener('click', () => {
           const newShortcuts = pinnedShortcuts.filter(
