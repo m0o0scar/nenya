@@ -1180,10 +1180,10 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
     }
     titleContainer.appendChild(titleRow);
 
-    if (session.lastUpdate) {
+    if (session.lastAction) {
       const lastUpdateSpan = document.createElement('span');
       lastUpdateSpan.className = 'text-[10px] opacity-50 truncate';
-      lastUpdateSpan.textContent = `Last update: ${formatTimestamp(session.lastUpdate)}`;
+      lastUpdateSpan.textContent = `Last active: ${formatTimestamp(session.lastAction)}`;
       titleContainer.appendChild(lastUpdateSpan);
     }
 

@@ -261,8 +261,8 @@ async function handleFetchSessions() {
 
   return remainingSessions
     .sort((a, b) => {
-      const timeA = new Date(a.lastUpdate).getTime();
-      const timeB = new Date(b.lastUpdate).getTime();
+      const timeA = new Date(a.lastAction || a.lastUpdate).getTime();
+      const timeB = new Date(b.lastAction || b.lastUpdate).getTime();
       return timeB - timeA;
     })
     .map((c) => ({
@@ -271,6 +271,7 @@ async function handleFetchSessions() {
       isCurrent: c.title === browserId,
       cover: c.cover,
       lastUpdate: c.lastUpdate,
+      lastAction: c.lastAction || c.lastUpdate,
     }));
 }
 
