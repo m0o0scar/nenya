@@ -458,87 +458,15 @@ export async function handleScreenshotCopy(tabId) {
   }
 
   try {
-    // Get tab info to check if it's an extension page
-    const tab = await chrome.tabs.get(tabId);
-    const tabUrl = tab?.url;
-    if (!tabUrl) {
-      console.warn('[clipboard] Tab URL is unavailable');
-      return false;
-    }
-    const isExtensionPage = isExtensionOrSystemPage(tabUrl);
+    // Save to storage
+    await chrome.storage.local.set({ editorScreenshot: dataUrl });
 
-    if (isExtensionPage) {
-      // For extension pages, find another tab in the same window to inject into
-      const injectableTabId = await findInjectableTab(tab.windowId, tabId);
-      if (injectableTabId) {
-        // Pass the original tab ID to restore focus after copying
-        return await copyImageViaTab(injectableTabId, dataUrl, tabId);
-      }
+    // Open editor
+    await chrome.tabs.create({ url: 'src/editor/editor.html' });
 
-      // If no injectable tab found, open google.com in a new tab as fallback
-      console.warn(
-        '[clipboard] Cannot copy screenshot: extension page with no injectable tabs, opening fallback tab',
-      );
-      try {
-        // Create a new tab with google.com
-        const fallbackTab = await chrome.tabs.create({
-          url: 'https://www.google.com',
-          active: false, // Don't switch to it immediately
-        });
-
-        if (!fallbackTab || typeof fallbackTab.id !== 'number') {
-          console.warn('[clipboard] Failed to create fallback tab');
-          return false;
-        }
-
-        const fallbackTabId = fallbackTab.id;
-
-        // Wait for the tab to load
-        await new Promise((resolve) => {
-          /**
-           * @type {(updatedTabId: number, changeInfo: {status?: string}) => void}
-           */
-          const listener = (updatedTabId, changeInfo) => {
-            if (
-              updatedTabId === fallbackTabId &&
-              changeInfo.status === 'complete'
-            ) {
-              chrome.tabs.onUpdated.removeListener(listener);
-              resolve(undefined);
-            }
-          };
-          chrome.tabs.onUpdated.addListener(listener);
-          // Timeout after 5 seconds
-          setTimeout(() => {
-            chrome.tabs.onUpdated.removeListener(listener);
-            resolve(undefined);
-          }, 5000);
-        });
-
-        // Perform the copy operation in the fallback tab
-        const success = await copyImageViaTab(fallbackTabId, dataUrl, tabId);
-
-        // Close the fallback tab
-        try {
-          await chrome.tabs.remove(fallbackTabId);
-        } catch (closeError) {
-          console.warn('[clipboard] Failed to close fallback tab:', closeError);
-        }
-
-        return success;
-      } catch (fallbackError) {
-        console.warn(
-          '[clipboard] Fallback tab operation failed:',
-          fallbackError,
-        );
-        return false;
-      }
-    } else {
-      // For regular pages, use the standard method
-      return await copyImageViaTab(tabId, dataUrl);
-    }
+    return true;
   } catch (error) {
-    console.warn('[clipboard] Failed to copy screenshot to clipboard:', error);
+    console.warn('[clipboard] Failed to open screenshot editor:', error);
     return false;
   }
 }
@@ -630,7 +558,7 @@ export async function handleClipboardContextMenuClick(info, tab) {
       if (shouldShowSuccess) {
         const message =
           menuItemId === CLIPBOARD_CONTEXT_MENU_IDS.COPY_SCREENSHOT
-            ? 'Screenshot copied to clipboard'
+            ? 'Screenshot opened in editor'
             : `Copied ${tabs.length} tab${
                 tabs.length > 1 ? 's' : ''
               } to clipboard`;
@@ -733,7 +661,7 @@ export async function handleClipboardCommand(command) {
         // Show notification
         const message =
           command === 'copy-screenshot'
-            ? 'Screenshot copied to clipboard'
+            ? 'Screenshot opened in editor'
             : `Copied ${tabs.length} tab${
                 tabs.length > 1 ? 's' : ''
               } to clipboard`;
