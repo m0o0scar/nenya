@@ -1,0 +1,21 @@
+#editor-canvas {
+    /* Default cursor */
+    cursor: default;
+}
+
+#editor-canvas.cursor-crosshair {
+    cursor: crosshair;
+}
+
+#editor-canvas.cursor-move {
+    cursor: move;
+}
+
+#editor-canvas.cursor-nwse-resize {
+    cursor: nwse-resize;
+}
+
+.tool-active {
+    background-color: var(--color-base-300);
+    border-color: var(--color-primary);
+}

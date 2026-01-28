@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Nenya - Screenshot Editor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../libs/daisyui@5.css">
+  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <link rel="stylesheet" href="./editor.css">
+  <script src="../libs/tailwindcss@4.js"></script>
+  <style>
+    /* Custom styles that might not be in daisy/tailwind */
+    canvas {
+        image-rendering: pixelated; /* Optional, for crispness */
+    }
+  </style>
+</head>
+<body class="bg-base-200 h-screen flex flex-col overflow-hidden">
+  <!-- Toolbar -->
+  <div class="navbar bg-base-100 shadow-md z-10 p-2 gap-2 flex-wrap min-h-16 shrink-0">
+    <div class="flex-1 gap-2 items-center overflow-x-auto">
+        <!-- Tools -->
+        <div class="join">
+            <button class="btn btn-sm btn-ghost join-item" id="tool-select" title="Select">👆</button>
+            <button class="btn btn-sm btn-ghost join-item" id="tool-crop" title="Crop">✂️ Crop</button>
+            <button class="btn btn-sm btn-ghost join-item" id="tool-arrow" title="Arrow">↗️ Arrow</button>
+            <button class="btn btn-sm btn-ghost join-item" id="tool-rect" title="Rectangle">⬜ Rect</button>
+            <button class="btn btn-sm btn-ghost join-item" id="tool-text" title="Text">T Text</button>
+        </div>
+        <div class="divider divider-horizontal mx-0"></div>
+        <!-- Properties -->
+        <div class="flex gap-2 items-center" id="properties-panel">
+            <input type="color" id="prop-color" class="w-8 h-8 p-0 border-0 rounded cursor-pointer" value="#ff0000" title="Color">
+            <input type="range" id="prop-opacity" min="0.1" max="1" step="0.1" value="1" class="range range-xs w-20" title="Opacity">
+
+            <div id="text-props" class="flex gap-1 items-center hidden">
+                <select id="prop-font-family" class="select select-bordered select-xs w-24">
+                    <option value="Arial">Arial</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Times New Roman">Times</option>
+                    <option value="Courier New">Courier</option>
+                    <option value="Verdana">Verdana</option>
+                </select>
+                <input type="number" id="prop-font-size" class="input input-bordered input-xs w-16" value="24" min="8" max="120" title="Font Size">
+            </div>
+            <div class="divider divider-horizontal mx-0"></div>
+            <button class="btn btn-sm btn-error btn-outline" id="action-delete" title="Delete Selected" disabled>🗑️</button>
+        </div>
+    </div>
+    <div class="flex-none gap-2">
+        <button class="btn btn-sm btn-primary" id="action-save">💾 Save JPEG</button>
+        <button class="btn btn-sm btn-secondary" id="action-copy">📋 Copy</button>
+    </div>
+  </div>
+
+  <!-- Canvas Container -->
+  <div class="flex-1 overflow-auto relative bg-base-300 p-4 flex justify-center items-center" id="canvas-container">
+     <canvas id="editor-canvas" class="shadow-lg bg-white"></canvas>
+  </div>
+
+  <script src="./editor.js" type="module"></script>
+</body>
+</html>
