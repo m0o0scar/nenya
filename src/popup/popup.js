@@ -1134,6 +1134,7 @@ async function initializeSessions() {
  */
 function renderSessions(sessions, container, expandedSessionIds = new Set()) {
   container.innerHTML = '';
+  const existingNames = new Set(sessions.map((s) => s.title));
 
   sessions.forEach((session) => {
     const sessionItem = document.createElement('div');
@@ -1210,7 +1211,7 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
       editButton.title = 'Edit session name';
       editButton.addEventListener('click', (e) => {
         e.stopPropagation();
-        void handleEditSessionName(session.id, session.title);
+        void handleEditSessionName(session.id, session.title, existingNames);
       });
       actionsContainer.appendChild(editButton);
     }
@@ -1254,8 +1255,9 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
  * Handle editing a session's name using a modal dialog.
  * @param {number} collectionId
  * @param {string} currentName
+ * @param {Set<string>} existingNames
  */
-async function handleEditSessionName(collectionId, currentName) {
+async function handleEditSessionName(collectionId, currentName, existingNames) {
   const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('editSessionNameModal'));
   const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById('editSessionNameInput'));
   const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameCancelButton'));
@@ -1271,6 +1273,12 @@ async function handleEditSessionName(collectionId, currentName) {
   }
 
   nameInput.value = currentName;
+  
+  // Clear any previous error message
+  const existingError = modal.querySelector('.text-error');
+  if (existingError) {
+    existingError.remove();
+  }
   
   // Track selected icon
   let selectedIcon = '';
@@ -1299,9 +1307,22 @@ async function handleEditSessionName(collectionId, currentName) {
 
   const handleConfirm = async () => {
     if (confirmButton.disabled) return;
+
+    // Remove previous error
+    const prevError = modal.querySelector('.text-error');
+    if (prevError) prevError.remove();
+
     const newName = nameInput.value.trim();
     const nameChanged = newName && newName !== currentName;
     const iconSelected = selectedIcon && selectedIcon !== '';
+
+    if (nameChanged && existingNames.has(newName)) {
+      const errorDiv = document.createElement('div');
+      errorDiv.className = 'text-error text-xs mt-2';
+      errorDiv.textContent = 'A session with this name already exists.';
+      nameInput.insertAdjacentElement('afterend', errorDiv);
+      return;
+    }
 
     if (nameChanged || iconSelected) {
       // Show loading state

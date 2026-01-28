@@ -209,7 +209,6 @@ async function handleFetchSessions() {
   }
 
   const sessionsCollectionId = await ensureSessionsCollection(tokens);
-  const browserId = await getOrCreateBrowserId();
 
   const childrenResult = await raindropRequest(
     '/collections/childrens',
@@ -222,6 +221,9 @@ async function handleFetchSessions() {
   const sessions = childCollections.filter(
     (c) => c.parent?.$id === sessionsCollectionId,
   );
+
+  const existingNames = new Set(sessions.map((c) => c.title));
+  const browserId = await getOrCreateBrowserId(existingNames);
 
   // Ensure current session exists
   const currentSessionExists = sessions.some((c) => c.title === browserId);
@@ -2189,9 +2191,10 @@ const BROWSER_ID_WORDS = [
 /**
  * Generate a stable unique browser ID and save it to storage.
  * Format: "<Browser Brand> - <OS type> - <random word>"
+ * @param {Set<string>} [existingNames=new Set()]
  * @returns {Promise<string>}
  */
-async function getOrCreateBrowserId() {
+async function getOrCreateBrowserId(existingNames = new Set()) {
   const result = await chrome.storage.local.get('browserId');
   if (result.browserId) {
     return result.browserId;
@@ -2213,11 +2216,22 @@ async function getOrCreateBrowserId() {
   else if (ua.includes('Brave/')) brand = 'Brave';
   else if (ua.includes('OPR/') || ua.includes('Opera/')) brand = 'Opera';
 
-  // Pick random word
-  const word =
-    BROWSER_ID_WORDS[Math.floor(Math.random() * BROWSER_ID_WORDS.length)];
+  let browserId = '';
+  let attempts = 0;
+  const MAX_ATTEMPTS = 50;
 
-  const browserId = `${brand} - ${os} - ${word}`;
+  do {
+      // Pick random word
+      const word = BROWSER_ID_WORDS[Math.floor(Math.random() * BROWSER_ID_WORDS.length)];
+      browserId = `${brand} - ${os} - ${word}`;
+      attempts++;
+  } while (existingNames.has(browserId) && attempts < MAX_ATTEMPTS);
+
+  if (attempts >= MAX_ATTEMPTS) {
+      console.warn('Could not generate unique browser ID after ' + MAX_ATTEMPTS + ' attempts. Appending timestamp.');
+      browserId += ` - ${Date.now()}`;
+  }
+
   await chrome.storage.local.set({ browserId });
   return browserId;
 }
@@ -2291,7 +2305,6 @@ async function ensureDeviceCollection(tokens) {
   }
 
   ensuringDeviceCollectionPromise = (async () => {
-    const browserId = await getOrCreateBrowserId();
     const sessionsCollectionId = await ensureSessionsCollection(tokens);
 
     // Fetch children of "nenya / sessions"
@@ -2303,8 +2316,14 @@ async function ensureDeviceCollection(tokens) {
       ? childrenResult.items
       : [];
 
-    const deviceCollection = childCollections.find(
-      (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
+    const sessions = childCollections.filter(
+      (c) => c.parent?.$id === sessionsCollectionId,
+    );
+    const existingNames = new Set(sessions.map((c) => c.title));
+    const browserId = await getOrCreateBrowserId(existingNames);
+
+    const deviceCollection = sessions.find(
+      (c) => c.title === browserId,
     );
 
     if (deviceCollection) {
