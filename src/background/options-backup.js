@@ -626,42 +626,73 @@ async function deleteItems(tokens, collectionId, ids) {
 }
 
 /**
- * Save chunked payload items to Raindrop, replacing previous backups.
+ * Save backup payload as a file to Raindrop, replacing previous backups.
  * @param {StoredProviderTokens} tokens
  * @param {number} collectionId
- * @param {string[]} chunks
+ * @param {OptionsBackupPayload} payload
  * @returns {Promise<void>}
  */
-async function saveChunks(tokens, collectionId, chunks) {
+async function saveBackupFile(tokens, collectionId, payload) {
+  // Clear existing items in the backup collection
   const existingItems = await fetchAllCollectionItems(tokens, collectionId);
   const existingIds = existingItems
     .map((item) => Number(item?._id ?? item?.id))
     .filter((id) => Number.isFinite(id));
   await deleteItems(tokens, collectionId, existingIds);
 
-  const batchSize = 100;
-  for (let i = 0; i < chunks.length; i += batchSize) {
-    const batch = chunks.slice(i, i + batchSize);
-    const items = batch.map((chunk, index) => {
-      const chunkIndex = i + index + 1;
-      return {
-        title: `${BACKUP_ITEM_PREFIX}${chunkIndex}`,
-        link: `https://nenya.local/options-backup/${chunkIndex}`,
-        excerpt: chunk,
-        collectionId,
-        tags: [...BACKUP_TAGS, `total:${chunks.length}`],
-      };
-    });
-    await raindropRequest('/raindrops', tokens, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items }),
-    });
+  // Create file and upload
+  const jsonString = JSON.stringify(payload, null, 2);
+  const file = new File([jsonString], 'options_backup.json', {
+    type: 'application/json',
+  });
+
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('collectionId', String(collectionId));
+
+  await raindropRequest('/raindrop/file', tokens, {
+    method: 'PUT',
+    body: formData,
+  });
+}
+
+/**
+ * Load backup payload from a file in Raindrop.
+ * @param {StoredProviderTokens} tokens
+ * @param {number} collectionId
+ * @returns {Promise<{ payload: OptionsBackupPayload | null, lastModified: number }>}
+ */
+async function loadBackupFile(tokens, collectionId) {
+  const items = await fetchAllCollectionItems(tokens, collectionId);
+
+  // Look for the backup file item
+  const backupItem = items.find(
+    (item) =>
+      item.title === 'options_backup.json' ||
+      (item.file && item.file.name === 'options_backup.json'),
+  );
+
+  if (!backupItem) {
+    return { payload: null, lastModified: 0 };
+  }
+
+  const lastModified = Date.parse(backupItem.lastUpdate || '') || 0;
+
+  try {
+    const response = await fetch(backupItem.link);
+    if (!response.ok) {
+      throw new Error(`Failed to download backup file: ${response.statusText}`);
+    }
+    const payload = await response.json();
+    return { payload, lastModified };
+  } catch (error) {
+    console.warn('[options-backup] Failed to load backup file:', error);
+    return { payload: null, lastModified };
   }
 }
 
 /**
- * Load and reassemble backup chunks from Raindrop.
+ * Load and reassemble backup chunks from Raindrop (Legacy support).
  * @param {StoredProviderTokens} tokens
  * @param {number} collectionId
  * @returns {Promise<{ payload: OptionsBackupPayload | null, lastModified: number }>}
@@ -733,7 +764,13 @@ export async function runAutomaticRestore() {
       return;
     }
 
-    const { lastModified } = await loadChunks(tokens, targetCollectionId);
+    let { lastModified } = await loadBackupFile(tokens, targetCollectionId);
+    if (!lastModified) {
+      // Fallback to chunks check
+      const chunkResult = await loadChunks(tokens, targetCollectionId);
+      lastModified = chunkResult.lastModified;
+    }
+
     if (!lastModified) {
       return;
     }
@@ -773,7 +810,12 @@ export async function runStartupSync() {
 
     let raindropLastModified = 0;
     if (targetCollectionId) {
-      const { lastModified } = await loadChunks(tokens, targetCollectionId);
+      let { lastModified } = await loadBackupFile(tokens, targetCollectionId);
+      if (!lastModified) {
+        // Fallback to chunks
+        const chunkResult = await loadChunks(tokens, targetCollectionId);
+        lastModified = chunkResult.lastModified;
+      }
       raindropLastModified = lastModified || 0;
     }
 
@@ -813,15 +855,13 @@ export async function runManualBackup() {
   try {
     const collectionId = await ensureBackupCollection(tokens);
     const payload = await buildBackupPayload();
-    const serialized = JSON.stringify(payload);
-    const chunks = chunkString(serialized, BACKUP_CHUNK_SIZE);
-    await saveChunks(tokens, collectionId, chunks);
+    await saveBackupFile(tokens, collectionId, payload);
 
     const state = await updateState((draft) => {
       draft.lastBackupAt = Date.now();
       draft.lastError = undefined;
       draft.lastErrorAt = undefined;
-      draft.lastChunkCount = chunks.length;
+      draft.lastChunkCount = 1;
     });
 
     return { ok: true, errors: [], state };
@@ -882,12 +922,21 @@ export async function runManualRestore() {
       };
     }
 
-    let { payload, lastModified } = await loadChunks(
+    // Try loading from file first
+    let { payload, lastModified } = await loadBackupFile(
       tokens,
       targetCollectionId,
     );
 
+    // If file failed, try chunks (legacy)
+    if (!payload) {
+      const chunkResult = await loadChunks(tokens, targetCollectionId);
+      payload = chunkResult.payload;
+      lastModified = chunkResult.lastModified;
+    }
+
     if (!payload && primaryId && legacyId && legacyId !== targetCollectionId) {
+      // Try legacy collection if primary failed
       const legacyResult = await loadChunks(tokens, legacyId);
       payload = legacyResult.payload;
       lastModified = legacyResult.lastModified;
