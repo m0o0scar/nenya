@@ -3861,13 +3861,15 @@ async function enforceFolderOrder(orderByParent, index, stats) {
     const currentOrder = siblings.map((info) => info.id);
     let changed = false;
 
+    const moves = [];
     for (let i = 0; i < orderedIds.length; i += 1) {
       const childId = orderedIds[i];
       if (currentOrder[i] !== childId) {
-        await bookmarksMove(childId, { parentId, index: i });
+        moves.push(bookmarksMove(childId, { parentId, index: i }));
         changed = true;
       }
     }
+    await Promise.all(moves);
 
     if (changed) {
       stats.foldersMoved += 1;
