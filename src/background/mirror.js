@@ -2920,16 +2920,20 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
         // Upload covers from tab snapshots for newly created items
         if (response && response.items && Array.isArray(response.items)) {
+          const coverPromises = [];
           for (let j = 0; j < response.items.length; j++) {
             const createdItem = response.items[j];
             const tabId = tabIds[j];
             if (createdItem && createdItem._id && tabId) {
               const thumbnail = snapshotMap.get(tabId);
               if (thumbnail) {
-                await uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens);
+                coverPromises.push(
+                  uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens),
+                );
               }
             }
           }
+          await Promise.all(coverPromises);
         }
       }
     }
