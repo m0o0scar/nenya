@@ -134,6 +134,7 @@ export {
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
+  handleDeleteSession,
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
 };
@@ -4343,6 +4344,29 @@ async function handleUpdateSessionName(collectionId, oldName, newName) {
   if (oldName === browserId) {
     await chrome.storage.local.set({ browserId: newName });
   }
+
+  return { success: true };
+}
+
+/**
+ * Delete a session collection.
+ * @param {number} collectionId
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleDeleteSession(collectionId) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // Delete the collection in Raindrop
+  await raindropRequest(
+    `/collection/${collectionId}`,
+    tokens,
+    {
+      method: 'DELETE',
+    }
+  );
 
   return { success: true };
 }
