@@ -1053,48 +1053,20 @@ async function updateSplitPageGroupInfo(url, groupName) {
  * @returns {Promise<number | null>} The group ID if found, null otherwise
  */
 async function findTabGroupByName(groupName) {
-  if (!chrome.tabGroups || typeof chrome.tabGroups.get !== 'function') {
+  if (!chrome.tabGroups || typeof chrome.tabGroups.query !== 'function') {
     return null;
   }
 
   try {
-    // Get all tabs to find unique group IDs
-    const allTabs = await chrome.tabs.query({});
-    const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
-    const groupIds = new Set();
+    const groups = await chrome.tabGroups.query({});
+    const matchingGroup = groups.find(
+      (group) =>
+        group &&
+        typeof group.title === 'string' &&
+        group.title.trim() === groupName.trim(),
+    );
 
-    allTabs.forEach((tab) => {
-      if (typeof tab.groupId === 'number' && tab.groupId !== noneGroupId) {
-        groupIds.add(tab.groupId);
-      }
-    });
-
-    // Check each group to find one with matching name
-    for (const groupId of groupIds) {
-      try {
-        const group = await new Promise((resolve, reject) => {
-          chrome.tabGroups.get(groupId, (group) => {
-            const lastError = chrome.runtime.lastError;
-            if (lastError) {
-              reject(new Error(lastError.message));
-              return;
-            }
-            resolve(group);
-          });
-        });
-
-        if (
-          group &&
-          typeof group.title === 'string' &&
-          group.title.trim() === groupName.trim()
-        ) {
-          return groupId;
-        }
-      } catch (error) {
-        // Continue to next group if this one fails
-        continue;
-      }
-    }
+    return matchingGroup ? matchingGroup.id : null;
   } catch (error) {
     console.warn('[background] Failed to find tab group by name:', error);
   }
