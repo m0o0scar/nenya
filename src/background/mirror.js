@@ -223,6 +223,34 @@ async function handleFetchSessions() {
     (c) => c.parent?.$id === sessionsCollectionId,
   );
 
+  // Ensure current session exists
+  const currentSessionExists = sessions.some((c) => c.title === browserId);
+  if (!currentSessionExists) {
+    try {
+      console.log('[mirror] Current session missing from fetch, creating it...');
+      const newId = await ensureDeviceCollection(tokens);
+
+      // Add to sessions list so it appears in UI immediately
+      sessions.push({
+        _id: newId,
+        title: browserId,
+        parent: { $id: sessionsCollectionId },
+        lastUpdate: new Date().toISOString(),
+        cover: [],
+      });
+
+      // Trigger background export to populate it
+      void exportCurrentSessionToRaindrop(newId, tokens).catch((err) => {
+        console.warn('[mirror] Background export failed after creation:', err);
+      });
+    } catch (error) {
+      console.warn(
+        '[mirror] Failed to ensure device collection during fetch:',
+        error,
+      );
+    }
+  }
+
   // Identify sessions older than one month
   const oneMonthAgo = new Date();
   oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
@@ -2201,6 +2229,8 @@ let ensureNenyaSessionsCollectionPromise = null;
 let deviceCollectionId = null;
 /** @type {Promise<void> | null} */
 let currentExportPromise = null;
+/** @type {Promise<number> | null} */
+let ensuringDeviceCollectionPromise = null;
 
 /**
  * Get or create the parent "nenya / sessions" collection.
@@ -2256,53 +2286,60 @@ async function ensureSessionsCollection(tokens) {
  * @returns {Promise<number>}
  */
 async function ensureDeviceCollection(tokens) {
-  const browserId = await getOrCreateBrowserId();
-  const sessionsCollectionId = await ensureSessionsCollection(tokens);
-
-  // Fetch children of "nenya / sessions"
-  const childrenResult = await raindropRequest(
-    '/collections/childrens',
-    tokens,
-  );
-  const childCollections = Array.isArray(childrenResult?.items)
-    ? childrenResult.items
-    : [];
-
-  const updateSort = (a, b) => {
-    // We want to find the one that matches title
-    // but we can just use find
-    return 0;
-  };
-
-  const deviceCollection = childCollections.find(
-    (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
-  );
-
-  if (deviceCollection) {
-    console.log(`[mirror] Found existing device collection: ${browserId}`);
-    return deviceCollection._id;
+  if (ensuringDeviceCollectionPromise) {
+    return ensuringDeviceCollectionPromise;
   }
 
-  // Create new if not exists
-  console.log(`[mirror] Creating new device collection: ${browserId}`);
-  const createResult = await raindropRequest('/collection', tokens, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      title: browserId,
-      parent: { $id: sessionsCollectionId },
-      view: 'list'
-    }),
+  ensuringDeviceCollectionPromise = (async () => {
+    const browserId = await getOrCreateBrowserId();
+    const sessionsCollectionId = await ensureSessionsCollection(tokens);
+
+    // Fetch children of "nenya / sessions"
+    const childrenResult = await raindropRequest(
+      '/collections/childrens',
+      tokens,
+    );
+    const childCollections = Array.isArray(childrenResult?.items)
+      ? childrenResult.items
+      : [];
+
+    const deviceCollection = childCollections.find(
+      (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
+    );
+
+    if (deviceCollection) {
+      console.log(`[mirror] Found existing device collection: ${browserId}`);
+      return deviceCollection._id;
+    }
+
+    // Create new if not exists
+    console.log(`[mirror] Creating new device collection: ${browserId}`);
+    const createResult = await raindropRequest('/collection', tokens, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        title: browserId,
+        parent: { $id: sessionsCollectionId },
+        view: 'list',
+      }),
+    });
+    const newCollectionId = createResult?.item?._id;
+
+    if (!newCollectionId) {
+      throw new Error('Failed to create device collection');
+    }
+
+    return newCollectionId;
+  })();
+
+  // Clear the lock when done
+  ensuringDeviceCollectionPromise.finally(() => {
+    ensuringDeviceCollectionPromise = null;
   });
-  const newCollectionId = createResult?.item?._id;
 
-  if (!newCollectionId) {
-    throw new Error('Failed to create device collection');
-  }
-
-  return newCollectionId;
+  return ensuringDeviceCollectionPromise;
 }
 
 /**
