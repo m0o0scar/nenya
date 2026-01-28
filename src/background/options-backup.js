@@ -1067,6 +1067,21 @@ export function handleOptionsBackupMessage(message, sendResponse) {
         );
       return true;
     }
+    case OPTIONS_BACKUP_MESSAGES.SYNC_AFTER_LOGIN: {
+      void runManualRestore()
+        .then((result) => sendResponse(result))
+        .catch((error) =>
+          sendResponse({
+            ok: false,
+            errors: [
+              error instanceof Error
+                ? error.message
+                : String(error ?? 'Unknown error'),
+            ],
+          }),
+        );
+      return true;
+    }
     default:
       return false;
   }
