@@ -222,6 +222,42 @@
   // ============================================================================
 
   /**
+   * Check if a node is part of our highlight/minimap system.
+   * @param {Node} node
+   * @returns {boolean}
+   */
+  function isOwnNode(node) {
+    if (!node) return false;
+
+    // Check if it's one of our elements
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = /** @type {HTMLElement} */ (node);
+      const className = String(element.className || '');
+      const id = String(element.id || '');
+      if (
+        className.includes(HIGHLIGHT_CLASS_PREFIX) ||
+        className.includes('nenya-minimap') ||
+        id.includes('nenya-minimap')
+      ) {
+        return true;
+      }
+    }
+
+    // Check if node is inside our elements
+    if (node.parentElement) {
+      const parent = node.parentElement;
+      if (
+        parent.closest('#nenya-minimap-container') ||
+        parent.closest('[class*="' + HIGHLIGHT_CLASS_PREFIX + '"]')
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Create a highlight element.
    * @param {string} text
    * @param {string} ruleId
@@ -390,6 +426,103 @@
   }
 
   /**
+   * Scan a root node and apply highlights.
+   * @param {Node} root
+   * @param {HighlightTextRuleSettings[]} applicableRules
+   */
+  function scanAndHighlight(root, applicableRules) {
+    if (!root) return;
+
+    // Helper: process a single text node
+    const processTextNode = (node) => {
+      let nodeProcessed = false;
+      for (const rule of applicableRules) {
+        if (nodeProcessed) break;
+        for (const highlight of rule.highlights) {
+          if (highlightTextNode(/** @type {Text} */ (node), rule.id, highlight)) {
+            nodeProcessed = true;
+            break;
+          }
+        }
+      }
+    };
+
+    // If root is text, process it directly
+    if (root.nodeType === Node.TEXT_NODE) {
+      if (isOwnNode(root)) return;
+      if (root.parentNode) {
+        const tagName = root.parentNode.nodeName.toLowerCase();
+        if (['script', 'style', 'code', 'pre', 'textarea', 'input', 'img', 'video', 'audio', 'canvas', 'svg', 'iframe', 'link', 'meta', 'br', 'hr', 'noscript'].includes(tagName)) return;
+      }
+      processTextNode(root);
+      return;
+    }
+
+    // If root is element, use walker
+    if (root.nodeType === Node.ELEMENT_NODE) {
+      if (isOwnNode(root)) return;
+      const rootTag = /** @type {HTMLElement} */ (root).tagName.toLowerCase();
+      if (['script', 'style', 'code', 'pre', 'textarea', 'input', 'img', 'video', 'audio', 'canvas', 'svg', 'iframe', 'link', 'meta', 'br', 'hr', 'noscript'].includes(rootTag)) return;
+
+      const walker = document.createTreeWalker(
+        root,
+        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+        {
+          acceptNode: (node) => {
+            if (node.nodeType === Node.TEXT_NODE) {
+              return NodeFilter.FILTER_ACCEPT;
+            }
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              const element = /** @type {HTMLElement} */ (node);
+              const tagName = element.tagName.toLowerCase();
+              if (
+                [
+                  'script',
+                  'style',
+                  'code',
+                  'pre',
+                  'textarea',
+                  'input',
+                  'img',
+                  'video',
+                  'audio',
+                  'canvas',
+                  'svg',
+                  'iframe',
+                  'link',
+                  'meta',
+                  'br',
+                  'hr',
+                  'noscript'
+                ].includes(tagName)
+              ) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              if (isOwnNode(element)) {
+                return NodeFilter.FILTER_REJECT;
+              }
+              return NodeFilter.FILTER_ACCEPT;
+            }
+            return NodeFilter.FILTER_REJECT;
+          },
+        },
+      );
+
+      const nodesToProcess = [];
+      let node;
+      while ((node = walker.nextNode())) {
+        nodesToProcess.push(node);
+      }
+
+      for (const node of nodesToProcess) {
+        if (node.nodeType === Node.TEXT_NODE) {
+          processTextNode(node);
+        }
+      }
+    }
+  }
+
+  /**
    * Remove all existing highlights regardless of rule.
    * @returns {void}
    */
@@ -437,69 +570,7 @@
         return;
       }
 
-      const walker = document.createTreeWalker(
-        document.body,
-        NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
-        {
-          acceptNode: (node) => {
-            if (node.nodeType === Node.TEXT_NODE) {
-              return NodeFilter.FILTER_ACCEPT;
-            }
-            if (node.nodeType === Node.ELEMENT_NODE) {
-              const element = /** @type {HTMLElement} */ (node);
-              const tagName = element.tagName.toLowerCase();
-              if (
-                [
-                  'script',
-                  'style',
-                  'code',
-                  'pre',
-                  'textarea',
-                  'input',
-                ].includes(tagName)
-              ) {
-                return NodeFilter.FILTER_REJECT;
-              }
-              if (
-                element.classList.toString().includes(HIGHLIGHT_CLASS_PREFIX)
-              ) {
-                return NodeFilter.FILTER_REJECT;
-              }
-              return NodeFilter.FILTER_ACCEPT;
-            }
-            return NodeFilter.FILTER_REJECT;
-          },
-        },
-      );
-
-      const nodesToProcess = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        nodesToProcess.push(node);
-      }
-
-      // Process text nodes for highlighting
-      // For each text node, apply all highlights from all applicable rules
-      for (const node of nodesToProcess) {
-        if (node.nodeType === Node.TEXT_NODE) {
-          let nodeProcessed = false;
-          for (const rule of applicableRules) {
-            if (nodeProcessed) break;
-            for (const highlight of rule.highlights) {
-              if (
-                highlightTextNode(
-                  /** @type {Text} */ (node),
-                  rule.id,
-                  highlight,
-                )
-              ) {
-                nodeProcessed = true;
-                break;
-              }
-            }
-          }
-        }
-      }
+      scanAndHighlight(document.body, applicableRules);
 
     } finally {
       // Reconnect observer after DOM changes are complete
@@ -593,43 +664,8 @@
     let currentUrl = window.location.href;
 
     // Re-apply highlighting when DOM changes (for dynamic content)
+    // Used for full-rescan events like resize/popstate, or URL changes.
     const debouncedApplyHighlighting = debounce(applyHighlighting, 500);
-
-    /**
-     * Check if a node is part of our highlight/minimap system.
-     * @param {Node} node
-     * @returns {boolean}
-     */
-    function isOwnNode(node) {
-      if (!node) return false;
-
-      // Check if it's one of our elements
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = /** @type {HTMLElement} */ (node);
-        const className = String(element.className || '');
-        const id = String(element.id || '');
-        if (
-          className.includes(HIGHLIGHT_CLASS_PREFIX) ||
-          className.includes('nenya-minimap') ||
-          id.includes('nenya-minimap')
-        ) {
-          return true;
-        }
-      }
-
-      // Check if node is inside our elements
-      if (node.parentElement) {
-        const parent = node.parentElement;
-        if (
-          parent.closest('#nenya-minimap-container') ||
-          parent.closest('[class*="' + HIGHLIGHT_CLASS_PREFIX + '"]')
-        ) {
-          return true;
-        }
-      }
-
-      return false;
-    }
 
     domObserver = new MutationObserver((mutations) => {
       let shouldReapply = false;
@@ -639,65 +675,30 @@
         shouldReapply = true;
       }
 
-      if (!shouldReapply) {
-        for (const mutation of mutations) {
-          // Skip mutations inside our own elements
-          if (mutation.target && isOwnNode(mutation.target)) {
-            continue;
-          }
-
-          if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-            for (const node of mutation.addedNodes) {
-              // Skip nodes that are part of our highlight system
-              if (isOwnNode(node)) {
-                continue;
-              }
-
-              // Only trigger for meaningful content additions
-              if (node.nodeType === Node.ELEMENT_NODE) {
-                const element = /** @type {HTMLElement} */ (node);
-                // Skip empty elements and certain tag types
-                const tagName = element.tagName.toLowerCase();
-                if (
-                  [
-                    'script',
-                    'style',
-                    'link',
-                    'meta',
-                    'br',
-                    'hr',
-                    'img',
-                    'svg',
-                    'canvas',
-                    'video',
-                    'audio',
-                    'iframe',
-                  ].includes(tagName)
-                ) {
-                  continue;
-                }
-                // Only trigger if there's actual text content
-                const text = element.textContent || '';
-                if (text.trim().length > 0) {
-                  shouldReapply = true;
-                  break;
-                }
-              } else if (node.nodeType === Node.TEXT_NODE) {
-                const text = node.textContent || '';
-                if (text.trim().length > 0) {
-                  shouldReapply = true;
-                  break;
-                }
-              }
-            }
-          }
-
-          if (shouldReapply) break;
-        }
-      }
-
       if (shouldReapply) {
         debouncedApplyHighlighting();
+        return;
+      }
+
+      // Incremental updates
+      const applicableRules = rules.filter(
+        (rule) =>
+          !rule.disabled && matchesUrlPatterns(currentUrl, rule.patterns),
+      );
+
+      if (applicableRules.length === 0) return;
+
+      for (const mutation of mutations) {
+        // Skip mutations inside our own elements
+        if (mutation.target && isOwnNode(mutation.target)) {
+          continue;
+        }
+
+        if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+          for (const node of mutation.addedNodes) {
+             scanAndHighlight(node, applicableRules);
+          }
+        }
       }
     });
 
