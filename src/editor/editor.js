@@ -408,9 +408,9 @@ class Editor {
     }
 
     updateToolbarUI() {
-        document.querySelectorAll('.join-item').forEach(btn => btn.classList.remove('tool-active'));
+        document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('btn-tool-active'));
         const activeBtn = document.getElementById(`tool-${this.tool}`);
-        if(activeBtn) activeBtn.classList.add('tool-active');
+        if(activeBtn) activeBtn.classList.add('btn-tool-active');
 
         // Cursor
         let cursor = 'default';
@@ -429,9 +429,9 @@ class Editor {
 
         const strokeProp = document.getElementById('stroke-prop');
         if (this.tool === 'rect' || this.tool === 'arrow' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape)) {
-            strokeProp.style.visibility = 'visible';
+            strokeProp.classList.remove('hidden');
         } else {
-            strokeProp.style.visibility = 'hidden';
+            strokeProp.classList.add('hidden');
         }
     }
 

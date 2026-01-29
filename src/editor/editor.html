@@ -1,86 +1,196 @@
 <!DOCTYPE html>
 <html lang="en" data-theme="light">
+
 <head>
-  <meta charset="utf-8">
-  <title>Nenya - Screenshot Editor</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="../libs/daisyui@5.css">
-  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
-  <link rel="stylesheet" href="./editor.css">
-  <script src="../libs/tailwindcss@4.js"></script>
-  <style>
-    canvas {
-        image-rendering: pixelated;
-    }
-    #canvas-container {
-        overflow: hidden; /* We will handle pan/zoom manually or via transform */
-        background-color: #f3f4f6;
-    }
-  </style>
+    <meta charset="utf-8">
+    <title>Nenya - Screenshot Editor</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="../libs/daisyui@5.css">
+    <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+    <link rel="stylesheet" href="./editor.css">
+    <script src="../libs/tailwindcss@4.js"></script>
+    <style>
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
 </head>
+
 <body class="bg-base-200 h-screen flex flex-col overflow-hidden">
-  <!-- Toolbar -->
-  <div class="navbar bg-base-100 shadow-md z-10 p-2 gap-2 flex-wrap min-h-16 shrink-0">
-    <div class="flex-1 gap-2 items-center overflow-x-auto">
-        <!-- Tools -->
-        <div class="join">
-            <button class="btn btn-sm btn-ghost join-item" id="tool-select" title="Select (V)">👆</button>
-            <button class="btn btn-sm btn-ghost join-item" id="tool-pan" title="Pan (Space)">✋</button>
-            <button class="btn btn-sm btn-ghost join-item" id="tool-crop" title="Crop (C)">✂️ Crop</button>
-            <button class="btn btn-sm btn-ghost join-item" id="tool-arrow" title="Arrow (A)">↗️ Arrow</button>
-            <button class="btn btn-sm btn-ghost join-item" id="tool-rect" title="Rectangle (R)">⬜ Rect</button>
-            <button class="btn btn-sm btn-ghost join-item" id="tool-text" title="Text (T)">T Text</button>
-        </div>
-        <div class="divider divider-horizontal mx-0"></div>
-
-        <!-- Zoom Controls -->
-        <div class="join">
-             <button class="btn btn-sm btn-ghost join-item" id="zoom-out" title="Zoom Out">-</button>
-             <span class="btn btn-sm btn-ghost join-item no-animation cursor-default" id="zoom-level">100%</span>
-             <button class="btn btn-sm btn-ghost join-item" id="zoom-in" title="Zoom In">+</button>
-             <button class="btn btn-sm btn-ghost join-item" id="zoom-fit" title="Fit to Screen">Fit</button>
-        </div>
-        <div class="divider divider-horizontal mx-0"></div>
-
-        <!-- Properties -->
-        <div class="flex gap-2 items-center" id="properties-panel">
-            <input type="color" id="prop-color" class="w-8 h-8 p-0 border-0 rounded cursor-pointer" value="#ff0000" title="Color">
-
-            <div class="flex flex-col w-20">
-                <label class="text-[10px] text-base-content/50 leading-none">Opacity</label>
-                <input type="range" id="prop-opacity" min="0.1" max="1" step="0.1" value="1" class="range range-xs" title="Opacity">
+    <!-- Toolbar -->
+    <header class="glass-nav z-20 px-4 flex items-center justify-between shrink-0 h-[52px]">
+        <div class="flex items-center gap-3">
+            <!-- Main Tools -->
+            <div class="flex items-center bg-base-300/30 rounded-xl p-1 gap-1">
+                <button class="btn btn-sm btn-ghost btn-square tool-btn" id="tool-select" title="Select (V)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z" />
+                        <path d="m13 13 6 6" />
+                    </svg>
+                </button>
+                <button class="btn btn-sm btn-ghost btn-square tool-btn" id="tool-pan" title="Pan (Space)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+                        <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+                        <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0" />
+                        <path
+                            d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" />
+                    </svg>
+                </button>
+                <div class="divider-vertical opacity-20"></div>
+                <button class="btn btn-sm btn-ghost px-2 tool-btn" id="tool-crop" title="Crop (C)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M6 2v14a2 2 0 0 0 2 2h14" />
+                        <path d="M18 22V8a2 2 0 0 0-2-2H2" />
+                    </svg>
+                    <span class="ml-1 text-xs font-semibold">Crop</span>
+                </button>
+                <button class="btn btn-sm btn-ghost btn-square tool-btn" id="tool-arrow" title="Arrow (A)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7 7h10v10" />
+                        <path d="M7 17 17 7" />
+                    </svg>
+                </button>
+                <button class="btn btn-sm btn-ghost btn-square tool-btn" id="tool-rect" title="Rectangle (R)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="18" height="18" x="3" y="3" rx="2" />
+                    </svg>
+                </button>
+                <button class="btn btn-sm btn-ghost btn-square tool-btn" id="tool-text" title="Text (T)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="4 7 4 4 20 4 20 7" />
+                        <line x1="9" x2="15" y1="20" y2="20" />
+                        <line x1="12" x2="12" y1="4" y2="20" />
+                    </svg>
+                </button>
             </div>
 
-            <div class="flex flex-col w-20" id="stroke-prop">
-                <label class="text-[10px] text-base-content/50 leading-none">Thickness</label>
-                <input type="range" id="prop-stroke" min="1" max="20" step="1" value="4" class="range range-xs" title="Stroke Thickness">
-            </div>
+            <div class="divider-vertical opacity-50"></div>
 
-            <div id="text-props" class="flex gap-1 items-center hidden">
-                <select id="prop-font-family" class="select select-bordered select-xs w-24">
-                    <option value="Arial">Arial</option>
-                    <option value="Helvetica">Helvetica</option>
-                    <option value="Times New Roman">Times</option>
-                    <option value="Courier New">Courier</option>
-                    <option value="Verdana">Verdana</option>
-                </select>
-                <input type="number" id="prop-font-size" class="input input-bordered input-xs w-16" value="24" min="8" max="120" title="Font Size">
+            <!-- Zoom Controls -->
+            <div class="flex items-center gap-1.5 px-1">
+                <button class="btn btn-[10px] btn-ghost btn-square size-7" id="zoom-out" title="Zoom Out">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M5 12h14" />
+                    </svg>
+                </button>
+                <span class="text-[11px] font-bold min-w-[36px] text-center tabular-nums" id="zoom-level">100%</span>
+                <button class="btn btn-[10px] btn-ghost btn-square size-7" id="zoom-in" title="Zoom In">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 5v14" />
+                        <path d="M5 12h14" />
+                    </svg>
+                </button>
+                <button class="btn btn-xs btn-ghost gap-1 px-2 h-7 min-h-7" id="zoom-fit" title="Fit to Screen">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                        <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+                        <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+                        <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                    </svg>
+                    <span class="text-[10px] font-bold uppercase tracking-wider">Fit</span>
+                </button>
             </div>
-            <div class="divider divider-horizontal mx-0"></div>
-            <button class="btn btn-sm btn-error btn-outline" id="action-delete" title="Delete Selected (Del)" disabled>🗑️</button>
         </div>
-    </div>
-    <div class="flex-none gap-2">
-        <button class="btn btn-sm btn-primary" id="action-save">💾 Save JPEG</button>
-        <button class="btn btn-sm btn-secondary" id="action-copy">📋 Copy</button>
-    </div>
-  </div>
 
-  <!-- Canvas Container -->
-  <div class="flex-1 relative" id="canvas-container">
-     <canvas id="editor-canvas" class="shadow-lg bg-white origin-top-left"></canvas>
-  </div>
+        <!-- Right: Properties & Actions -->
+        <div class="flex items-center gap-4">
+            <!-- Properties Panel -->
+            <div class="flex items-center gap-4" id="properties-panel">
+                <div class="flex items-center gap-1.5">
+                    <div class="flex flex-col items-center">
+                        <span class="prop-label">Color</span>
+                        <input type="color" id="prop-color" class="input-color-custom" value="#ff0000" title="Color">
+                    </div>
 
-  <script src="./editor.js" type="module"></script>
+                    <div class="flex flex-col w-14" id="stroke-prop">
+                        <span class="prop-label">Stroke</span>
+                        <input type="range" id="prop-stroke" min="1" max="20" step="1" value="4"
+                            class="range range-xs range-primary range-compact" title="Stroke Thickness">
+                    </div>
+
+                    <div class="flex flex-col w-14">
+                        <span class="prop-label">Alpha</span>
+                        <input type="range" id="prop-opacity" min="0.1" max="1" step="0.1" value="1"
+                            class="range range-xs range-primary range-compact" title="Opacity">
+                    </div>
+                </div>
+
+                <!-- Text Specific -->
+                <div id="text-props" class="flex items-center gap-2 hidden">
+                    <div class="divider-vertical opacity-20"></div>
+                    <div class="flex flex-col">
+                        <span class="prop-label">Font</span>
+                        <select id="prop-font-family"
+                            class="select select-bordered select-[10px] w-24 h-6 min-h-6 py-0 px-1 leading-tight">
+                            <option value="Arial">Arial</option>
+                            <option value="Inter">Inter</option>
+                            <option value="Helvetica">Helvetica</option>
+                            <option value="Times New Roman">Times</option>
+                            <option value="Courier New">Courier</option>
+                        </select>
+                    </div>
+                    <div class="flex flex-col">
+                        <span class="prop-label">Size</span>
+                        <input type="number" id="prop-font-size"
+                            class="input input-bordered input-[10px] w-12 h-6 min-h-6 py-0 px-1" value="24" min="8"
+                            max="120">
+                    </div>
+                </div>
+
+                <button class="btn btn-sm btn-ghost btn-square text-error/70 hover:text-error" id="action-delete"
+                    title="Delete Selected (Del)" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 6h18" />
+                        <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" />
+                        <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                        <line x1="10" x2="10" y1="11" y2="17" />
+                        <line x1="14" x2="14" y1="11" y2="17" />
+                    </svg>
+                </button>
+            </div>
+
+            <div class="divider-vertical opacity-50"></div>
+
+            <div class="flex items-center gap-2">
+                <button class="btn btn-sm btn-outline btn-secondary h-8 min-h-8 px-3 gap-1.5" id="action-copy">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
+                    <span class="text-xs font-bold uppercase tracking-tight">Copy</span>
+                </button>
+                <button class="btn btn-sm btn-primary h-8 min-h-8 px-3 gap-1.5 shadow-lg shadow-primary/20"
+                    id="action-save">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" x2="12" y1="15" y2="3" />
+                    </svg>
+                    <span class="text-xs font-bold uppercase tracking-tight">Save</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Canvas Container -->
+    <main class="flex-1 relative overflow-hidden bg-base-300/10" id="canvas-container">
+        <canvas id="editor-canvas" class="shadow-2xl bg-white origin-top-left"></canvas>
+    </main>
+
+    <script src="./editor.js" type="module"></script>
 </body>
+
 </html>
