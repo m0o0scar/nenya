@@ -128,12 +128,15 @@ class ArrowShape extends Shape {
         const headlen = 15 + this.lineWidth * 2;
         const angle = Math.atan2(this.y2 - this.y1, this.x2 - this.x1);
 
-        // Shorten line so it doesn't poke through the head
-        // The head length along the shaft is roughly headlen * cos(30deg) ~= headlen * 0.866
-        const shaftShorten = headlen * 0.8;
+        // Calculate the base of the arrowhead triangle
+        // The triangle is formed by (x2, y2) and two points at headlen distance 30 degrees off-axis.
+        // The midpoint of the base is on the shaft, headlen * cos(30deg) back from the tip.
+        const shaftShorten = headlen * Math.cos(Math.PI / 6);
         const lineEndX = this.x2 - shaftShorten * Math.cos(angle);
         const lineEndY = this.y2 - shaftShorten * Math.sin(angle);
 
+        // Use butt cap so it doesn't poke through the transparent head
+        ctx.lineCap = 'butt';
         ctx.beginPath();
         ctx.moveTo(this.x1, this.y1);
         ctx.lineTo(lineEndX, lineEndY);
@@ -148,7 +151,8 @@ class ArrowShape extends Shape {
         if (this.selected) {
              ctx.fillStyle = 'white';
              ctx.strokeStyle = '#00a1ff';
-             ctx.lineWidth = 1; // Selection handle line width
+             ctx.lineWidth = 1;
+             ctx.lineCap = 'butt'; // Reset for handles if needed
              ctx.fillRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.strokeRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.fillRect(this.x2 - 4, this.y2 - 4, 8, 8);
@@ -752,8 +756,8 @@ class Editor {
             }
 
             // Shortcuts
-            if (key === 'v') this.setTool('select');
-            if (key === 'p' || e.key === ' ') this.setTool('pan');
+            if (key === 'v' || key === 's') this.setTool('select');
+            if (key === 'q' || e.key === ' ') this.setTool('pan');
             if (key === 'c') this.setTool('crop');
             if (key === 'r') this.setTool('rect');
             if (key === 'a') this.setTool('arrow');
@@ -839,6 +843,20 @@ class Editor {
             this.render();
         } else if (this.tool === 'crop') {
             if (this.cropRect) {
+                 // Check Action Buttons
+                 if (this.cropConfirmBtn && 
+                     pos.x >= this.cropConfirmBtn.x && pos.x <= this.cropConfirmBtn.x + this.cropConfirmBtn.w &&
+                     pos.y >= this.cropConfirmBtn.y && pos.y <= this.cropConfirmBtn.y + this.cropConfirmBtn.h) {
+                     this.applyCrop();
+                     return;
+                 }
+                 if (this.cropCancelBtn && 
+                     pos.x >= this.cropCancelBtn.x && pos.x <= this.cropCancelBtn.x + this.cropCancelBtn.w &&
+                     pos.y >= this.cropCancelBtn.y && pos.y <= this.cropCancelBtn.y + this.cropCancelBtn.h) {
+                     this.cancelCrop();
+                     return;
+                 }
+
                  this.cropHandle = this.getCropHandle(pos.x, pos.y);
                  if (!this.cropHandle) {
                      this.cropRect = { x: pos.x, y: pos.y, w: 0, h: 0 };
@@ -863,8 +881,6 @@ class Editor {
                 const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize);
                 this.shapes.push(shape);
                 shape.selected = true;
-                this.tool = 'select';
-                this.updateToolbarUI();
                 this.updateUI();
                 this.render();
             }
@@ -914,9 +930,19 @@ class Editor {
                 }
                 this.canvas.style.cursor = cursor;
             } else if (this.tool === 'crop' && this.cropRect) {
-                 const handle = this.getCropHandle(pos.x, pos.y);
-                 if (handle) this.canvas.style.cursor = handle === 'move' ? 'move' : 'nwse-resize';
-                 else this.canvas.style.cursor = 'crosshair';
+                 // Check Action Buttons for cursor
+                 if ((this.cropConfirmBtn && 
+                      pos.x >= this.cropConfirmBtn.x && pos.x <= this.cropConfirmBtn.x + this.cropConfirmBtn.w &&
+                      pos.y >= this.cropConfirmBtn.y && pos.y <= this.cropConfirmBtn.y + this.cropConfirmBtn.h) ||
+                     (this.cropCancelBtn && 
+                      pos.x >= this.cropCancelBtn.x && pos.x <= this.cropCancelBtn.x + this.cropCancelBtn.w &&
+                      pos.y >= this.cropCancelBtn.y && pos.y <= this.cropCancelBtn.y + this.cropCancelBtn.h)) {
+                     this.canvas.style.cursor = 'pointer';
+                 } else {
+                     const handle = this.getCropHandle(pos.x, pos.y);
+                     if (handle) this.canvas.style.cursor = handle === 'move' ? 'move' : 'nwse-resize';
+                     else this.canvas.style.cursor = 'crosshair';
+                 }
             }
             return;
         }
@@ -958,8 +984,6 @@ class Editor {
         if (this.tool === 'rect' || this.tool === 'arrow') {
             if (this.currentShape) {
                 this.currentShape.selected = true;
-                this.tool = 'select';
-                this.updateToolbarUI();
                 this.updateUI();
                 this.render();
             }
@@ -1041,6 +1065,11 @@ class Editor {
         this.updateToolbarUI();
     }
 
+    cancelCrop() {
+        this.cropRect = null;
+        this.render();
+    }
+
     render() {
         if (!this.backgroundImage) return;
 
@@ -1083,8 +1112,74 @@ class Editor {
             [nx, ny], [nx + nw, ny],
             [nx, ny + nh], [nx + nw, ny + nh]
         ];
-        const hSize = 6 / this.scale;
+        const hSize = 8 / this.scale;
         handles.forEach(([hx, hy]) => ctx.fillRect(hx - hSize/2, hy - hSize/2, hSize, hSize));
+
+        // Draw Action Buttons (Confirm and Cancel)
+        if (nw > 40 && nh > 40) {
+            const btnSize = 32 / this.scale;
+            const margin = 10 / this.scale;
+            const gap = 8 / this.scale;
+            const bx = nx + nw - (btnSize * 2 + gap + margin * 2);
+            const by = ny + nh + margin;
+
+            // Pill Background
+            ctx.setLineDash([]);
+            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+            ctx.shadowBlur = 10 / this.scale;
+            ctx.shadowOffsetY = 2 / this.scale;
+            
+            ctx.fillStyle = 'rgba(45, 55, 72, 0.9)'; // Dark slate gray
+            ctx.beginPath();
+            ctx.roundRect(bx, by, btnSize * 2 + gap + margin * 2, btnSize + margin * 2, (btnSize + margin * 2) / 2);
+            ctx.fill();
+
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetY = 0;
+
+            // Confirm Button Circle
+            this.cropConfirmBtn = { x: bx + margin, y: by + margin, w: btnSize, h: btnSize };
+            ctx.fillStyle = '#22c55e'; // Modern emerald green
+            ctx.beginPath();
+            ctx.arc(this.cropConfirmBtn.x + btnSize/2, this.cropConfirmBtn.y + btnSize/2, btnSize/2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw Checkmark Icon
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 2.5 / this.scale;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            const cx = this.cropConfirmBtn.x + btnSize/2;
+            const cy = this.cropConfirmBtn.y + btnSize/2;
+            ctx.moveTo(cx - btnSize * 0.2, cy);
+            ctx.lineTo(cx - btnSize * 0.05, cy + btnSize * 0.15);
+            ctx.lineTo(cx + btnSize * 0.2, cy - btnSize * 0.2);
+            ctx.stroke();
+
+            // Cancel Button Circle
+            this.cropCancelBtn = { x: bx + margin + btnSize + gap, y: by + margin, w: btnSize, h: btnSize };
+            ctx.fillStyle = '#ef4444'; // Modern rose red
+            ctx.beginPath();
+            ctx.arc(this.cropCancelBtn.x + btnSize/2, this.cropCancelBtn.y + btnSize/2, btnSize/2, 0, Math.PI * 2);
+            ctx.fill();
+
+            // Draw Cross Icon
+            ctx.beginPath();
+            const xcx = this.cropCancelBtn.x + btnSize/2;
+            const xcy = this.cropCancelBtn.y + btnSize/2;
+            const s = btnSize * 0.18;
+            ctx.moveTo(xcx - s, xcy - s);
+            ctx.lineTo(xcx + s, xcy + s);
+            ctx.moveTo(xcx + s, xcy - s);
+            ctx.lineTo(xcx - s, xcy + s);
+            ctx.stroke();
+        } else {
+            this.cropConfirmBtn = null;
+            this.cropCancelBtn = null;
+        }
 
         ctx.restore();
     }
