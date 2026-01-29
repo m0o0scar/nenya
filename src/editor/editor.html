@@ -164,6 +164,24 @@
                         max="200">
                 </div>
             </div>
+            <div class="divider-vertical opacity-20"></div>
+
+            <div class="flex items-center gap-1">
+                <button class="btn btn-sm btn-ghost btn-square" id="action-undo" title="Undo (Cmd+Z)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 7v6h6" />
+                        <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" />
+                    </svg>
+                </button>
+                <button class="btn btn-sm btn-ghost btn-square" id="action-redo" title="Redo (Cmd+Shift+Z)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 7v6h-6" />
+                        <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7" />
+                    </svg>
+                </button>
+            </div>
 
             <button class="btn btn-sm btn-ghost btn-square text-error/70 hover:text-error" id="action-delete"
                 title="Delete Selected (Del)" disabled>

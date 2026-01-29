@@ -26,6 +26,13 @@ class Shape {
 
     getHandles() { return []; }
     updateHandle(handleType, x, y, dx, dy) {}
+
+    clone() {
+        const copy = new Shape(this.type, this.color, this.opacity, this.lineWidth);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
+    }
 }
 
 class RectShape extends Shape {
@@ -97,6 +104,13 @@ class RectShape extends Shape {
         this.y = ny;
         this.w = nw;
         this.h = nh;
+    }
+
+    clone() {
+        const copy = new RectShape(this.x, this.y, this.w, this.h, this.color, this.opacity, this.lineWidth);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
     }
 }
 
@@ -190,6 +204,13 @@ class ArrowShape extends Shape {
             this.y2 = y;
         }
     }
+
+    clone() {
+        const copy = new ArrowShape(this.x1, this.y1, this.x2, this.y2, this.color, this.opacity, this.lineWidth);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
+    }
 }
 
 class TextShape extends Shape {
@@ -226,6 +247,13 @@ class TextShape extends Shape {
     move(dx, dy) {
         this.x += dx;
         this.y += dy;
+    }
+
+    clone() {
+        const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
     }
 }
 
@@ -288,6 +316,11 @@ class Editor {
         this.panY = 0;
         this.isPanning = false;
 
+        // History for undo/redo
+        this.undoStack = [];
+        this.redoStack = [];
+        this.maxHistory = 50;
+
         this.init();
     }
 
@@ -329,6 +362,68 @@ class Editor {
         } catch (e) {
             console.error('Failed to save settings', e);
         }
+    }
+
+    saveHistory() {
+        const snapshot = {
+            shapes: this.shapes.map(s => s.clone()),
+            backgroundImage: this.backgroundImage,
+            canvasWidth: this.canvas.width,
+            canvasHeight: this.canvas.height
+        };
+        this.undoStack.push(snapshot);
+        if (this.undoStack.length > this.maxHistory) {
+            this.undoStack.shift();
+        }
+        this.redoStack = []; // Clear redo on new action
+        this.updateUndoRedoUI();
+    }
+
+    undo() {
+        if (this.undoStack.length === 0) return;
+
+        const currentSnapshot = {
+            shapes: this.shapes.map(s => s.clone()),
+            backgroundImage: this.backgroundImage,
+            canvasWidth: this.canvas.width,
+            canvasHeight: this.canvas.height
+        };
+        this.redoStack.push(currentSnapshot);
+
+        const snapshot = this.undoStack.pop();
+        this.applySnapshot(snapshot);
+    }
+
+    redo() {
+        if (this.redoStack.length === 0) return;
+
+        const currentSnapshot = {
+            shapes: this.shapes.map(s => s.clone()),
+            backgroundImage: this.backgroundImage,
+            canvasWidth: this.canvas.width,
+            canvasHeight: this.canvas.height
+        };
+        this.undoStack.push(currentSnapshot);
+
+        const snapshot = this.redoStack.pop();
+        this.applySnapshot(snapshot);
+    }
+
+    applySnapshot(snapshot) {
+        this.shapes = snapshot.shapes.map(s => s.clone());
+        this.backgroundImage = snapshot.backgroundImage;
+        this.canvas.width = snapshot.canvasWidth;
+        this.canvas.height = snapshot.canvasHeight;
+        this.render();
+        this.updateUI();
+        this.updateUndoRedoUI();
+    }
+
+    updateUndoRedoUI() {
+        const undoBtn = document.getElementById('action-undo');
+        const redoBtn = document.getElementById('action-redo');
+        if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
+        if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
     }
 
     async loadImage() {
@@ -406,12 +501,19 @@ class Editor {
             this.saveSettings();
         });
 
+        ['prop-color', 'prop-opacity', 'prop-stroke'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('mousedown', () => this.saveHistory());
+        });
+
         document.getElementById('prop-font-family').addEventListener('change', (e) => {
+            this.saveHistory();
             this.fontFamily = e.target.value;
             this.updateSelectedShape();
             this.saveSettings();
         });
         document.getElementById('prop-font-size').addEventListener('change', (e) => {
+            this.saveHistory();
             this.fontSize = parseInt(e.target.value);
             this.updateSelectedShape();
             this.saveSettings();
@@ -420,11 +522,14 @@ class Editor {
         document.getElementById('action-delete').addEventListener('click', () => this.deleteSelected());
         document.getElementById('action-save').addEventListener('click', () => this.saveImage());
         document.getElementById('action-copy').addEventListener('click', () => this.copyToClipboard());
+        document.getElementById('action-undo').addEventListener('click', () => this.undo());
+        document.getElementById('action-redo').addEventListener('click', () => this.redo());
 
         // Color Presets
         document.getElementById('color-presets').addEventListener('click', (e) => {
             const preset = e.target.closest('.color-preset');
             if (preset) {
+                this.saveHistory();
                 const newColor = preset.dataset.color;
                 this.color = newColor;
                 document.getElementById('prop-color').value = newColor;
@@ -504,9 +609,12 @@ class Editor {
     }
 
     deleteSelected() {
-        this.shapes = this.shapes.filter(s => !s.selected);
-        this.updateUI();
-        this.render();
+        if (this.shapes.some(s => s.selected)) {
+            this.saveHistory();
+            this.shapes = this.shapes.filter(s => !s.selected);
+            this.updateUI();
+            this.render();
+        }
     }
 
     updateUI() {
@@ -571,6 +679,7 @@ class Editor {
                     shape.selected = true;
                 }
 
+                this.saveHistory();
                 const delta = e.deltaY > 0 ? -1 : 1;
 
                 if (shape.type === 'text') {
@@ -588,9 +697,7 @@ class Editor {
             }
         }, { passive: false });
 
-        // Event listeners on container/window to handle drag outside canvas?
-        // Or on canvas itself? Canvas itself is transformed, so coordinates need mapping.
-        // Attaching to window/container for move/up is safer.
+        // Event listeners on container/window to handle drag outside canvas
         this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
         window.addEventListener('mousemove', this.handleMouseMove.bind(this));
         window.addEventListener('mouseup', this.handleMouseUp.bind(this));
@@ -603,6 +710,7 @@ class Editor {
             }
 
             const isCmd = e.metaKey || e.ctrlKey;
+            const key = e.key.toLowerCase();
 
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 this.deleteSelected();
@@ -613,8 +721,18 @@ class Editor {
                 return;
             }
 
-            // Canvas Zoom/Fit shortcuts (Cmd/Ctrl + +/-/0)
             if (isCmd) {
+                if (key === 'z') {
+                    e.preventDefault();
+                    if (e.shiftKey) this.redo();
+                    else this.undo();
+                    return;
+                }
+                if (key === 'y') {
+                    e.preventDefault();
+                    this.redo();
+                    return;
+                }
                 if (e.key === '=' || e.key === '+') {
                     e.preventDefault();
                     this.zoom(0.1);
@@ -633,7 +751,6 @@ class Editor {
             }
 
             // Shortcuts
-            const key = e.key.toLowerCase();
             if (key === 'v') this.setTool('select');
             if (key === 'p' || e.key === ' ') this.setTool('pan');
             if (key === 'c') this.setTool('crop');
@@ -658,10 +775,15 @@ class Editor {
 
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             if (this.shapes[i] instanceof TextShape && this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
+                this.saveHistory();
                 const newText = prompt('Edit text:', this.shapes[i].text);
                 if (newText !== null) {
                     this.shapes[i].text = newText;
                     this.render();
+                } else {
+                    // If cancelled, remove the history state we just added
+                    this.undoStack.pop();
+                    this.updateUndoRedoUI();
                 }
                 break;
             }
@@ -688,6 +810,7 @@ class Editor {
                 const handles = selected.getHandles();
                 for (let h of handles) {
                     if (Math.abs(pos.x - h.x) < 8/this.scale && Math.abs(pos.y - h.y) < 8/this.scale) {
+                        this.saveHistory();
                         this.draggingHandle = { shape: selected, type: h.type };
                         return;
                     }
@@ -698,6 +821,7 @@ class Editor {
             let hit = false;
             for (let i = this.shapes.length - 1; i >= 0; i--) {
                 if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
+                    this.saveHistory();
                     this.shapes.forEach(s => s.selected = false);
                     this.shapes[i].selected = true;
                     this.currentShape = this.shapes[i];
@@ -724,14 +848,17 @@ class Editor {
                 this.cropHandle = 'se';
             }
         } else if (this.tool === 'rect') {
+            this.saveHistory();
             this.currentShape = new RectShape(pos.x, pos.y, 0, 0, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'arrow') {
+            this.saveHistory();
             this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'text') {
             const text = prompt('Enter text:');
             if (text) {
+                this.saveHistory();
                 const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize);
                 this.shapes.push(shape);
                 shape.selected = true;
@@ -890,6 +1017,7 @@ class Editor {
 
         if (nw <= 0 || nh <= 0) return;
 
+        this.saveHistory();
         this.tool = 'select';
         this.render();
 
