@@ -70,3 +70,25 @@ body {
 .input-color-custom::-webkit-color-swatch {
     border: none;
 }
+
+.color-presets {
+    display: flex;
+    gap: 4px;
+}
+
+.color-preset {
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid var(--color-base-300);
+    transition: transform 0.1s ease;
+}
+
+.color-preset:hover {
+    transform: scale(1.1);
+}
+
+.color-preset:active {
+    transform: scale(0.95);
+}
