@@ -483,14 +483,52 @@ class Editor {
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
+    getShapeAt(pos) {
+        for (let i = this.shapes.length - 1; i >= 0; i--) {
+            if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
+                return this.shapes[i];
+            }
+        }
+        return null;
+    }
+
     attachCanvasListeners() {
         // Container listener for wheel zoom
         this.container.addEventListener('wheel', (e) => {
             if (e.ctrlKey) {
                 e.preventDefault();
                 this.zoom(e.deltaY > 0 ? -0.1 : 0.1);
+                return;
             }
-        });
+
+            // Enhanced UX: Hover + scroll to adjust properties
+            const pos = this.getCanvasPos(e.clientX, e.clientY);
+            const shape = this.getShapeAt(pos);
+
+            if (shape) {
+                e.preventDefault();
+
+                // Auto-select the shape to provide visual feedback and stay in sync with UI properties
+                if (!shape.selected) {
+                    this.shapes.forEach(s => s.selected = false);
+                    shape.selected = true;
+                }
+
+                const delta = e.deltaY > 0 ? -1 : 1;
+
+                if (shape.type === 'text') {
+                    const step = 2;
+                    shape.fontSize = Math.max(8, Math.min(120, shape.fontSize + delta * step));
+                    this.fontSize = shape.fontSize; // Sync global prop
+                } else if (shape.lineWidth !== undefined) {
+                    shape.lineWidth = Math.max(1, Math.min(40, shape.lineWidth + delta));
+                    this.lineWidth = shape.lineWidth; // Sync global prop
+                }
+
+                this.render();
+                this.updateUI();
+            }
+        }, { passive: false });
 
         // Event listeners on container/window to handle drag outside canvas?
         // Or on canvas itself? Canvas itself is transformed, so coordinates need mapping.
