@@ -1051,28 +1051,15 @@ function updateProcessorsList() {
           ? ` = "${processor.value || ''}"`
           : '';
       return `
-    <div class="flex items-center gap-2 p-2 rounded border border-base-300 bg-base-200">
-      <div class="flex gap-1">
-        <button
-          class="btn btn-xs btn-ghost"
-          data-move-up="${index}"
-          type="button"
-          aria-label="Move up"
-          ${index === 0 ? 'disabled' : ''}
-        >
-          ⬆️
-        </button>
-        <button
-          class="btn btn-xs btn-ghost"
-          data-move-down="${index}"
-          type="button"
-          aria-label="Move down"
-          ${index === editingProcessors.length - 1 ? 'disabled' : ''}
-        >
-          ⬇️
-        </button>
+    <div
+      class="flex items-center gap-2 p-2 rounded border border-base-300 bg-base-200 cursor-grab"
+      draggable="true"
+      data-index="${index}"
+    >
+      <div class="flex gap-1 items-center px-1 text-base-content/30 hover:text-base-content/60 cursor-grab" title="Drag to reorder">
+        ⋮⋮
       </div>
-      <div class="flex-1">
+      <div class="flex-1 select-none">
         <span class="badge badge-outline">${typeLabel}</span>
         <span class="font-mono text-sm">${nameDisplay}${valueDisplay}</span>
       </div>
@@ -1089,29 +1076,66 @@ function updateProcessorsList() {
     })
     .join('');
 
+  const items = processorsList.children;
+  Array.from(items).forEach((item) => {
+    const indexStr = item.getAttribute('data-index');
+    if (indexStr === null) return;
+    const index = parseInt(indexStr, 10);
+
+    item.addEventListener('dragstart', (e) => {
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', index.toString());
+      item.classList.add('opacity-50');
+    });
+
+    item.addEventListener('dragend', () => {
+      item.classList.remove('opacity-50');
+      // Clean up visual cues
+      if (processorsList) {
+        Array.from(processorsList.children).forEach((el) => {
+          el.classList.remove('border-primary');
+        });
+      }
+    });
+
+    item.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      item.classList.add('border-primary');
+    });
+
+    item.addEventListener('dragleave', () => {
+      item.classList.remove('border-primary');
+    });
+
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (!e.dataTransfer) return;
+      item.classList.remove('border-primary');
+
+      const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const targetIndex = index;
+
+      if (
+        !Number.isNaN(sourceIndex) &&
+        sourceIndex !== targetIndex &&
+        sourceIndex >= 0 &&
+        sourceIndex < editingProcessors.length
+      ) {
+        const [movedItem] = editingProcessors.splice(sourceIndex, 1);
+        editingProcessors.splice(targetIndex, 0, movedItem);
+        updateProcessorsList();
+      }
+    });
+  });
+
   processorsList.querySelectorAll('[data-remove-processor]').forEach((el) => {
     el.addEventListener('click', () => {
       const processorId = el.getAttribute('data-remove-processor');
       if (processorId) {
         removeProcessor(processorId);
-      }
-    });
-  });
-
-  processorsList.querySelectorAll('[data-move-up]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const index = Number(el.getAttribute('data-move-up'));
-      if (!Number.isNaN(index)) {
-        moveProcessorUp(index);
-      }
-    });
-  });
-
-  processorsList.querySelectorAll('[data-move-down]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const index = Number(el.getAttribute('data-move-down'));
-      if (!Number.isNaN(index)) {
-        moveProcessorDown(index);
       }
     });
   });
