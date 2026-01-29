@@ -327,31 +327,62 @@ class TextShape extends Shape {
      * @param {number} opacity
      * @param {string} fontFamily
      * @param {number} fontSize
+     * @param {boolean} [isBold]
+     * @param {boolean} [isItalic]
+     * @param {boolean} [isUnderline]
+     * @param {boolean} [hasShadow]
      */
-    constructor(x, y, text, color, opacity, fontFamily, fontSize) {
+    constructor(x, y, text, color, opacity, fontFamily, fontSize, isBold = false, isItalic = false, isUnderline = false, hasShadow = false) {
         super('text', color, opacity);
         this.x = x;
         this.y = y;
         this.text = text;
         this.fontFamily = fontFamily;
         this.fontSize = fontSize;
+        this.isBold = isBold;
+        this.isItalic = isItalic;
+        this.isUnderline = isUnderline;
+        this.hasShadow = hasShadow;
     }
 
     /**
      * @param {CanvasRenderingContext2D} ctx
      */
     draw(ctx) {
+        ctx.save();
         ctx.globalAlpha = this.opacity;
         ctx.fillStyle = this.color;
-        ctx.font = `${this.fontSize}px "${this.fontFamily}"`;
+
+        const style = this.isItalic ? 'italic ' : '';
+        const weight = this.isBold ? 'bold ' : '';
+        ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
         ctx.textBaseline = 'top';
+
+        if (this.hasShadow) {
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 4;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+        }
+
         ctx.fillText(this.text, this.x, this.y);
+
+        if (this.isUnderline) {
+            const width = ctx.measureText(this.text).width;
+            ctx.beginPath();
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = Math.max(1, this.fontSize / 15);
+            ctx.moveTo(this.x, this.y + this.fontSize * 0.9);
+            ctx.lineTo(this.x + width, this.y + this.fontSize * 0.9);
+            ctx.stroke();
+        }
 
         if (this.selected) {
             const width = ctx.measureText(this.text).width;
             const height = this.fontSize; // Approximate
             drawSelectionBox(ctx, this.x, this.y, width, height);
         }
+        ctx.restore();
     }
 
     /**
@@ -361,7 +392,9 @@ class TextShape extends Shape {
      * @returns {boolean}
      */
     contains(x, y, ctx) {
-        ctx.font = `${this.fontSize}px "${this.fontFamily}"`;
+        const style = this.isItalic ? 'italic ' : '';
+        const weight = this.isBold ? 'bold ' : '';
+        ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
         const width = ctx.measureText(this.text).width;
         const height = this.fontSize;
         return (x >= this.x && x <= this.x + width && y >= this.y && y <= this.y + height);
@@ -380,7 +413,7 @@ class TextShape extends Shape {
      * @returns {TextShape}
      */
     clone() {
-        const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize);
+        const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasShadow);
         copy.selected = this.selected;
         copy.id = this.id;
         return copy;
@@ -579,6 +612,10 @@ class Editor {
         this.lineWidth = 4;
         this.fontFamily = 'Arial';
         this.fontSize = 24;
+        this.isBold = false;
+        this.isItalic = false;
+        this.isUnderline = false;
+        this.hasShadow = false;
 
         // Zoom/Pan
         this.scale = 1;
@@ -619,6 +656,10 @@ class Editor {
                     if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
                     if (s.fontFamily) this.fontFamily = s.fontFamily;
                     if (s.fontSize !== undefined) this.fontSize = s.fontSize;
+                    if (s.isBold !== undefined) this.isBold = s.isBold;
+                    if (s.isItalic !== undefined) this.isItalic = s.isItalic;
+                    if (s.isUnderline !== undefined) this.isUnderline = s.isUnderline;
+                    if (s.hasShadow !== undefined) this.hasShadow = s.hasShadow;
                 }
             }
         } catch (e) {
@@ -635,7 +676,11 @@ class Editor {
                         opacity: this.opacity,
                         lineWidth: this.lineWidth,
                         fontFamily: this.fontFamily,
-                        fontSize: this.fontSize
+                        fontSize: this.fontSize,
+                        isBold: this.isBold,
+                        isItalic: this.isItalic,
+                        isUnderline: this.isUnderline,
+                        hasShadow: this.hasShadow
                     }
                 });
             }
@@ -849,6 +894,22 @@ class Editor {
                 }
             }
         });
+
+        // Text Styles (Bold, Italic, Underline, Shadow)
+        ['bold', 'italic', 'underline', 'shadow'].forEach(s => {
+            const el = document.getElementById(`prop-${s}`);
+            if (el) el.addEventListener('click', () => {
+                this.saveHistory();
+                if (s === 'bold') this.isBold = !this.isBold;
+                else if (s === 'italic') this.isItalic = !this.isItalic;
+                else if (s === 'underline') this.isUnderline = !this.isUnderline;
+                else if (s === 'shadow') this.hasShadow = !this.hasShadow;
+
+                this.updateSelectedShape();
+                this.saveSettings();
+                this.updateUI();
+            });
+        });
     }
 
     /**
@@ -928,6 +989,10 @@ class Editor {
             if (shape instanceof TextShape) {
                 shape.fontFamily = this.fontFamily;
                 shape.fontSize = this.fontSize;
+                shape.isBold = this.isBold;
+                shape.isItalic = this.isItalic;
+                shape.isUnderline = this.isUnderline;
+                shape.hasShadow = this.hasShadow;
             }
             this.render();
         }
@@ -970,6 +1035,14 @@ class Editor {
                 if (textProps) textProps.classList.remove('hidden');
                 if (propFontFamily) propFontFamily.value = shape.fontFamily;
                 if (propFontSize) propFontSize.value = shape.fontSize.toString();
+
+                // Sync global state from selected shape
+                this.fontFamily = shape.fontFamily;
+                this.fontSize = shape.fontSize;
+                this.isBold = shape.isBold;
+                this.isItalic = shape.isItalic;
+                this.isUnderline = shape.isUnderline;
+                this.hasShadow = shape.hasShadow;
             } else {
                  if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
             }
@@ -977,6 +1050,20 @@ class Editor {
             if (deleteBtn) deleteBtn.disabled = true;
             if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
         }
+
+        // Sync Style Buttons (Bold, Italic, Underline, Shadow)
+        ['bold', 'italic', 'underline', 'shadow'].forEach(s => {
+            const btn = document.getElementById(`prop-${s}`);
+            if (btn) {
+                let isActive = false;
+                if (s === 'bold') isActive = this.isBold;
+                else if (s === 'italic') isActive = this.isItalic;
+                else if (s === 'underline') isActive = this.isUnderline;
+                else if (s === 'shadow') isActive = this.hasShadow;
+                btn.classList.toggle('btn-style-active', isActive);
+            }
+        });
+
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
@@ -1231,7 +1318,7 @@ class Editor {
             const text = prompt('Enter text:');
             if (text) {
                 this.saveHistory();
-                const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize);
+                const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasShadow);
                 this.shapes.push(shape);
                 shape.selected = true;
                 this.tool = 'select';
