@@ -33,6 +33,9 @@ jobs:
     
     - name: Bump version, commit, and tag
       run: |
+        # Fetch tags to ensure we have the latest tag information
+        git fetch --tags
+        
         # Read current version from manifest.json
         current_version=$(node -p "require('./manifest.json').version")
         echo "Current version: $current_version"
@@ -40,13 +43,24 @@ jobs:
         # Parse version components (handle both major.minor and major.minor.patch)
         IFS='.' read -r major minor patch <<< "$current_version"
         
-        # Always bump minor version and keep patch if it exists
+        # Always bump minor version
         new_minor=$((minor + 1))
-        if [ -n "$patch" ]; then
-          new_version="$major.$new_minor.$patch"
-        else
-          new_version="$major.$new_minor"
-        fi
+        
+        # Find the next available version that doesn't have a tag
+        while true; do
+          if [ -n "$patch" ]; then
+            new_version="$major.$new_minor.$patch"
+          else
+            new_version="$major.$new_minor"
+          fi
+          
+          if git rev-parse "v$new_version" >/dev/null 2>&1 || git ls-remote --tags origin "v$new_version" | grep -q "refs/tags/v$new_version"; then
+            echo "Tag v$new_version already exists, trying next version..."
+            new_minor=$((new_minor + 1))
+          else
+            break
+          fi
+        done
         
         echo "New version: $new_version"
         
