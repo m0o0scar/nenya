@@ -552,8 +552,8 @@ class Editor {
         this.scale = Math.min(scaleX, scaleY, 1); // Don't zoom in by default if image is small
 
         // Center
-        this.panX = (containerW - imgW * this.scale) / 2;
-        this.panY = (containerH - imgH * this.scale) / 2;
+        this.panX = (this.container.clientWidth - this.canvas.width) / 2;
+        this.panY = (this.container.clientHeight - this.canvas.height) / 2;
 
         this.updateTransform();
         this.updateZoomUI();
