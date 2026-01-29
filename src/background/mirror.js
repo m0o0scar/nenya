@@ -134,7 +134,6 @@ export {
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
-  handleDeleteSession,
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
 };
@@ -210,6 +209,7 @@ async function handleFetchSessions() {
   }
 
   const sessionsCollectionId = await ensureSessionsCollection(tokens);
+  const browserId = await getOrCreateBrowserId();
 
   const childrenResult = await raindropRequest(
     '/collections/childrens',
@@ -222,37 +222,6 @@ async function handleFetchSessions() {
   const sessions = childCollections.filter(
     (c) => c.parent?.$id === sessionsCollectionId,
   );
-
-  const existingNames = new Set(sessions.map((c) => c.title));
-  const browserId = await getOrCreateBrowserId(existingNames);
-
-  // Ensure current session exists
-  const currentSessionExists = sessions.some((c) => c.title === browserId);
-  if (!currentSessionExists) {
-    try {
-      console.log('[mirror] Current session missing from fetch, creating it...');
-      const newId = await ensureDeviceCollection(tokens);
-
-      // Add to sessions list so it appears in UI immediately
-      sessions.push({
-        _id: newId,
-        title: browserId,
-        parent: { $id: sessionsCollectionId },
-        lastUpdate: new Date().toISOString(),
-        cover: [],
-      });
-
-      // Trigger background export to populate it
-      void exportCurrentSessionToRaindrop(newId, tokens).catch((err) => {
-        console.warn('[mirror] Background export failed after creation:', err);
-      });
-    } catch (error) {
-      console.warn(
-        '[mirror] Failed to ensure device collection during fetch:',
-        error,
-      );
-    }
-  }
 
   // Identify sessions older than one month
   const oneMonthAgo = new Date();
@@ -292,8 +261,8 @@ async function handleFetchSessions() {
 
   return remainingSessions
     .sort((a, b) => {
-      const timeA = new Date(a.lastAction || a.lastUpdate).getTime();
-      const timeB = new Date(b.lastAction || b.lastUpdate).getTime();
+      const timeA = new Date(a.lastUpdate).getTime();
+      const timeB = new Date(b.lastUpdate).getTime();
       return timeB - timeA;
     })
     .map((c) => ({
@@ -302,7 +271,6 @@ async function handleFetchSessions() {
       isCurrent: c.title === browserId,
       cover: c.cover,
       lastUpdate: c.lastUpdate,
-      lastAction: c.lastAction || c.lastUpdate,
     }));
 }
 
@@ -2192,10 +2160,9 @@ const BROWSER_ID_WORDS = [
 /**
  * Generate a stable unique browser ID and save it to storage.
  * Format: "<Browser Brand> - <OS type> - <random word>"
- * @param {Set<string>} [existingNames=new Set()]
  * @returns {Promise<string>}
  */
-async function getOrCreateBrowserId(existingNames = new Set()) {
+async function getOrCreateBrowserId() {
   const result = await chrome.storage.local.get('browserId');
   if (result.browserId) {
     return result.browserId;
@@ -2217,22 +2184,11 @@ async function getOrCreateBrowserId(existingNames = new Set()) {
   else if (ua.includes('Brave/')) brand = 'Brave';
   else if (ua.includes('OPR/') || ua.includes('Opera/')) brand = 'Opera';
 
-  let browserId = '';
-  let attempts = 0;
-  const MAX_ATTEMPTS = 50;
+  // Pick random word
+  const word =
+    BROWSER_ID_WORDS[Math.floor(Math.random() * BROWSER_ID_WORDS.length)];
 
-  do {
-      // Pick random word
-      const word = BROWSER_ID_WORDS[Math.floor(Math.random() * BROWSER_ID_WORDS.length)];
-      browserId = `${brand} - ${os} - ${word}`;
-      attempts++;
-  } while (existingNames.has(browserId) && attempts < MAX_ATTEMPTS);
-
-  if (attempts >= MAX_ATTEMPTS) {
-      console.warn('Could not generate unique browser ID after ' + MAX_ATTEMPTS + ' attempts. Appending timestamp.');
-      browserId += ` - ${Date.now()}`;
-  }
-
+  const browserId = `${brand} - ${os} - ${word}`;
   await chrome.storage.local.set({ browserId });
   return browserId;
 }
@@ -2244,8 +2200,6 @@ let ensureNenyaSessionsCollectionPromise = null;
 let deviceCollectionId = null;
 /** @type {Promise<void> | null} */
 let currentExportPromise = null;
-/** @type {Promise<number> | null} */
-let ensuringDeviceCollectionPromise = null;
 
 /**
  * Get or create the parent "nenya / sessions" collection.
@@ -2301,65 +2255,53 @@ async function ensureSessionsCollection(tokens) {
  * @returns {Promise<number>}
  */
 async function ensureDeviceCollection(tokens) {
-  if (ensuringDeviceCollectionPromise) {
-    return ensuringDeviceCollectionPromise;
+  const browserId = await getOrCreateBrowserId();
+  const sessionsCollectionId = await ensureSessionsCollection(tokens);
+
+  // Fetch children of "nenya / sessions"
+  const childrenResult = await raindropRequest(
+    '/collections/childrens',
+    tokens,
+  );
+  const childCollections = Array.isArray(childrenResult?.items)
+    ? childrenResult.items
+    : [];
+
+  const updateSort = (a, b) => {
+    // We want to find the one that matches title
+    // but we can just use find
+    return 0;
+  };
+
+  const deviceCollection = childCollections.find(
+    (c) => c.title === browserId && c.parent?.$id === sessionsCollectionId,
+  );
+
+  if (deviceCollection) {
+    console.log(`[mirror] Found existing device collection: ${browserId}`);
+    return deviceCollection._id;
   }
 
-  ensuringDeviceCollectionPromise = (async () => {
-    const sessionsCollectionId = await ensureSessionsCollection(tokens);
-
-    // Fetch children of "nenya / sessions"
-    const childrenResult = await raindropRequest(
-      '/collections/childrens',
-      tokens,
-    );
-    const childCollections = Array.isArray(childrenResult?.items)
-      ? childrenResult.items
-      : [];
-
-    const sessions = childCollections.filter(
-      (c) => c.parent?.$id === sessionsCollectionId,
-    );
-    const existingNames = new Set(sessions.map((c) => c.title));
-    const browserId = await getOrCreateBrowserId(existingNames);
-
-    const deviceCollection = sessions.find(
-      (c) => c.title === browserId,
-    );
-
-    if (deviceCollection) {
-      console.log(`[mirror] Found existing device collection: ${browserId}`);
-      return deviceCollection._id;
-    }
-
-    // Create new if not exists
-    console.log(`[mirror] Creating new device collection: ${browserId}`);
-    const createResult = await raindropRequest('/collection', tokens, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: browserId,
-        parent: { $id: sessionsCollectionId },
-        view: 'list',
-      }),
-    });
-    const newCollectionId = createResult?.item?._id;
-
-    if (!newCollectionId) {
-      throw new Error('Failed to create device collection');
-    }
-
-    return newCollectionId;
-  })();
-
-  // Clear the lock when done
-  ensuringDeviceCollectionPromise.finally(() => {
-    ensuringDeviceCollectionPromise = null;
+  // Create new if not exists
+  console.log(`[mirror] Creating new device collection: ${browserId}`);
+  const createResult = await raindropRequest('/collection', tokens, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title: browserId,
+      parent: { $id: sessionsCollectionId },
+      view: 'list'
+    }),
   });
+  const newCollectionId = createResult?.item?._id;
 
-  return ensuringDeviceCollectionPromise;
+  if (!newCollectionId) {
+    throw new Error('Failed to create device collection');
+  }
+
+  return newCollectionId;
 }
 
 /**
@@ -2514,68 +2456,58 @@ async function deleteAllItemsInCollection(collectionId, tokens) {
     if (allItemIds.length > 0) {
       // Raindrop batch delete API limit
       const DELETE_CHUNK_SIZE = 100;
-      const deletePromises = [];
-
       for (let i = 0; i < allItemIds.length; i += DELETE_CHUNK_SIZE) {
         const chunk = allItemIds.slice(i, i + DELETE_CHUNK_SIZE);
-        deletePromises.push(
-          (async () => {
-            console.log(
-              `[mirror] Deleting items ${i + 1}-${Math.min(
-                i + chunk.length,
-                allItemIds.length,
-              )} of ${allItemIds.length}`,
-              chunk,
-            );
-
-            // Use the correct API endpoint: DELETE /raindrops/{collectionId}
-            // We send both 'ids' and 'id' to be safe as documentation is ambiguous
-            const response = await raindropRequest(
-              `/raindrops/${collectionId}`,
-              tokens,
-              {
-                method: 'DELETE',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ ids: chunk, id: chunk }),
-              },
-            );
-
-            console.log(
-              `[mirror] Delete response for chunk ${
-                i / DELETE_CHUNK_SIZE + 1
-              }:`,
-              response,
-            );
-
-            // If DELETE didn't work (modified: 0), try the fallback method:
-            // Moving items to Trash (-99) using PUT
-            if (response && response.modified === 0 && chunk.length > 0) {
-              console.log(
-                '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
-              );
-              const fallbackResponse = await raindropRequest(
-                `/raindrops/${collectionId}`,
-                tokens,
-                {
-                  method: 'PUT',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({
-                    ids: chunk,
-                    collection: { $id: -99 },
-                  }),
-                },
-              );
-              console.log('[mirror] Fallback PUT response:', fallbackResponse);
-            }
-          })(),
+        console.log(
+          `[mirror] Deleting items ${i + 1}-${Math.min(
+            i + chunk.length,
+            allItemIds.length,
+          )} of ${allItemIds.length}`,
+          chunk,
         );
-      }
 
-      await Promise.all(deletePromises);
+        // Use the correct API endpoint: DELETE /raindrops/{collectionId}
+        // We send both 'ids' and 'id' to be safe as documentation is ambiguous
+        const response = await raindropRequest(
+          `/raindrops/${collectionId}`,
+          tokens,
+          {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ ids: chunk, id: chunk }),
+          },
+        );
+
+        console.log(
+          `[mirror] Delete response for chunk ${i / DELETE_CHUNK_SIZE + 1}:`,
+          response,
+        );
+
+        // If DELETE didn't work (modified: 0), try the fallback method:
+        // Moving items to Trash (-99) using PUT
+        if (response && response.modified === 0 && chunk.length > 0) {
+          console.log(
+            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+          );
+          const fallbackResponse = await raindropRequest(
+            `/raindrops/${collectionId}`,
+            tokens,
+            {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                ids: chunk,
+                collection: { $id: -99 },
+              }),
+            },
+          );
+          console.log('[mirror] Fallback PUT response:', fallbackResponse);
+        }
+      }
 
       console.log(
         `[mirror] Successfully deleted ${allItemIds.length} items from collection ${collectionId}`,
@@ -2930,20 +2862,16 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
         // Upload covers from tab snapshots for newly created items
         if (response && response.items && Array.isArray(response.items)) {
-          const coverPromises = [];
           for (let j = 0; j < response.items.length; j++) {
             const createdItem = response.items[j];
             const tabId = tabIds[j];
             if (createdItem && createdItem._id && tabId) {
               const thumbnail = snapshotMap.get(tabId);
               if (thumbnail) {
-                coverPromises.push(
-                  uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens),
-                );
+                await uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens);
               }
             }
           }
-          await Promise.all(coverPromises);
         }
       }
     }
@@ -2951,48 +2879,34 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     // Batch Delete
     if (idsToDelete.length > 0) {
       const CHUNK_SIZE = 100;
-      const deletePromises = [];
       for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
         const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
-        deletePromises.push(
-          (async () => {
-            console.log(`[mirror] Batch Deleting ${chunk.length} items`);
+        console.log(`[mirror] Batch Deleting ${chunk.length} items`);
 
-            // Use the same robust delete logic as deleteAllItemsInCollection
-            // sending both 'ids' and 'id' to be safe
-            const response = await raindropRequest(
-              `/raindrops/${deviceCollectionId}`,
-              tokens,
-              {
-                method: 'DELETE',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ ids: chunk, id: chunk }),
-              },
-            );
+        // Use the same robust delete logic as deleteAllItemsInCollection
+        // sending both 'ids' and 'id' to be safe
+        const response = await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids: chunk, id: chunk }),
+        });
 
-            // If DELETE didn't work (modified: 0), try the fallback method:
-            // Moving items to Trash (-99) using PUT
-            if (response && response.modified === 0 && chunk.length > 0) {
-              console.log(
-                '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
-              );
-              await raindropRequest(
-                `/raindrops/${deviceCollectionId}`,
-                tokens,
-                {
-                  method: 'PUT',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    ids: chunk,
-                    collection: { $id: -99 },
-                  }),
-                },
-              );
-            }
-          })(),
-        );
+        // If DELETE didn't work (modified: 0), try the fallback method:
+        // Moving items to Trash (-99) using PUT
+        if (response && response.modified === 0 && chunk.length > 0) {
+          console.log(
+            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+          );
+          await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ids: chunk,
+              collection: { $id: -99 },
+            }),
+          });
+        }
       }
-      await Promise.all(deletePromises);
     }
 
     // Individual Updates
@@ -3861,15 +3775,13 @@ async function enforceFolderOrder(orderByParent, index, stats) {
     const currentOrder = siblings.map((info) => info.id);
     let changed = false;
 
-    const moves = [];
     for (let i = 0; i < orderedIds.length; i += 1) {
       const childId = orderedIds[i];
       if (currentOrder[i] !== childId) {
-        moves.push(bookmarksMove(childId, { parentId, index: i }));
+        await bookmarksMove(childId, { parentId, index: i });
         changed = true;
       }
     }
-    await Promise.all(moves);
 
     if (changed) {
       stats.foldersMoved += 1;
@@ -4374,29 +4286,6 @@ async function handleUpdateSessionName(collectionId, oldName, newName) {
   if (oldName === browserId) {
     await chrome.storage.local.set({ browserId: newName });
   }
-
-  return { success: true };
-}
-
-/**
- * Delete a session collection.
- * @param {number} collectionId
- * @returns {Promise<{success: boolean}>}
- */
-async function handleDeleteSession(collectionId) {
-  const tokens = await loadValidProviderTokens();
-  if (!tokens) {
-    throw new Error('No Raindrop connection found');
-  }
-
-  // Delete the collection in Raindrop
-  await raindropRequest(
-    `/collection/${collectionId}`,
-    tokens,
-    {
-      method: 'DELETE',
-    }
-  );
 
   return { success: true };
 }
