@@ -597,19 +597,49 @@ class Editor {
         this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
 
         window.addEventListener('keydown', (e) => {
+            // If active element is an input, don't trigger shortcuts
+            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+                return;
+            }
+
+            const isCmd = e.metaKey || e.ctrlKey;
+
             if (e.key === 'Delete' || e.key === 'Backspace') {
                 this.deleteSelected();
+                return;
             }
             if (e.key === 'Enter' && this.tool === 'crop' && this.cropRect) {
                 this.applyCrop();
+                return;
             }
+
+            // Canvas Zoom/Fit shortcuts (Cmd/Ctrl + +/-/0)
+            if (isCmd) {
+                if (e.key === '=' || e.key === '+') {
+                    e.preventDefault();
+                    this.zoom(0.1);
+                    return;
+                }
+                if (e.key === '-') {
+                    e.preventDefault();
+                    this.zoom(-0.1);
+                    return;
+                }
+                if (e.key === '0') {
+                    e.preventDefault();
+                    this.fitToScreen();
+                    return;
+                }
+            }
+
             // Shortcuts
-            if (e.key.toLowerCase() === 'v') this.setTool('select');
-            if (e.key === ' ') this.setTool('pan');
-            if (e.key.toLowerCase() === 'c') this.setTool('crop');
-            if (e.key.toLowerCase() === 'r') this.setTool('rect');
-            if (e.key.toLowerCase() === 'a') this.setTool('arrow');
-            if (e.key.toLowerCase() === 't') this.setTool('text');
+            const key = e.key.toLowerCase();
+            if (key === 'v') this.setTool('select');
+            if (key === 'p' || e.key === ' ') this.setTool('pan');
+            if (key === 'c') this.setTool('crop');
+            if (key === 'r') this.setTool('rect');
+            if (key === 'a') this.setTool('arrow');
+            if (key === 't') this.setTool('text');
         });
     }
 
