@@ -600,7 +600,8 @@ async function fetchAllCollectionItems(tokens, collectionId) {
       break;
     }
     allItems.push(...pageItems);
-    if (pageItems.length < 100) {
+    // FETCH_PAGE_SIZE in mirror.js is 50
+    if (pageItems.length < 50) {
       break;
     }
   }
@@ -648,8 +649,9 @@ async function saveBackupFile(tokens, collectionId, payload) {
   });
 
   const formData = new FormData();
-  formData.append('file', file);
+  // collectionId MUST be placed before file, otherwise it wont work, probably a raindrop api issue
   formData.append('collectionId', String(collectionId));
+  formData.append('file', file);
 
   await raindropRequest('/raindrop/file', tokens, {
     method: 'PUT',
