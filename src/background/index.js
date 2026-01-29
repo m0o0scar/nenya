@@ -1053,64 +1053,20 @@ async function updateSplitPageGroupInfo(url, groupName) {
  * @returns {Promise<number | null>} The group ID if found, null otherwise
  */
 async function findTabGroupByName(groupName) {
-  if (!chrome.tabGroups) {
+  if (!chrome.tabGroups || typeof chrome.tabGroups.query !== 'function') {
     return null;
   }
 
   try {
-    // ⚡ Bolt: Use chrome.tabGroups.query if available for O(1) group finding instead of O(N) tabs scan
-    if (typeof chrome.tabGroups.query === 'function') {
-      const groups = await chrome.tabGroups.query({});
-      const targetName = groupName.trim();
-      const group = groups.find(
-        (g) =>
-          g && typeof g.title === 'string' && g.title.trim() === targetName,
-      );
-      return group ? group.id : null;
-    }
+    const groups = await chrome.tabGroups.query({});
+    const matchingGroup = groups.find(
+      (group) =>
+        group &&
+        typeof group.title === 'string' &&
+        group.title.trim() === groupName.trim(),
+    );
 
-    // Fallback if query is not available
-    if (typeof chrome.tabGroups.get !== 'function') {
-      return null;
-    }
-
-    // Get all tabs to find unique group IDs
-    const allTabs = await chrome.tabs.query({});
-    const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
-    const groupIds = new Set();
-
-    allTabs.forEach((tab) => {
-      if (typeof tab.groupId === 'number' && tab.groupId !== noneGroupId) {
-        groupIds.add(tab.groupId);
-      }
-    });
-
-    // Check each group to find one with matching name
-    for (const groupId of groupIds) {
-      try {
-        const group = await new Promise((resolve, reject) => {
-          chrome.tabGroups.get(groupId, (group) => {
-            const lastError = chrome.runtime.lastError;
-            if (lastError) {
-              reject(new Error(lastError.message));
-              return;
-            }
-            resolve(group);
-          });
-        });
-
-        if (
-          group &&
-          typeof group.title === 'string' &&
-          group.title.trim() === groupName.trim()
-        ) {
-          return groupId;
-        }
-      } catch (error) {
-        // Continue to next group if this one fails
-        continue;
-      }
-    }
+    return matchingGroup ? matchingGroup.id : null;
   } catch (error) {
     console.warn('[background] Failed to find tab group by name:', error);
   }
