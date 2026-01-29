@@ -1,9 +1,72 @@
-#editor-canvas {
-    /* Default cursor handled by JS now due to pan/zoom tool states */
-    touch-action: none; /* Prevent browser handling gestures */
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap";
+
+:root {
+    --navbar-height: 52px;
 }
 
-.tool-active {
+body {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+#editor-canvas {
+    touch-action: none;
+    image-rendering: pixelated;
+}
+
+#canvas-container {
+    background-color: #f0f2f5;
+    background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+    background-size: 20px 20px;
+}
+
+.glass-nav {
+    backdrop-filter: blur(8px);
+    background-color: color-mix(in srgb, var(--color-base-100), transparent 20%);
+    border-bottom: 1px solid var(--color-base-300);
+}
+
+/* Tool active state */
+.btn-tool-active {
+    background-color: var(--color-primary) !important;
+    color: var(--color-primary-content) !important;
+}
+
+/* Custom range styles for better look */
+.range-compact {
+    height: 4px;
+}
+
+.divider-vertical {
+    width: 1px;
+    height: 24px;
     background-color: var(--color-base-300);
-    border-color: var(--color-primary);
+    margin: 0 4px;
+}
+
+.prop-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-base-content);
+    opacity: 0.6;
+    margin-bottom: 2px;
+}
+
+.input-color-custom {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 2px solid var(--color-base-300);
+    border-radius: 6px;
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.input-color-custom::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+.input-color-custom::-webkit-color-swatch {
+    border: none;
 }
