@@ -10,6 +10,7 @@ import {
   handleOpenAllItemsInCollection,
   handleFetchSessionDetails,
   handleUpdateSessionName,
+  handleDeleteSession,
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
   exportCurrentSessionToRaindrop,
@@ -88,6 +89,7 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
+const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -2601,6 +2603,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[background] Update session name failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === DELETE_SESSION_MESSAGE) {
+    const { collectionId } = message;
+    handleDeleteSession(collectionId)
+      .then((result) => {
+        sendResponse({ ok: true, ...result });
+      })
+      .catch((error) => {
+        console.error('[background] Delete session failed:', error);
         sendResponse({ ok: false, error: error.message });
       });
     return true;

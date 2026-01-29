@@ -134,6 +134,7 @@ export {
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
+  handleDeleteSession,
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
 };
@@ -261,8 +262,8 @@ async function handleFetchSessions() {
 
   return remainingSessions
     .sort((a, b) => {
-      const timeA = new Date(a.lastUpdate).getTime();
-      const timeB = new Date(b.lastUpdate).getTime();
+      const timeA = new Date(a.lastAction || a.lastUpdate).getTime();
+      const timeB = new Date(b.lastAction || b.lastUpdate).getTime();
       return timeB - timeA;
     })
     .map((c) => ({
@@ -271,6 +272,7 @@ async function handleFetchSessions() {
       isCurrent: c.title === browserId,
       cover: c.cover,
       lastUpdate: c.lastUpdate,
+      lastAction: c.lastAction || c.lastUpdate,
     }));
 }
 
@@ -4266,20 +4268,19 @@ async function handleUpdateSessionName(collectionId, oldName, newName) {
     throw new Error('No Raindrop connection found');
   }
 
-  // Update the collection title in Raindrop
-  await raindropRequest(
-    `/collection/${collectionId}`,
-    tokens,
-    {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        title: newName,
-      }),
-    }
-  );
+  // 1. Check if name already exists (optional but good UI experience)
+  // ... (skipped check for simplicity as UI usually handles it, but API safe)
+
+  // 2. Update collection title
+  await raindropRequest(`/collection/${collectionId}`, tokens, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      title: newName,
+    }),
+  });
 
   // If the old name was the browserId, update it
   const browserId = await getOrCreateBrowserId();
@@ -4318,6 +4319,29 @@ async function handleUploadCollectionCover(collectionId, iconPath) {
     method: 'PUT',
     body: formData,
   });
+
+  return { success: true };
+}
+
+/**
+ * Delete a session collection.
+ * @param {number} collectionId
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleDeleteSession(collectionId) {
+  const tokens = await loadValidProviderTokens();
+  if (!tokens) {
+    throw new Error('No Raindrop connection found');
+  }
+
+  // Delete the collection in Raindrop
+  await raindropRequest(
+    `/collection/${collectionId}`,
+    tokens,
+    {
+      method: 'DELETE',
+    }
+  );
 
   return { success: true };
 }
