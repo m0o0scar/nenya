@@ -5,9 +5,10 @@
    * Debounce a function.
    * @param {Function} func
    * @param {number} delay
-   * @returns {Function}
+   * @returns {(...args: any[]) => void}
    */
   function debounce(func, delay) {
+    /** @type {number|undefined} */
     let timeoutId;
     return function (...args) {
       clearTimeout(timeoutId);
@@ -390,6 +391,42 @@
   }
 
   /**
+   * Check if a node is part of our highlight/minimap system.
+   * @param {Node} node
+   * @returns {boolean}
+   */
+  function isOwnNode(node) {
+    if (!node) return false;
+
+    // Check if it's one of our elements
+    if (node.nodeType === Node.ELEMENT_NODE) {
+      const element = /** @type {HTMLElement} */ (node);
+      const className = String(element.className || '');
+      const id = String(element.id || '');
+      if (
+        className.includes(HIGHLIGHT_CLASS_PREFIX) ||
+        className.includes('nenya-minimap') ||
+        id.includes('nenya-minimap')
+      ) {
+        return true;
+      }
+    }
+
+    // Check if node is inside our elements
+    if (node.parentElement) {
+      const parent = node.parentElement;
+      if (
+        parent.closest('#nenya-minimap-container') ||
+        parent.closest('[class*="' + HIGHLIGHT_CLASS_PREFIX + '"]')
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Scan and highlight nodes recursively.
    * @param {Node} root
    * @param {HighlightTextRuleSettings[]} applicableRules
@@ -633,42 +670,6 @@
 
     // Re-apply highlighting when DOM changes (for dynamic content)
     const debouncedApplyHighlighting = debounce(applyHighlighting, 500);
-
-    /**
-     * Check if a node is part of our highlight/minimap system.
-     * @param {Node} node
-     * @returns {boolean}
-     */
-    function isOwnNode(node) {
-      if (!node) return false;
-
-      // Check if it's one of our elements
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        const element = /** @type {HTMLElement} */ (node);
-        const className = String(element.className || '');
-        const id = String(element.id || '');
-        if (
-          className.includes(HIGHLIGHT_CLASS_PREFIX) ||
-          className.includes('nenya-minimap') ||
-          id.includes('nenya-minimap')
-        ) {
-          return true;
-        }
-      }
-
-      // Check if node is inside our elements
-      if (node.parentElement) {
-        const parent = node.parentElement;
-        if (
-          parent.closest('#nenya-minimap-container') ||
-          parent.closest('[class*="' + HIGHLIGHT_CLASS_PREFIX + '"]')
-        ) {
-          return true;
-        }
-      }
-
-      return false;
-    }
 
     domObserver = new MutationObserver((mutations) => {
       let shouldReapply = false;
