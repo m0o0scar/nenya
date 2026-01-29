@@ -1017,6 +1017,18 @@ function formatTimestamp(value) {
       const ddd = new Intl.DateTimeFormat('en', { weekday: 'short' }).format(
         date,
       );
+
+      // Check if date is in the last week (assuming Monday start)
+      const day = now.getDay();
+      const diffToMonday = (day + 6) % 7;
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - diffToMonday);
+      startOfWeek.setHours(0, 0, 0, 0);
+
+      if (date < startOfWeek) {
+        return `last ${ddd}, ${timeStr}`;
+      }
+
       return `${ddd}, ${timeStr}`;
     }
 
