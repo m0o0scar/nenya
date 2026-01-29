@@ -10,6 +10,10 @@ import { getValidTokens } from '../shared/tokenRefresh.js';
 const RAINDROP_EXPORT_ENDPOINT = 'https://api.raindrop.io/rest/v1/raindrops/0/export.html';
 const RAINDROP_FOLDER_NAME = 'Raindrop';
 const RAINDROP_EXPORT_ALARM_NAME = 'raindrop-export-to-bookmarks';
+const BATCH_SIZE = 50;
+const BATCH_DELAY_MS = 1000;
+const EXPORT_INTERVAL_MINUTES = 60;
+const EXPORT_DELAY_MINUTES = 1;
 
 /**
  * @typedef {Object} RaindropItem
@@ -172,6 +176,29 @@ async function clearRaindropFolder(folderId) {
 }
 
 /**
+ * Check if a URL should be ignored.
+ * @param {string} url
+ * @returns {boolean}
+ */
+function shouldIgnoreUrl(url) {
+  if (!url) return true;
+  return (
+    url.includes('nenya.local') ||
+    url.includes('api.raindrop.io') ||
+    url.includes('up.raindrop.io')
+  );
+}
+
+/**
+ * Delay execution for a specified number of milliseconds.
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Export Raindrop items to the local bookmark folder.
  * This is the main function that orchestrates the entire export process.
  * @returns {Promise<{success: boolean, message: string, count?: number}>}
@@ -198,17 +225,31 @@ export async function exportRaindropItemsToBookmarks() {
     await clearRaindropFolder(folderId);
 
     // 3. Export Raindrop items
-    const items = await exportRaindropItems();
+    const rawItems = await exportRaindropItems();
 
-    // 4. Create bookmarks for each item
-    console.log(`[raindrop-export] Creating ${items.length} bookmarks`);
+    // Filter items based on URL patterns
+    const items = rawItems.filter(item => !shouldIgnoreUrl(item.url));
+
+    // 4. Create bookmarks for each item (batched)
+    console.log(`[raindrop-export] Creating ${items.length} bookmarks (filtered from ${rawItems.length})`);
     
-    for (const item of items) {
-      await chrome.bookmarks.create({
-        parentId: folderId,
-        title: item.title,
-        url: item.url,
-      });
+    for (let i = 0; i < items.length; i += BATCH_SIZE) {
+      const batch = items.slice(i, i + BATCH_SIZE);
+      console.log(`[raindrop-export] Processing batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} items)`);
+
+      const promises = batch.map(item =>
+        chrome.bookmarks.create({
+          parentId: folderId,
+          title: item.title,
+          url: item.url,
+        }).catch(err => console.warn(`[raindrop-export] Failed to create bookmark for ${item.url}:`, err))
+      );
+
+      await Promise.all(promises);
+
+      if (i + BATCH_SIZE < items.length) {
+        await delay(BATCH_DELAY_MS);
+      }
     }
 
     console.log('[raindrop-export] Export completed successfully');
@@ -245,8 +286,8 @@ export async function setupRaindropExportAlarm() {
 
   // Create a new alarm that runs every hour
   chrome.alarms.create(RAINDROP_EXPORT_ALARM_NAME, {
-    periodInMinutes: 60,
-    delayInMinutes: 1, // First run in 1 minute
+    periodInMinutes: EXPORT_INTERVAL_MINUTES,
+    delayInMinutes: EXPORT_DELAY_MINUTES,
   });
 
   console.log('[raindrop-export] Hourly export alarm set up');

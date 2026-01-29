@@ -1126,6 +1126,11 @@ export async function handleOptionsBackupLifecycle(trigger) {
         'Connect Raindrop to enable manual backup and restore.',
         'nenya://options',
       );
+    } else {
+      // If logged in, force a restore to ensure settings are synced
+      void runManualRestore().catch((error) => {
+        console.warn('[options-backup] Restore after login failed:', error);
+      });
     }
   }
 }
