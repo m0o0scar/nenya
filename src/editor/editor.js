@@ -414,6 +414,7 @@ class Editor {
         this.backgroundImage = snapshot.backgroundImage;
         this.canvas.width = snapshot.canvasWidth;
         this.canvas.height = snapshot.canvasHeight;
+        this.fitToScreen();
         this.render();
         this.updateUI();
         this.updateUndoRedoUI();
