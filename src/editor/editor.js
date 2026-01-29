@@ -294,8 +294,41 @@ class Editor {
     async init() {
         this.attachToolbarListeners();
         this.attachCanvasListeners();
+        await this.loadSettings();
         await this.loadImage();
         this.updateUI();
+    }
+
+    async loadSettings() {
+        try {
+            const result = await chrome.storage.local.get('editorSettings');
+            if (result.editorSettings) {
+                const s = result.editorSettings;
+                if (s.color) this.color = s.color;
+                if (s.opacity !== undefined) this.opacity = s.opacity;
+                if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
+                if (s.fontFamily) this.fontFamily = s.fontFamily;
+                if (s.fontSize !== undefined) this.fontSize = s.fontSize;
+            }
+        } catch (e) {
+            console.error('Failed to load settings', e);
+        }
+    }
+
+    async saveSettings() {
+        try {
+            await chrome.storage.local.set({
+                editorSettings: {
+                    color: this.color,
+                    opacity: this.opacity,
+                    lineWidth: this.lineWidth,
+                    fontFamily: this.fontFamily,
+                    fontSize: this.fontSize
+                }
+            });
+        } catch (e) {
+            console.error('Failed to save settings', e);
+        }
     }
 
     async loadImage() {
@@ -360,28 +393,45 @@ class Editor {
         document.getElementById('prop-color').addEventListener('input', (e) => {
             this.color = e.target.value;
             this.updateSelectedShape();
+            this.saveSettings();
         });
         document.getElementById('prop-opacity').addEventListener('input', (e) => {
             this.opacity = parseFloat(e.target.value);
             this.updateSelectedShape();
+            this.saveSettings();
         });
         document.getElementById('prop-stroke').addEventListener('input', (e) => {
             this.lineWidth = parseInt(e.target.value);
             this.updateSelectedShape();
+            this.saveSettings();
         });
 
         document.getElementById('prop-font-family').addEventListener('change', (e) => {
             this.fontFamily = e.target.value;
             this.updateSelectedShape();
+            this.saveSettings();
         });
         document.getElementById('prop-font-size').addEventListener('change', (e) => {
             this.fontSize = parseInt(e.target.value);
             this.updateSelectedShape();
+            this.saveSettings();
         });
 
         document.getElementById('action-delete').addEventListener('click', () => this.deleteSelected());
         document.getElementById('action-save').addEventListener('click', () => this.saveImage());
         document.getElementById('action-copy').addEventListener('click', () => this.copyToClipboard());
+
+        // Color Presets
+        document.getElementById('color-presets').addEventListener('click', (e) => {
+            const preset = e.target.closest('.color-preset');
+            if (preset) {
+                const newColor = preset.dataset.color;
+                this.color = newColor;
+                document.getElementById('prop-color').value = newColor;
+                this.updateSelectedShape();
+                this.saveSettings();
+            }
+        });
     }
 
     zoom(delta) {
@@ -463,6 +513,13 @@ class Editor {
         const shape = this.getSelectedShape();
         const deleteBtn = document.getElementById('action-delete');
 
+        // Always sync global state to UI first
+        document.getElementById('prop-color').value = this.color;
+        document.getElementById('prop-opacity').value = this.opacity;
+        document.getElementById('prop-stroke').value = this.lineWidth;
+        document.getElementById('prop-font-family').value = this.fontFamily;
+        document.getElementById('prop-font-size').value = this.fontSize;
+
         if (shape) {
             deleteBtn.disabled = false;
             document.getElementById('prop-color').value = shape.color;
@@ -518,13 +575,14 @@ class Editor {
 
                 if (shape.type === 'text') {
                     const step = 2;
-                    shape.fontSize = Math.max(8, Math.min(120, shape.fontSize + delta * step));
+                    shape.fontSize = Math.max(8, Math.min(200, shape.fontSize + delta * step));
                     this.fontSize = shape.fontSize; // Sync global prop
                 } else if (shape.lineWidth !== undefined) {
                     shape.lineWidth = Math.max(1, Math.min(40, shape.lineWidth + delta));
                     this.lineWidth = shape.lineWidth; // Sync global prop
                 }
 
+                this.saveSettings();
                 this.render();
                 this.updateUI();
             }
