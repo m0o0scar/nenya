@@ -1,8 +1,15 @@
 /**
  * Screenshot Editor Logic
  */
+const chrome = /** @type {any} */ (window).chrome;
 
 class Shape {
+    /**
+     * @param {string} type
+     * @param {string} color
+     * @param {number} opacity
+     * @param {number} lineWidth
+     */
     constructor(type, color, opacity, lineWidth = 4) {
         this.type = type;
         this.color = color;
@@ -12,7 +19,11 @@ class Shape {
         this.id = Date.now() + Math.random();
     }
 
-    draw(ctx) {
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {HTMLImageElement} [backgroundImage]
+     */
+    draw(ctx, backgroundImage) {
         ctx.globalAlpha = this.opacity;
         ctx.strokeStyle = this.color;
         ctx.fillStyle = this.color;
@@ -21,12 +32,37 @@ class Shape {
         ctx.lineCap = 'round';
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {CanvasRenderingContext2D} ctx
+     * @returns {boolean}
+     */
     contains(x, y, ctx) { return false; }
+
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
     move(dx, dy) {}
 
+    /**
+     * @returns {Array<{x: number, y: number, type: string, cursor: string}>}
+     */
     getHandles() { return []; }
+
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
     updateHandle(handleType, x, y, dx, dy) {}
 
+    /**
+     * @returns {Shape}
+     */
     clone() {
         const copy = new Shape(this.type, this.color, this.opacity, this.lineWidth);
         copy.selected = this.selected;
@@ -36,6 +72,15 @@ class Shape {
 }
 
 class RectShape extends Shape {
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} w
+     * @param {number} h
+     * @param {string} color
+     * @param {number} opacity
+     * @param {number} lineWidth
+     */
     constructor(x, y, w, h, color, opacity, lineWidth) {
         super('rect', color, opacity, lineWidth);
         this.x = x;
@@ -44,6 +89,9 @@ class RectShape extends Shape {
         this.h = h;
     }
 
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     */
     draw(ctx) {
         super.draw(ctx);
         ctx.beginPath();
@@ -55,6 +103,11 @@ class RectShape extends Shape {
         }
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
     contains(x, y) {
         let nx = this.w < 0 ? this.x + this.w : this.x;
         let ny = this.h < 0 ? this.y + this.h : this.y;
@@ -67,6 +120,10 @@ class RectShape extends Shape {
         return outer && !inner;
     }
 
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
     move(dx, dy) {
         this.x += dx;
         this.y += dy;
@@ -87,6 +144,13 @@ class RectShape extends Shape {
         ];
     }
 
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
     updateHandle(handleType, x, y, dx, dy) {
         let nx = this.w < 0 ? this.x + this.w : this.x;
         let ny = this.h < 0 ? this.y + this.h : this.y;
@@ -106,6 +170,9 @@ class RectShape extends Shape {
         this.h = nh;
     }
 
+    /**
+     * @returns {RectShape}
+     */
     clone() {
         const copy = new RectShape(this.x, this.y, this.w, this.h, this.color, this.opacity, this.lineWidth);
         copy.selected = this.selected;
@@ -115,6 +182,15 @@ class RectShape extends Shape {
 }
 
 class ArrowShape extends Shape {
+    /**
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {string} color
+     * @param {number} opacity
+     * @param {number} lineWidth
+     */
     constructor(x1, y1, x2, y2, color, opacity, lineWidth) {
         super('arrow', color, opacity, lineWidth);
         this.x1 = x1;
@@ -123,6 +199,9 @@ class ArrowShape extends Shape {
         this.y2 = y2;
     }
 
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     */
     draw(ctx) {
         super.draw(ctx);
         const headlen = 15 + this.lineWidth * 2;
@@ -160,6 +239,11 @@ class ArrowShape extends Shape {
         }
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
     contains(x, y) {
         const A = x - this.x1;
         const B = y - this.y1;
@@ -184,6 +268,10 @@ class ArrowShape extends Shape {
         return dist < Math.max(6, this.lineWidth);
     }
 
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
     move(dx, dy) {
         this.x1 += dx;
         this.y1 += dy;
@@ -191,6 +279,9 @@ class ArrowShape extends Shape {
         this.y2 += dy;
     }
 
+    /**
+     * @returns {Array<{x: number, y: number, type: string, cursor: string}>}
+     */
     getHandles() {
         if (!this.selected) return [];
         return [
@@ -199,6 +290,13 @@ class ArrowShape extends Shape {
         ];
     }
 
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
     updateHandle(handleType, x, y, dx, dy) {
         if (handleType === 'start') {
             this.x1 = x;
@@ -209,6 +307,9 @@ class ArrowShape extends Shape {
         }
     }
 
+    /**
+     * @returns {ArrowShape}
+     */
     clone() {
         const copy = new ArrowShape(this.x1, this.y1, this.x2, this.y2, this.color, this.opacity, this.lineWidth);
         copy.selected = this.selected;
@@ -218,6 +319,15 @@ class ArrowShape extends Shape {
 }
 
 class TextShape extends Shape {
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {string} text
+     * @param {string} color
+     * @param {number} opacity
+     * @param {string} fontFamily
+     * @param {number} fontSize
+     */
     constructor(x, y, text, color, opacity, fontFamily, fontSize) {
         super('text', color, opacity);
         this.x = x;
@@ -227,6 +337,9 @@ class TextShape extends Shape {
         this.fontSize = fontSize;
     }
 
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     */
     draw(ctx) {
         ctx.globalAlpha = this.opacity;
         ctx.fillStyle = this.color;
@@ -241,6 +354,12 @@ class TextShape extends Shape {
         }
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {CanvasRenderingContext2D} ctx
+     * @returns {boolean}
+     */
     contains(x, y, ctx) {
         ctx.font = `${this.fontSize}px "${this.fontFamily}"`;
         const width = ctx.measureText(this.text).width;
@@ -248,11 +367,18 @@ class TextShape extends Shape {
         return (x >= this.x && x <= this.x + width && y >= this.y && y <= this.y + height);
     }
 
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
     move(dx, dy) {
         this.x += dx;
         this.y += dy;
     }
 
+    /**
+     * @returns {TextShape}
+     */
     clone() {
         const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize);
         copy.selected = this.selected;
@@ -262,6 +388,13 @@ class TextShape extends Shape {
 }
 
 class BlurShape extends Shape {
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} w
+     * @param {number} h
+     * @param {number} opacity
+     */
     constructor(x, y, w, h, opacity) {
         super('blur', '#000', opacity, 0);
         this.x = x;
@@ -270,6 +403,10 @@ class BlurShape extends Shape {
         this.h = h;
     }
 
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     * @param {HTMLImageElement} [backgroundImage]
+     */
     draw(ctx, backgroundImage) {
         if (!backgroundImage) return;
 
@@ -296,6 +433,11 @@ class BlurShape extends Shape {
         }
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
     contains(x, y) {
         let nx = this.w < 0 ? this.x + this.w : this.x;
         let ny = this.h < 0 ? this.y + this.h : this.y;
@@ -304,11 +446,18 @@ class BlurShape extends Shape {
         return (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh);
     }
 
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
     move(dx, dy) {
         this.x += dx;
         this.y += dy;
     }
 
+    /**
+     * @returns {Array<{x: number, y: number, type: string, cursor: string}>}
+     */
     getHandles() {
         if (!this.selected) return [];
         let nx = this.w < 0 ? this.x + this.w : this.x;
@@ -324,6 +473,13 @@ class BlurShape extends Shape {
         ];
     }
 
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
     updateHandle(handleType, x, y, dx, dy) {
         let nx = this.w < 0 ? this.x + this.w : this.x;
         let ny = this.h < 0 ? this.y + this.h : this.y;
@@ -343,6 +499,9 @@ class BlurShape extends Shape {
         this.h = nh;
     }
 
+    /**
+     * @returns {BlurShape}
+     */
     clone() {
         const copy = new BlurShape(this.x, this.y, this.w, this.h, this.opacity);
         copy.selected = this.selected;
@@ -351,6 +510,13 @@ class BlurShape extends Shape {
     }
 }
 
+/**
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {number} x
+ * @param {number} y
+ * @param {number} w
+ * @param {number} h
+ */
 function drawSelectionBox(ctx, x, y, w, h) {
     ctx.save();
     ctx.strokeStyle = '#00a1ff';
@@ -379,22 +545,32 @@ function drawSelectionBox(ctx, x, y, w, h) {
 }
 
 class Editor {
+    /**
+     * @param {string} canvasId
+     * @param {string} containerId
+     */
     constructor(canvasId, containerId) {
-        this.canvas = document.getElementById(canvasId);
-        this.container = document.getElementById(containerId);
-        this.ctx = this.canvas.getContext('2d');
+        this.canvas = /** @type {HTMLCanvasElement} */ (document.getElementById(canvasId));
+        this.container = /** @type {HTMLElement} */ (document.getElementById(containerId));
+        this.ctx = /** @type {CanvasRenderingContext2D} */ (this.canvas.getContext('2d'));
 
+        /** @type {Shape[]} */
         this.shapes = [];
+        /** @type {HTMLImageElement | null} */
         this.backgroundImage = null;
         this.tool = 'select';
+        /** @type {Shape | null} */
         this.currentShape = null;
         this.isDragging = false;
         this.dragStart = { x: 0, y: 0 };
         this.lastPos = { x: 0, y: 0 };
+        /** @type {{shape: Shape, type: string} | null} */
         this.draggingHandle = null;
 
+        /** @type {{x: number, y: number, w: number, h: number} | null} */
         this.cropRect = null;
         this.isCropping = false;
+        /** @type {string | null} */
         this.cropHandle = null;
 
         // Properties
@@ -411,7 +587,9 @@ class Editor {
         this.isPanning = false;
 
         // History for undo/redo
+        /** @type {any[]} */
         this.undoStack = [];
+        /** @type {any[]} */
         this.redoStack = [];
         this.maxHistory = 50;
 
@@ -426,16 +604,22 @@ class Editor {
         this.updateUI();
     }
 
+    /**
+     * Loads editor settings from chrome.storage.local.
+     * @returns {Promise<void>}
+     */
     async loadSettings() {
         try {
-            const result = await chrome.storage.local.get('editorSettings');
-            if (result.editorSettings) {
-                const s = result.editorSettings;
-                if (s.color) this.color = s.color;
-                if (s.opacity !== undefined) this.opacity = s.opacity;
-                if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
-                if (s.fontFamily) this.fontFamily = s.fontFamily;
-                if (s.fontSize !== undefined) this.fontSize = s.fontSize;
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                const result = await chrome.storage.local.get('editorSettings');
+                if (result.editorSettings) {
+                    const s = result.editorSettings;
+                    if (s.color) this.color = s.color;
+                    if (s.opacity !== undefined) this.opacity = s.opacity;
+                    if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
+                    if (s.fontFamily) this.fontFamily = s.fontFamily;
+                    if (s.fontSize !== undefined) this.fontSize = s.fontSize;
+                }
             }
         } catch (e) {
             console.error('Failed to load settings', e);
@@ -444,15 +628,17 @@ class Editor {
 
     async saveSettings() {
         try {
-            await chrome.storage.local.set({
-                editorSettings: {
-                    color: this.color,
-                    opacity: this.opacity,
-                    lineWidth: this.lineWidth,
-                    fontFamily: this.fontFamily,
-                    fontSize: this.fontSize
-                }
-            });
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                await chrome.storage.local.set({
+                    editorSettings: {
+                        color: this.color,
+                        opacity: this.opacity,
+                        lineWidth: this.lineWidth,
+                        fontFamily: this.fontFamily,
+                        fontSize: this.fontSize
+                    }
+                });
+            }
         } catch (e) {
             console.error('Failed to save settings', e);
         }
@@ -503,11 +689,16 @@ class Editor {
         this.applySnapshot(snapshot);
     }
 
+    /**
+     * @param {any} snapshot
+     */
     applySnapshot(snapshot) {
-        this.shapes = snapshot.shapes.map(s => s.clone());
+        this.shapes = snapshot.shapes.map(/** @param {Shape} s */ s => s.clone());
         this.backgroundImage = snapshot.backgroundImage;
-        this.canvas.width = snapshot.canvasWidth;
-        this.canvas.height = snapshot.canvasHeight;
+        if (this.canvas) {
+            this.canvas.width = snapshot.canvasWidth;
+            this.canvas.height = snapshot.canvasHeight;
+        }
         this.fitToScreen();
         this.render();
         this.updateUI();
@@ -515,25 +706,30 @@ class Editor {
     }
 
     updateUndoRedoUI() {
-        const undoBtn = document.getElementById('action-undo');
-        const redoBtn = document.getElementById('action-redo');
+        const undoBtn = /** @type {HTMLButtonElement} */ (document.getElementById('action-undo'));
+        const redoBtn = /** @type {HTMLButtonElement} */ (document.getElementById('action-redo'));
         if (undoBtn) undoBtn.disabled = this.undoStack.length === 0;
         if (redoBtn) redoBtn.disabled = this.redoStack.length === 0;
     }
 
     async loadImage() {
         try {
-            const result = await chrome.storage.local.get('editorScreenshot');
-            const dataUrl = result.editorScreenshot;
-            if (dataUrl) {
-                this.backgroundImage = new Image();
-                this.backgroundImage.onload = () => {
-                    this.canvas.width = this.backgroundImage.width;
-                    this.canvas.height = this.backgroundImage.height;
-                    this.fitToScreen();
-                    this.render();
-                };
-                this.backgroundImage.src = dataUrl;
+            if (typeof chrome !== 'undefined' && chrome.storage) {
+                const result = await chrome.storage.local.get('editorScreenshot');
+                const dataUrl = result.editorScreenshot;
+                if (dataUrl) {
+                    const img = new Image();
+                    this.backgroundImage = img;
+                    img.onload = () => {
+                        if (this.canvas && this.backgroundImage) {
+                            this.canvas.width = this.backgroundImage.width;
+                            this.canvas.height = this.backgroundImage.height;
+                            this.fitToScreen();
+                            this.render();
+                        }
+                    };
+                    img.src = dataUrl;
+                }
             }
         } catch (e) {
             console.error('Failed to load image', e);
@@ -552,8 +748,10 @@ class Editor {
         this.scale = Math.min(scaleX, scaleY, 1); // Don't zoom in by default if image is small
 
         // Center
-        this.panX = (this.container.clientWidth - this.canvas.width) / 2;
-        this.panY = (this.container.clientHeight - this.canvas.height) / 2;
+        if (this.container && this.canvas) {
+            this.panX = (this.container.clientWidth - this.canvas.width) / 2;
+            this.panY = (this.container.clientHeight - this.canvas.height) / 2;
+        }
 
         this.updateTransform();
         this.updateZoomUI();
@@ -564,7 +762,9 @@ class Editor {
         // But for high DPI clarity we might want to scale the context?
         // For simplicity and performance, CSS transform is good for view,
         // but we need to map events correctly.
-        this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+        if (this.canvas) {
+            this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+        }
     }
 
     attachToolbarListeners() {
@@ -575,23 +775,29 @@ class Editor {
         });
 
         // Zoom
-        document.getElementById('zoom-in').addEventListener('click', () => this.zoom(0.1));
-        document.getElementById('zoom-out').addEventListener('click', () => this.zoom(-0.1));
-        document.getElementById('zoom-fit').addEventListener('click', () => this.fitToScreen());
+        const zoomIn = document.getElementById('zoom-in');
+        if (zoomIn) zoomIn.addEventListener('click', () => this.zoom(0.1));
+        const zoomOut = document.getElementById('zoom-out');
+        if (zoomOut) zoomOut.addEventListener('click', () => this.zoom(-0.1));
+        const zoomFit = document.getElementById('zoom-fit');
+        if (zoomFit) zoomFit.addEventListener('click', () => this.fitToScreen());
 
         // Props
-        document.getElementById('prop-color').addEventListener('input', (e) => {
-            this.color = e.target.value;
+        const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
+        if (propColor) propColor.addEventListener('input', (e) => {
+            this.color = /** @type {HTMLInputElement} */ (e.target).value;
             this.updateSelectedShape();
             this.saveSettings();
         });
-        document.getElementById('prop-opacity').addEventListener('input', (e) => {
-            this.opacity = parseFloat(e.target.value);
+        const propOpacity = /** @type {HTMLInputElement} */ (document.getElementById('prop-opacity'));
+        if (propOpacity) propOpacity.addEventListener('input', (e) => {
+            this.opacity = parseFloat(/** @type {HTMLInputElement} */ (e.target).value);
             this.updateSelectedShape();
             this.saveSettings();
         });
-        document.getElementById('prop-stroke').addEventListener('input', (e) => {
-            this.lineWidth = parseInt(e.target.value);
+        const propStroke = /** @type {HTMLInputElement} */ (document.getElementById('prop-stroke'));
+        if (propStroke) propStroke.addEventListener('input', (e) => {
+            this.lineWidth = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
             this.updateSelectedShape();
             this.saveSettings();
         });
@@ -601,39 +807,53 @@ class Editor {
             if (el) el.addEventListener('mousedown', () => this.saveHistory());
         });
 
-        document.getElementById('prop-font-family').addEventListener('change', (e) => {
+        const propFontFamily = /** @type {HTMLSelectElement} */ (document.getElementById('prop-font-family'));
+        if (propFontFamily) propFontFamily.addEventListener('change', (e) => {
             this.saveHistory();
-            this.fontFamily = e.target.value;
+            this.fontFamily = /** @type {HTMLSelectElement} */ (e.target).value;
             this.updateSelectedShape();
             this.saveSettings();
         });
-        document.getElementById('prop-font-size').addEventListener('change', (e) => {
+        const propFontSize = /** @type {HTMLInputElement} */ (document.getElementById('prop-font-size'));
+        if (propFontSize) propFontSize.addEventListener('change', (e) => {
             this.saveHistory();
-            this.fontSize = parseInt(e.target.value);
+            this.fontSize = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
             this.updateSelectedShape();
             this.saveSettings();
         });
 
-        document.getElementById('action-delete').addEventListener('click', () => this.deleteSelected());
-        document.getElementById('action-save').addEventListener('click', () => this.saveImage());
-        document.getElementById('action-copy').addEventListener('click', () => this.copyToClipboard());
-        document.getElementById('action-undo').addEventListener('click', () => this.undo());
-        document.getElementById('action-redo').addEventListener('click', () => this.redo());
+        const deleteBtn = document.getElementById('action-delete');
+        if (deleteBtn) deleteBtn.addEventListener('click', () => this.deleteSelected());
+        const saveBtn = document.getElementById('action-save');
+        if (saveBtn) saveBtn.addEventListener('click', () => this.saveImage());
+        const copyBtn = document.getElementById('action-copy');
+        if (copyBtn) copyBtn.addEventListener('click', () => this.copyToClipboard());
+        const undoBtn = document.getElementById('action-undo');
+        if (undoBtn) undoBtn.addEventListener('click', () => this.undo());
+        const redoBtn = document.getElementById('action-redo');
+        if (redoBtn) redoBtn.addEventListener('click', () => this.redo());
 
         // Color Presets
-        document.getElementById('color-presets').addEventListener('click', (e) => {
-            const preset = e.target.closest('.color-preset');
+        const colorPresets = document.getElementById('color-presets');
+        if (colorPresets) colorPresets.addEventListener('click', (e) => {
+            const preset = /** @type {HTMLElement} */ (e.target).closest('.color-preset');
             if (preset) {
                 this.saveHistory();
-                const newColor = preset.dataset.color;
-                this.color = newColor;
-                document.getElementById('prop-color').value = newColor;
-                this.updateSelectedShape();
-                this.saveSettings();
+                const newColor = /** @type {HTMLElement} */ (preset).dataset.color;
+                if (newColor) {
+                    this.color = newColor;
+                    const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
+                    if (propColor) propColor.value = newColor;
+                    this.updateSelectedShape();
+                    this.saveSettings();
+                }
             }
         });
     }
 
+    /**
+     * @param {number} delta
+     */
     zoom(delta) {
         this.scale = Math.max(0.1, Math.min(5, this.scale + delta));
         this.updateTransform();
@@ -641,9 +861,13 @@ class Editor {
     }
 
     updateZoomUI() {
-        document.getElementById('zoom-level').textContent = `${Math.round(this.scale * 100)}%`;
+        const zoomLevel = document.getElementById('zoom-level');
+        if (zoomLevel) zoomLevel.textContent = `${Math.round(this.scale * 100)}%`;
     }
 
+    /**
+     * @param {string} tool
+     */
     setTool(tool) {
         this.tool = tool;
         if (tool !== 'select') {
@@ -667,21 +891,27 @@ class Editor {
         if (this.tool === 'pan') cursor = 'grab';
         else if (this.tool === 'select') cursor = 'default';
         else cursor = 'crosshair';
-        this.canvas.style.cursor = cursor;
+        if (this.canvas) {
+            this.canvas.style.cursor = cursor;
+        }
 
         // Visibility
         const textProps = document.getElementById('text-props');
-        if (this.tool === 'text' || (this.getSelectedShape() instanceof TextShape)) {
-            textProps.classList.remove('hidden');
-        } else {
-            textProps.classList.add('hidden');
+        if (textProps) {
+            if (this.tool === 'text' || (this.getSelectedShape() instanceof TextShape)) {
+                textProps.classList.remove('hidden');
+            } else {
+                textProps.classList.add('hidden');
+            }
         }
 
         const strokeProp = document.getElementById('stroke-prop');
-        if (this.tool === 'rect' || this.tool === 'arrow' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape)) {
-            strokeProp.classList.remove('hidden');
-        } else {
-            strokeProp.classList.add('hidden');
+        if (strokeProp) {
+            if (this.tool === 'rect' || this.tool === 'arrow' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape)) {
+                strokeProp.classList.remove('hidden');
+            } else {
+                strokeProp.classList.add('hidden');
+            }
         }
     }
 
@@ -714,35 +944,46 @@ class Editor {
 
     updateUI() {
         const shape = this.getSelectedShape();
-        const deleteBtn = document.getElementById('action-delete');
+        const deleteBtn = /** @type {HTMLButtonElement} */ (document.getElementById('action-delete'));
 
         // Always sync global state to UI first
-        document.getElementById('prop-color').value = this.color;
-        document.getElementById('prop-opacity').value = this.opacity;
-        document.getElementById('prop-stroke').value = this.lineWidth;
-        document.getElementById('prop-font-family').value = this.fontFamily;
-        document.getElementById('prop-font-size').value = this.fontSize;
+        const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
+        if (propColor) propColor.value = this.color;
+        const propOpacity = /** @type {HTMLInputElement} */ (document.getElementById('prop-opacity'));
+        if (propOpacity) propOpacity.value = this.opacity.toString();
+        const propStroke = /** @type {HTMLInputElement} */ (document.getElementById('prop-stroke'));
+        if (propStroke) propStroke.value = this.lineWidth.toString();
+        const propFontFamily = /** @type {HTMLSelectElement} */ (document.getElementById('prop-font-family'));
+        if (propFontFamily) propFontFamily.value = this.fontFamily;
+        const propFontSize = /** @type {HTMLInputElement} */ (document.getElementById('prop-font-size'));
+        if (propFontSize) propFontSize.value = this.fontSize.toString();
+
+        const textProps = document.getElementById('text-props');
 
         if (shape) {
-            deleteBtn.disabled = false;
-            document.getElementById('prop-color').value = shape.color;
-            document.getElementById('prop-opacity').value = shape.opacity;
-            if (shape.lineWidth) document.getElementById('prop-stroke').value = shape.lineWidth;
+            if (deleteBtn) deleteBtn.disabled = false;
+            if (propColor) propColor.value = shape.color;
+            if (propOpacity) propOpacity.value = shape.opacity.toString();
+            if (shape.lineWidth && propStroke) propStroke.value = shape.lineWidth.toString();
 
             if (shape instanceof TextShape) {
-                document.getElementById('text-props').classList.remove('hidden');
-                document.getElementById('prop-font-family').value = shape.fontFamily;
-                document.getElementById('prop-font-size').value = shape.fontSize;
+                if (textProps) textProps.classList.remove('hidden');
+                if (propFontFamily) propFontFamily.value = shape.fontFamily;
+                if (propFontSize) propFontSize.value = shape.fontSize.toString();
             } else {
-                 if (this.tool !== 'text') document.getElementById('text-props').classList.add('hidden');
+                 if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
             }
         } else {
-            deleteBtn.disabled = true;
-            if (this.tool !== 'text') document.getElementById('text-props').classList.add('hidden');
+            if (deleteBtn) deleteBtn.disabled = true;
+            if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
         }
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
+    /**
+     * @param {{x: number, y: number}} pos
+     * @returns {Shape | null}
+     */
     getShapeAt(pos) {
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
@@ -777,13 +1018,16 @@ class Editor {
                 this.saveHistory();
                 const delta = e.deltaY > 0 ? -1 : 1;
 
-                if (shape.type === 'text') {
+                if (shape instanceof TextShape) {
                     const step = 2;
                     shape.fontSize = Math.max(8, Math.min(200, shape.fontSize + delta * step));
                     this.fontSize = shape.fontSize; // Sync global prop
-                } else if (shape.lineWidth !== undefined) {
-                    shape.lineWidth = Math.max(1, Math.min(40, shape.lineWidth + delta));
-                    this.lineWidth = shape.lineWidth; // Sync global prop
+                } else if (shape instanceof RectShape || shape instanceof ArrowShape || shape instanceof BlurShape) {
+                    const s = /** @type {RectShape | ArrowShape | BlurShape} */ (shape);
+                    if (s.lineWidth !== undefined) {
+                        s.lineWidth = Math.max(1, Math.min(40, s.lineWidth + delta));
+                        this.lineWidth = s.lineWidth; // Sync global prop
+                    }
                 }
 
                 this.saveSettings();
@@ -800,7 +1044,7 @@ class Editor {
 
         window.addEventListener('keydown', (e) => {
             // If active element is an input, don't trigger shortcuts
-            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+            if (document.activeElement && ['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
                 return;
             }
 
@@ -857,7 +1101,13 @@ class Editor {
     }
 
     // Convert screen coordinates (clientX) to Canvas coordinates (accounting for scale/pan)
+    /**
+     * @param {number} clientX
+     * @param {number} clientY
+     * @returns {{x: number, y: number}}
+     */
     getCanvasPos(clientX, clientY) {
+        if (!this.canvas) return { x: 0, y: 0 };
         const rect = this.canvas.getBoundingClientRect();
         return {
             x: (clientX - rect.left) / this.scale,
@@ -865,16 +1115,21 @@ class Editor {
         };
     }
 
+    /**
+     * @param {MouseEvent} e
+     */
     handleDoubleClick(e) {
         if (this.tool !== 'select') return;
         const pos = this.getCanvasPos(e.clientX, e.clientY);
 
         for (let i = this.shapes.length - 1; i >= 0; i--) {
-            if (this.shapes[i] instanceof TextShape && this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
+            const shape = this.shapes[i];
+            if (shape instanceof TextShape && shape.contains(pos.x, pos.y, this.ctx)) {
                 this.saveHistory();
-                const newText = prompt('Edit text:', this.shapes[i].text);
+                const textShape = /** @type {TextShape} */ (shape);
+                const newText = prompt('Edit text:', textShape.text);
                 if (newText !== null) {
-                    this.shapes[i].text = newText;
+                    textShape.text = newText;
                     this.render();
                 } else {
                     // If cancelled, remove the history state we just added
@@ -886,6 +1141,9 @@ class Editor {
         }
     }
 
+    /**
+     * @param {MouseEvent} e
+     */
     handleMouseDown(e) {
         const pos = this.getCanvasPos(e.clientX, e.clientY);
         this.dragStart = { x: e.clientX, y: e.clientY }; // Screen coords for panning
@@ -985,6 +1243,9 @@ class Editor {
         }
     }
 
+    /**
+     * @param {MouseEvent} e
+     */
     handleMouseMove(e) {
         if (this.isPanning) {
             const dx = e.clientX - this.dragStart.x;
@@ -1056,12 +1317,14 @@ class Editor {
                 this.render();
             }
         } else if ((this.tool === 'rect' || this.tool === 'blur') && this.currentShape) {
-            this.currentShape.w = pos.x - this.currentShape.x;
-            this.currentShape.h = pos.y - this.currentShape.y;
+            const s = /** @type {RectShape | BlurShape} */ (this.currentShape);
+            s.w = pos.x - s.x;
+            s.h = pos.y - s.y;
             this.render();
         } else if (this.tool === 'arrow' && this.currentShape) {
-            this.currentShape.x2 = pos.x;
-            this.currentShape.y2 = pos.y;
+            const s = /** @type {ArrowShape} */ (this.currentShape);
+            s.x2 = pos.x;
+            s.y2 = pos.y;
             this.render();
         } else if (this.tool === 'crop' && this.cropRect) {
             this.updateCropRect(pos.x, pos.y, dx, dy);
@@ -1069,6 +1332,9 @@ class Editor {
         }
     }
 
+    /**
+     * @param {MouseEvent} e
+     */
     handleMouseUp(e) {
         if (this.isPanning) {
             this.isPanning = false;
@@ -1090,6 +1356,11 @@ class Editor {
         this.currentShape = null;
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {string | null}
+     */
     getCropHandle(x, y) {
         const r = this.cropRect;
         if (!r) return null;
@@ -1101,7 +1372,7 @@ class Editor {
         };
         const dist = 10 / this.scale;
         for (let h in handles) {
-            const [hx, hy] = handles[h];
+            const [hx, hy] = /** @type {Record<string, number[]>} */ (handles)[h];
             if (Math.abs(x - hx) < dist && Math.abs(y - hy) < dist) return h;
         }
 
@@ -1114,8 +1385,15 @@ class Editor {
         return null;
     }
 
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
     updateCropRect(x, y, dx, dy) {
         const r = this.cropRect;
+        if (!r) return;
         switch(this.cropHandle) {
             case 'se': r.w = x - r.x; r.h = y - r.y; break;
             case 'sw': r.x = x; r.w -= dx; r.h = y - r.y; break;
@@ -1139,7 +1417,7 @@ class Editor {
         nw = Math.min(nw, this.canvas.width - nx);
         nh = Math.min(nh, this.canvas.height - ny);
 
-        if (nw <= 0 || nh <= 0) return;
+        if (nw <= 0 || nh <= 0 || !this.canvas) return;
 
         this.saveHistory();
         this.tool = 'select';
@@ -1176,7 +1454,7 @@ class Editor {
         this.ctx.drawImage(this.backgroundImage, 0, 0);
 
         this.ctx.save();
-        this.shapes.forEach(shape => shape.draw(this.ctx, this.backgroundImage));
+        this.shapes.forEach(shape => shape.draw(this.ctx, this.backgroundImage || undefined));
         this.ctx.restore();
 
         if (this.tool === 'crop' && this.cropRect) {
@@ -1190,6 +1468,7 @@ class Editor {
 
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        if (!r) return;
         let nx = r.w < 0 ? r.x + r.w : r.x;
         let ny = r.h < 0 ? r.y + r.h : r.y;
         let nw = Math.abs(r.w);
@@ -1286,6 +1565,7 @@ class Editor {
     getExportCanvas() {
         // If crop is active (visible but not applied), use it for export
         // Otherwise use full canvas
+        if (!this.canvas) return document.createElement('canvas'); // Should not happen
         let exportX = 0, exportY = 0, exportW = this.canvas.width, exportH = this.canvas.height;
 
         if (this.tool === 'crop' && this.cropRect) {
@@ -1311,6 +1591,7 @@ class Editor {
         tCanvas.width = exportW;
         tCanvas.height = exportH;
         const tCtx = tCanvas.getContext('2d');
+        if (!tCtx) return tCanvas;
 
         // Render current state to main canvas first (without overlay)
         const prevTool = this.tool;
@@ -1326,7 +1607,7 @@ class Editor {
 
         // Restore
         this.tool = prevTool;
-        this.cropRect = prevCrop;
+        this.cropRect = /** @type {any} */ (prevCrop);
         this.render();
 
         return tCanvas;
@@ -1357,9 +1638,13 @@ class Editor {
             ]);
 
             const btn = document.getElementById('action-copy');
-            const originalText = btn.innerHTML;
-            btn.innerHTML = '✅ Copied!';
-            setTimeout(() => btn.innerHTML = originalText, 2000);
+            if (btn) {
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '✅ Copied!';
+                setTimeout(() => {
+                    if (btn) btn.innerHTML = originalText;
+                }, 2000);
+            }
         } catch (err) {
             console.error('Failed to copy', err);
             alert('Failed to copy to clipboard.');
@@ -1368,5 +1653,5 @@ class Editor {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    window.editor = new Editor('editor-canvas', 'canvas-container');
+    /** @type {any} */ (window).editor = new Editor('editor-canvas', 'canvas-container');
 });
