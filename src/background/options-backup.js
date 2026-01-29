@@ -641,9 +641,10 @@ async function saveBackupFile(tokens, collectionId, payload) {
   await deleteItems(tokens, collectionId, existingIds);
 
   // Create file and upload
+  // Note: Raindrop API may reject application/json, so we use text/plain with .txt extension
   const jsonString = JSON.stringify(payload, null, 2);
-  const file = new File([jsonString], 'options_backup.json', {
-    type: 'application/json',
+  const file = new File([jsonString], 'options_backup.txt', {
+    type: 'text/plain',
   });
 
   const formData = new FormData();
@@ -666,8 +667,11 @@ async function loadBackupFile(tokens, collectionId) {
   const items = await fetchAllCollectionItems(tokens, collectionId);
 
   // Look for the backup file item
+  // Check for both .txt (new) and .json (old attempt, though unlikely to exist if it failed)
   const backupItem = items.find(
     (item) =>
+      item.title === 'options_backup.txt' ||
+      (item.file && item.file.name === 'options_backup.txt') ||
       item.title === 'options_backup.json' ||
       (item.file && item.file.name === 'options_backup.json'),
   );
