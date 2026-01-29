@@ -1138,64 +1138,70 @@ async function restoreSplitPages() {
       return;
     }
 
-    for (const entry of entriesToOpen) {
-      try {
-        const url = entry.url;
-        // Double-check the tab wasn't opened between the query and now
-        const currentTabs = await chrome.tabs.query({ url });
-        if (currentTabs.length > 0) {
-          continue;
-        }
+    // ⚡ Bolt: Use Promise.all to open tabs in parallel for much faster restoration
+    await Promise.all(
+      entriesToOpen.map(async (entry) => {
+        try {
+          const url = entry.url;
+          // Note: We skip the secondary chrome.tabs.query({ url }) check here for performance.
+          // The initial existingUrls check is sufficient for the common case.
 
-        // Create the tab
-        const tab = await chrome.tabs.create({ url, active: false });
+          // Create the tab
+          const tab = await chrome.tabs.create({ url, active: false });
 
-        // If entry has a group name, try to add it to that group
-        if (entry.groupName && typeof entry.groupName === 'string' && tab.id) {
-          try {
-            // Wait a bit for the tab to be fully created before grouping
-            await new Promise((resolve) => setTimeout(resolve, 200));
+          // If entry has a group name, try to add it to that group
+          if (
+            entry.groupName &&
+            typeof entry.groupName === 'string' &&
+            tab.id
+          ) {
+            try {
+              // Wait a bit for the tab to be fully created before grouping
+              // Reduced delay since we are running in parallel
+              await new Promise((resolve) => setTimeout(resolve, 100));
 
-            const groupId = await findTabGroupByName(entry.groupName);
+              const groupId = await findTabGroupByName(entry.groupName);
 
-            if (
-              groupId !== null &&
-              chrome.tabs &&
-              typeof chrome.tabs.group === 'function'
-            ) {
-              // Add tab to existing group
-              await new Promise((resolve, reject) => {
-                chrome.tabs.group(
-                  { tabIds: tab.id, groupId },
-                  (resultGroupId) => {
-                    const lastError = chrome.runtime.lastError;
-                    if (lastError) {
-                      console.warn(
-                        `[background] Error adding tab to group: ${lastError.message}`,
-                      );
-                      reject(new Error(lastError.message));
-                      return;
-                    }
-                    resolve(resultGroupId);
-                  },
-                );
-              });
+              if (
+                groupId !== null &&
+                chrome.tabs &&
+                typeof chrome.tabs.group === 'function'
+              ) {
+                // Add tab to existing group
+                await new Promise((resolve, reject) => {
+                  chrome.tabs.group(
+                    { tabIds: tab.id, groupId },
+                    (resultGroupId) => {
+                      const lastError = chrome.runtime.lastError;
+                      if (lastError) {
+                        // Don't reject, just log warning so other tabs continue
+                        console.warn(
+                          `[background] Error adding tab to group: ${lastError.message}`,
+                        );
+                        resolve(null);
+                        return;
+                      }
+                      resolve(resultGroupId);
+                    },
+                  );
+                });
+              }
+            } catch (error) {
+              console.warn(
+                `[background] Failed to add split page to group "${entry.groupName}":`,
+                error,
+              );
             }
-          } catch (error) {
-            console.warn(
-              `[background] Failed to add split page to group "${entry.groupName}":`,
-              error,
-            );
           }
+        } catch (error) {
+          console.warn(
+            '[background] Failed to restore split page:',
+            entry.url,
+            error,
+          );
         }
-      } catch (error) {
-        console.warn(
-          '[background] Failed to restore split page:',
-          entry.url,
-          error,
-        );
-      }
-    }
+      }),
+    );
   } catch (error) {
     console.warn('[background] Failed to restore split pages:', error);
   } finally {
