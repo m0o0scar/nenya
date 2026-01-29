@@ -359,15 +359,21 @@ async function ensureBadgeOwnership() {
  * @param {string} text
  * @param {string | number[] | undefined} backgroundColor
  * @param {string | number[] | undefined} textColor
+ * @param {number | undefined} expectedTabId
  * @returns {Promise<void>}
  */
-async function setBadgeAppearance(text, backgroundColor, textColor) {
+async function setBadgeAppearance(text, backgroundColor, textColor, expectedTabId) {
   if (!chrome?.action) {
     return;
   }
 
   const ownershipGranted = await ensureBadgeOwnership();
   if (!ownershipGranted) {
+    return;
+  }
+
+  // Ensure we are still targeting the same tab that was active when we started
+  if (expectedTabId !== undefined && countdownTabId !== expectedTabId) {
     return;
   }
 
@@ -478,15 +484,16 @@ function formatCountdownAppearance(remainingMs) {
  * @returns {Promise<void>}
  */
 async function updateBadgeCountdown() {
+  const currentTabId = countdownTabId;
   if (
-    countdownTabId === null ||
-    !scheduledTabs.has(countdownTabId)
+    currentTabId === null ||
+    !scheduledTabs.has(currentTabId)
   ) {
     await stopCountdown();
     return;
   }
 
-  const schedule = scheduledTabs.get(countdownTabId);
+  const schedule = scheduledTabs.get(currentTabId);
   if (!schedule) {
     await stopCountdown();
     return;
@@ -503,6 +510,7 @@ async function updateBadgeCountdown() {
     appearance.text,
     appearance.background,
     appearance.textColor,
+    currentTabId,
   );
 }
 
