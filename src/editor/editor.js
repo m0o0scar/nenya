@@ -111,12 +111,18 @@ class ArrowShape extends Shape {
 
     draw(ctx) {
         super.draw(ctx);
-        const headlen = 15 + this.lineWidth;
+        const headlen = 15 + this.lineWidth * 2;
         const angle = Math.atan2(this.y2 - this.y1, this.x2 - this.x1);
+
+        // Shorten line so it doesn't poke through the head
+        // The head length along the shaft is roughly headlen * cos(30deg) ~= headlen * 0.866
+        const shaftShorten = headlen * 0.8;
+        const lineEndX = this.x2 - shaftShorten * Math.cos(angle);
+        const lineEndY = this.y2 - shaftShorten * Math.sin(angle);
 
         ctx.beginPath();
         ctx.moveTo(this.x1, this.y1);
-        ctx.lineTo(this.x2, this.y2);
+        ctx.lineTo(lineEndX, lineEndY);
         ctx.stroke();
 
         ctx.beginPath();
