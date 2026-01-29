@@ -1,18 +1,6 @@
 #editor-canvas {
-    /* Default cursor */
-    cursor: default;
-}
-
-#editor-canvas.cursor-crosshair {
-    cursor: crosshair;
-}
-
-#editor-canvas.cursor-move {
-    cursor: move;
-}
-
-#editor-canvas.cursor-nwse-resize {
-    cursor: nwse-resize;
+    /* Default cursor handled by JS now due to pan/zoom tool states */
+    touch-action: none; /* Prevent browser handling gestures */
 }
 
 .tool-active {

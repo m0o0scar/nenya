@@ -764,7 +764,6 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
-const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 
@@ -1135,7 +1134,6 @@ async function initializeSessions() {
  */
 function renderSessions(sessions, container, expandedSessionIds = new Set()) {
   container.innerHTML = '';
-  const existingNames = new Set(sessions.map((s) => s.title));
 
   sessions.forEach((session) => {
     const sessionItem = document.createElement('div');
@@ -1182,10 +1180,10 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
     }
     titleContainer.appendChild(titleRow);
 
-    if (session.lastAction) {
+    if (session.lastUpdate) {
       const lastUpdateSpan = document.createElement('span');
       lastUpdateSpan.className = 'text-[10px] opacity-50 truncate';
-      lastUpdateSpan.textContent = `Last active: ${formatTimestamp(session.lastAction)}`;
+      lastUpdateSpan.textContent = `Last update: ${formatTimestamp(session.lastUpdate)}`;
       titleContainer.appendChild(lastUpdateSpan);
     }
 
@@ -1212,23 +1210,12 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
       editButton.title = 'Edit session name';
       editButton.addEventListener('click', (e) => {
         e.stopPropagation();
-        void handleEditSessionName(session.id, session.title, existingNames);
+        void handleEditSessionName(session.id, session.title);
       });
       actionsContainer.appendChild(editButton);
     }
 
     actionsContainer.appendChild(restoreButton);
-
-    const deleteButton = document.createElement('button');
-    deleteButton.className =
-      'btn btn-square btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity text-error';
-    deleteButton.innerHTML = '🗑️';
-    deleteButton.title = 'Delete session';
-    deleteButton.addEventListener('click', (e) => {
-      e.stopPropagation();
-      void handleDeleteSession(session.id, session.title);
-    });
-    actionsContainer.appendChild(deleteButton);
 
     header.appendChild(leftSide);
     header.appendChild(actionsContainer);
@@ -1267,9 +1254,8 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
  * Handle editing a session's name using a modal dialog.
  * @param {number} collectionId
  * @param {string} currentName
- * @param {Set<string>} existingNames
  */
-async function handleEditSessionName(collectionId, currentName, existingNames) {
+async function handleEditSessionName(collectionId, currentName) {
   const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('editSessionNameModal'));
   const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById('editSessionNameInput'));
   const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('editSessionNameCancelButton'));
@@ -1285,12 +1271,6 @@ async function handleEditSessionName(collectionId, currentName, existingNames) {
   }
 
   nameInput.value = currentName;
-  
-  // Clear any previous error message
-  const existingError = modal.querySelector('.text-error');
-  if (existingError) {
-    existingError.remove();
-  }
   
   // Track selected icon
   let selectedIcon = '';
@@ -1319,22 +1299,9 @@ async function handleEditSessionName(collectionId, currentName, existingNames) {
 
   const handleConfirm = async () => {
     if (confirmButton.disabled) return;
-
-    // Remove previous error
-    const prevError = modal.querySelector('.text-error');
-    if (prevError) prevError.remove();
-
     const newName = nameInput.value.trim();
     const nameChanged = newName && newName !== currentName;
     const iconSelected = selectedIcon && selectedIcon !== '';
-
-    if (nameChanged && existingNames.has(newName)) {
-      const errorDiv = document.createElement('div');
-      errorDiv.className = 'text-error text-xs mt-2';
-      errorDiv.textContent = 'A session with this name already exists.';
-      nameInput.insertAdjacentElement('afterend', errorDiv);
-      return;
-    }
 
     if (nameChanged || iconSelected) {
       // Show loading state
@@ -1446,113 +1413,6 @@ async function handleEditSessionName(collectionId, currentName, existingNames) {
     nameInput.focus();
     nameInput.select(); // Select all text for easy editing
   }, 50);
-}
-
-/**
- * Handle deleting a session using a confirmation modal.
- * @param {number} collectionId
- * @param {string} sessionTitle
- */
-async function handleDeleteSession(collectionId, sessionTitle) {
-  const modal = /** @type {HTMLDialogElement | null} */ (document.getElementById('deleteSessionModal'));
-  const nameDisplay = /** @type {HTMLElement | null} */ (document.getElementById('deleteSessionNameDisplay'));
-  const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('deleteSessionCancelButton'));
-  const confirmButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('deleteSessionConfirmButton'));
-
-  if (!modal || !nameDisplay || !cancelButton || !confirmButton) {
-    console.error('Delete session dialog elements not found');
-    if (statusMessage) {
-      concludeStatus('Could not open delete dialog.', 'error', 3000, statusMessage);
-    }
-    return;
-  }
-
-  nameDisplay.textContent = sessionTitle;
-
-  const handleConfirm = async () => {
-    if (confirmButton.disabled) return;
-
-    // Show loading state
-    const originalButtonContent = confirmButton.innerHTML;
-    confirmButton.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Deleting...';
-    confirmButton.disabled = true;
-    cancelButton.disabled = true;
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: DELETE_SESSION_MESSAGE,
-        collectionId,
-      });
-
-      if (response && response.ok) {
-        if (statusMessage) {
-          concludeStatus('Session deleted successfully', 'success', 3000, statusMessage);
-        }
-        await initializeSessions(); // Refresh the list
-      } else {
-        throw new Error(response?.error || 'Failed to delete session');
-      }
-    } catch (error) {
-      console.error('[popup] Error deleting session:', error);
-      if (statusMessage) {
-        concludeStatus(`Error: ${error.message}`, 'error', 4000, statusMessage);
-      }
-    } finally {
-      // Restore button state
-      confirmButton.innerHTML = originalButtonContent;
-      confirmButton.disabled = false;
-      cancelButton.disabled = false;
-      modal.close();
-    }
-  };
-
-  const handleCancel = () => {
-    modal.close();
-  };
-
-  const handleWindowKeyDown = (/** @type {KeyboardEvent} */ e) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      modal.close();
-    } else if (e.key === 'Enter') {
-      // If a button is focused, let the browser handle the Enter key to click it
-      if (document.activeElement instanceof HTMLButtonElement) {
-        return;
-      }
-      e.preventDefault();
-      e.stopPropagation();
-      void handleConfirm();
-    }
-  };
-
-  const handleCancelEvent = (/** @type {Event} */ e) => {
-    e.preventDefault(); // Prevent default dialog close to handle it via our window listener
-    e.stopPropagation();
-  };
-
-  // Store original button content for restoration
-  const originalConfirmButtonContent = confirmButton.innerHTML;
-
-  confirmButton.addEventListener('click', handleConfirm, { once: true });
-  cancelButton.addEventListener('click', handleCancel, { once: true });
-  window.addEventListener('keydown', handleWindowKeyDown, true);
-  modal.addEventListener('cancel', handleCancelEvent);
-
-  modal.addEventListener('close', () => {
-    confirmButton.removeEventListener('click', handleConfirm);
-    cancelButton.removeEventListener('click', handleCancel);
-    window.removeEventListener('keydown', handleWindowKeyDown, true);
-    modal.removeEventListener('cancel', handleCancelEvent);
-    // Restore button state in case modal was closed while loading
-    if (confirmButton.classList.contains('loading')) {
-      confirmButton.innerHTML = originalConfirmButtonContent;
-      confirmButton.disabled = false;
-      cancelButton.disabled = false;
-    }
-  }, { once: true });
-
-  modal.showModal();
 }
 
 /**

@@ -10,7 +10,6 @@ import {
   handleOpenAllItemsInCollection,
   handleFetchSessionDetails,
   handleUpdateSessionName,
-  handleDeleteSession,
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
   exportCurrentSessionToRaindrop,
@@ -89,7 +88,6 @@ const RESTORE_TAB_MESSAGE = 'mirror:restoreTab';
 const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
-const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -1053,20 +1051,48 @@ async function updateSplitPageGroupInfo(url, groupName) {
  * @returns {Promise<number | null>} The group ID if found, null otherwise
  */
 async function findTabGroupByName(groupName) {
-  if (!chrome.tabGroups || typeof chrome.tabGroups.query !== 'function') {
+  if (!chrome.tabGroups || typeof chrome.tabGroups.get !== 'function') {
     return null;
   }
 
   try {
-    const groups = await chrome.tabGroups.query({});
-    const matchingGroup = groups.find(
-      (group) =>
-        group &&
-        typeof group.title === 'string' &&
-        group.title.trim() === groupName.trim(),
-    );
+    // Get all tabs to find unique group IDs
+    const allTabs = await chrome.tabs.query({});
+    const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
+    const groupIds = new Set();
 
-    return matchingGroup ? matchingGroup.id : null;
+    allTabs.forEach((tab) => {
+      if (typeof tab.groupId === 'number' && tab.groupId !== noneGroupId) {
+        groupIds.add(tab.groupId);
+      }
+    });
+
+    // Check each group to find one with matching name
+    for (const groupId of groupIds) {
+      try {
+        const group = await new Promise((resolve, reject) => {
+          chrome.tabGroups.get(groupId, (group) => {
+            const lastError = chrome.runtime.lastError;
+            if (lastError) {
+              reject(new Error(lastError.message));
+              return;
+            }
+            resolve(group);
+          });
+        });
+
+        if (
+          group &&
+          typeof group.title === 'string' &&
+          group.title.trim() === groupName.trim()
+        ) {
+          return groupId;
+        }
+      } catch (error) {
+        // Continue to next group if this one fails
+        continue;
+      }
+    }
   } catch (error) {
     console.warn('[background] Failed to find tab group by name:', error);
   }
@@ -1138,70 +1164,64 @@ async function restoreSplitPages() {
       return;
     }
 
-    // ⚡ Bolt: Use Promise.all to open tabs in parallel for much faster restoration
-    await Promise.all(
-      entriesToOpen.map(async (entry) => {
-        try {
-          const url = entry.url;
-          // Note: We skip the secondary chrome.tabs.query({ url }) check here for performance.
-          // The initial existingUrls check is sufficient for the common case.
-
-          // Create the tab
-          const tab = await chrome.tabs.create({ url, active: false });
-
-          // If entry has a group name, try to add it to that group
-          if (
-            entry.groupName &&
-            typeof entry.groupName === 'string' &&
-            tab.id
-          ) {
-            try {
-              // Wait a bit for the tab to be fully created before grouping
-              // Reduced delay since we are running in parallel
-              await new Promise((resolve) => setTimeout(resolve, 100));
-
-              const groupId = await findTabGroupByName(entry.groupName);
-
-              if (
-                groupId !== null &&
-                chrome.tabs &&
-                typeof chrome.tabs.group === 'function'
-              ) {
-                // Add tab to existing group
-                await new Promise((resolve, reject) => {
-                  chrome.tabs.group(
-                    { tabIds: tab.id, groupId },
-                    (resultGroupId) => {
-                      const lastError = chrome.runtime.lastError;
-                      if (lastError) {
-                        // Don't reject, just log warning so other tabs continue
-                        console.warn(
-                          `[background] Error adding tab to group: ${lastError.message}`,
-                        );
-                        resolve(null);
-                        return;
-                      }
-                      resolve(resultGroupId);
-                    },
-                  );
-                });
-              }
-            } catch (error) {
-              console.warn(
-                `[background] Failed to add split page to group "${entry.groupName}":`,
-                error,
-              );
-            }
-          }
-        } catch (error) {
-          console.warn(
-            '[background] Failed to restore split page:',
-            entry.url,
-            error,
-          );
+    for (const entry of entriesToOpen) {
+      try {
+        const url = entry.url;
+        // Double-check the tab wasn't opened between the query and now
+        const currentTabs = await chrome.tabs.query({ url });
+        if (currentTabs.length > 0) {
+          continue;
         }
-      }),
-    );
+
+        // Create the tab
+        const tab = await chrome.tabs.create({ url, active: false });
+
+        // If entry has a group name, try to add it to that group
+        if (entry.groupName && typeof entry.groupName === 'string' && tab.id) {
+          try {
+            // Wait a bit for the tab to be fully created before grouping
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            const groupId = await findTabGroupByName(entry.groupName);
+
+            if (
+              groupId !== null &&
+              chrome.tabs &&
+              typeof chrome.tabs.group === 'function'
+            ) {
+              // Add tab to existing group
+              await new Promise((resolve, reject) => {
+                chrome.tabs.group(
+                  { tabIds: tab.id, groupId },
+                  (resultGroupId) => {
+                    const lastError = chrome.runtime.lastError;
+                    if (lastError) {
+                      console.warn(
+                        `[background] Error adding tab to group: ${lastError.message}`,
+                      );
+                      reject(new Error(lastError.message));
+                      return;
+                    }
+                    resolve(resultGroupId);
+                  },
+                );
+              });
+            }
+          } catch (error) {
+            console.warn(
+              `[background] Failed to add split page to group "${entry.groupName}":`,
+              error,
+            );
+          }
+        }
+      } catch (error) {
+        console.warn(
+          '[background] Failed to restore split page:',
+          entry.url,
+          error,
+        );
+      }
+    }
   } catch (error) {
     console.warn('[background] Failed to restore split pages:', error);
   } finally {
@@ -2581,19 +2601,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[background] Update session name failed:', error);
-        sendResponse({ ok: false, error: error.message });
-      });
-    return true;
-  }
-
-  if (message.type === DELETE_SESSION_MESSAGE) {
-    const { collectionId } = message;
-    handleDeleteSession(collectionId)
-      .then((result) => {
-        sendResponse({ ok: true, ...result });
-      })
-      .catch((error) => {
-        console.error('[background] Delete session failed:', error);
         sendResponse({ ok: false, error: error.message });
       });
     return true;

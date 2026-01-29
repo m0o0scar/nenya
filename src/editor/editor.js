@@ -3,10 +3,11 @@
  */
 
 class Shape {
-    constructor(type, color, opacity) {
+    constructor(type, color, opacity, lineWidth = 4) {
         this.type = type;
         this.color = color;
         this.opacity = opacity;
+        this.lineWidth = lineWidth;
         this.selected = false;
         this.id = Date.now() + Math.random();
     }
@@ -15,22 +16,21 @@ class Shape {
         ctx.globalAlpha = this.opacity;
         ctx.strokeStyle = this.color;
         ctx.fillStyle = this.color;
-        ctx.lineWidth = 4;
+        ctx.lineWidth = this.lineWidth;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
     }
 
     contains(x, y, ctx) { return false; }
     move(dx, dy) {}
 
-    // Returns list of handles: {x, y, type, cursor}
     getHandles() { return []; }
-
-    // Update shape based on handle drag
     updateHandle(handleType, x, y, dx, dy) {}
 }
 
 class RectShape extends Shape {
-    constructor(x, y, w, h, color, opacity) {
-        super('rect', color, opacity);
+    constructor(x, y, w, h, color, opacity, lineWidth) {
+        super('rect', color, opacity, lineWidth);
         this.x = x;
         this.y = y;
         this.w = w;
@@ -49,15 +49,14 @@ class RectShape extends Shape {
     }
 
     contains(x, y) {
-        // Normalize rect
-        const nx = this.w < 0 ? this.x + this.w : this.x;
-        const ny = this.h < 0 ? this.y + this.h : this.y;
-        const nw = Math.abs(this.w);
-        const nh = Math.abs(this.h);
+        let nx = this.w < 0 ? this.x + this.w : this.x;
+        let ny = this.h < 0 ? this.y + this.h : this.y;
+        let nw = Math.abs(this.w);
+        let nh = Math.abs(this.h);
 
-        // Check if point is near the border (stroke)
-        const outer = (x >= nx - 4 && x <= nx + nw + 4 && y >= ny - 4 && y <= ny + nh + 4);
-        const inner = (x >= nx + 4 && x <= nx + nw - 4 && y >= ny + 4 && y <= ny + nh - 4);
+        const t = Math.max(5, this.lineWidth / 2);
+        const outer = (x >= nx - t && x <= nx + nw + t && y >= ny - t && y <= ny + nh + t);
+        const inner = (x >= nx + t && x <= nx + nw - t && y >= ny + t && y <= ny + nh - t);
         return outer && !inner;
     }
 
@@ -82,9 +81,6 @@ class RectShape extends Shape {
     }
 
     updateHandle(handleType, x, y, dx, dy) {
-        // Simplification: We assume rect logic based on corners
-        // This logic handles resizing by updating x,y,w,h
-        // It's a bit tricky with negative width/height, so let's normalize first
         let nx = this.w < 0 ? this.x + this.w : this.x;
         let ny = this.h < 0 ? this.y + this.h : this.y;
         let nw = Math.abs(this.w);
@@ -105,8 +101,8 @@ class RectShape extends Shape {
 }
 
 class ArrowShape extends Shape {
-    constructor(x1, y1, x2, y2, color, opacity) {
-        super('arrow', color, opacity);
+    constructor(x1, y1, x2, y2, color, opacity, lineWidth) {
+        super('arrow', color, opacity, lineWidth);
         this.x1 = x1;
         this.y1 = y1;
         this.x2 = x2;
@@ -115,7 +111,7 @@ class ArrowShape extends Shape {
 
     draw(ctx) {
         super.draw(ctx);
-        const headlen = 15;
+        const headlen = 15 + this.lineWidth;
         const angle = Math.atan2(this.y2 - this.y1, this.x2 - this.x1);
 
         ctx.beginPath();
@@ -132,6 +128,7 @@ class ArrowShape extends Shape {
         if (this.selected) {
              ctx.fillStyle = 'white';
              ctx.strokeStyle = '#00a1ff';
+             ctx.lineWidth = 1; // Selection handle line width
              ctx.fillRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.strokeRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.fillRect(this.x2 - 4, this.y2 - 4, 8, 8);
@@ -160,7 +157,7 @@ class ArrowShape extends Shape {
         const dy = y - yy;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        return dist < 8;
+        return dist < Math.max(6, this.lineWidth);
     }
 
     move(dx, dy) {
@@ -254,9 +251,11 @@ function drawSelectionBox(ctx, x, y, w, h) {
 }
 
 class Editor {
-    constructor(canvasId) {
+    constructor(canvasId, containerId) {
         this.canvas = document.getElementById(canvasId);
+        this.container = document.getElementById(containerId);
         this.ctx = this.canvas.getContext('2d');
+
         this.shapes = [];
         this.backgroundImage = null;
         this.tool = 'select';
@@ -264,16 +263,24 @@ class Editor {
         this.isDragging = false;
         this.dragStart = { x: 0, y: 0 };
         this.lastPos = { x: 0, y: 0 };
-        this.draggingHandle = null; // { shape, type }
+        this.draggingHandle = null;
 
         this.cropRect = null;
         this.isCropping = false;
         this.cropHandle = null;
 
+        // Properties
         this.color = '#ff0000';
         this.opacity = 1.0;
+        this.lineWidth = 4;
         this.fontFamily = 'Arial';
         this.fontSize = 24;
+
+        // Zoom/Pan
+        this.scale = 1;
+        this.panX = 0;
+        this.panY = 0;
+        this.isPanning = false;
 
         this.init();
     }
@@ -294,6 +301,7 @@ class Editor {
                 this.backgroundImage.onload = () => {
                     this.canvas.width = this.backgroundImage.width;
                     this.canvas.height = this.backgroundImage.height;
+                    this.fitToScreen();
                     this.render();
                 };
                 this.backgroundImage.src = dataUrl;
@@ -303,21 +311,56 @@ class Editor {
         }
     }
 
+    fitToScreen() {
+        if (!this.backgroundImage) return;
+        const containerW = this.container.clientWidth;
+        const containerH = this.container.clientHeight;
+        const imgW = this.canvas.width;
+        const imgH = this.canvas.height;
+
+        const scaleX = (containerW - 40) / imgW; // Padding
+        const scaleY = (containerH - 40) / imgH;
+        this.scale = Math.min(scaleX, scaleY, 1); // Don't zoom in by default if image is small
+
+        // Center
+        this.panX = (containerW - imgW * this.scale) / 2;
+        this.panY = (containerH - imgH * this.scale) / 2;
+
+        this.updateTransform();
+        this.updateZoomUI();
+    }
+
+    updateTransform() {
+        // We apply transform style to canvas for zoom/pan
+        // But for high DPI clarity we might want to scale the context?
+        // For simplicity and performance, CSS transform is good for view,
+        // but we need to map events correctly.
+        this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+    }
+
     attachToolbarListeners() {
-        const tools = ['select', 'crop', 'arrow', 'rect', 'text'];
+        const tools = ['select', 'pan', 'crop', 'arrow', 'rect', 'text'];
         tools.forEach(t => {
-            document.getElementById(`tool-${t}`).addEventListener('click', () => {
-                this.setTool(t);
-            });
+            const el = document.getElementById(`tool-${t}`);
+            if (el) el.addEventListener('click', () => this.setTool(t));
         });
 
+        // Zoom
+        document.getElementById('zoom-in').addEventListener('click', () => this.zoom(0.1));
+        document.getElementById('zoom-out').addEventListener('click', () => this.zoom(-0.1));
+        document.getElementById('zoom-fit').addEventListener('click', () => this.fitToScreen());
+
+        // Props
         document.getElementById('prop-color').addEventListener('input', (e) => {
             this.color = e.target.value;
             this.updateSelectedShape();
         });
-
         document.getElementById('prop-opacity').addEventListener('input', (e) => {
             this.opacity = parseFloat(e.target.value);
+            this.updateSelectedShape();
+        });
+        document.getElementById('prop-stroke').addEventListener('input', (e) => {
+            this.lineWidth = parseInt(e.target.value);
             this.updateSelectedShape();
         });
 
@@ -325,23 +368,24 @@ class Editor {
             this.fontFamily = e.target.value;
             this.updateSelectedShape();
         });
-
         document.getElementById('prop-font-size').addEventListener('change', (e) => {
             this.fontSize = parseInt(e.target.value);
             this.updateSelectedShape();
         });
 
-        document.getElementById('action-delete').addEventListener('click', () => {
-            this.deleteSelected();
-        });
+        document.getElementById('action-delete').addEventListener('click', () => this.deleteSelected());
+        document.getElementById('action-save').addEventListener('click', () => this.saveImage());
+        document.getElementById('action-copy').addEventListener('click', () => this.copyToClipboard());
+    }
 
-        document.getElementById('action-save').addEventListener('click', () => {
-            this.saveImage();
-        });
+    zoom(delta) {
+        this.scale = Math.max(0.1, Math.min(5, this.scale + delta));
+        this.updateTransform();
+        this.updateZoomUI();
+    }
 
-        document.getElementById('action-copy').addEventListener('click', () => {
-            this.copyToClipboard();
-        });
+    updateZoomUI() {
+        document.getElementById('zoom-level').textContent = `${Math.round(this.scale * 100)}%`;
     }
 
     setTool(tool) {
@@ -359,17 +403,29 @@ class Editor {
 
     updateToolbarUI() {
         document.querySelectorAll('.join-item').forEach(btn => btn.classList.remove('tool-active'));
-        document.getElementById(`tool-${this.tool}`).classList.add('tool-active');
+        const activeBtn = document.getElementById(`tool-${this.tool}`);
+        if(activeBtn) activeBtn.classList.add('tool-active');
 
-        const canvas = document.getElementById('editor-canvas');
-        if (this.tool === 'select') canvas.className = 'cursor-default shadow-lg bg-white';
-        else canvas.className = 'cursor-crosshair shadow-lg bg-white';
+        // Cursor
+        let cursor = 'default';
+        if (this.tool === 'pan') cursor = 'grab';
+        else if (this.tool === 'select') cursor = 'default';
+        else cursor = 'crosshair';
+        this.canvas.style.cursor = cursor;
 
+        // Visibility
         const textProps = document.getElementById('text-props');
         if (this.tool === 'text' || (this.getSelectedShape() instanceof TextShape)) {
             textProps.classList.remove('hidden');
         } else {
             textProps.classList.add('hidden');
+        }
+
+        const strokeProp = document.getElementById('stroke-prop');
+        if (this.tool === 'rect' || this.tool === 'arrow' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape)) {
+            strokeProp.style.visibility = 'visible';
+        } else {
+            strokeProp.style.visibility = 'hidden';
         }
     }
 
@@ -382,6 +438,7 @@ class Editor {
         if (shape) {
             shape.color = this.color;
             shape.opacity = this.opacity;
+            if (shape.lineWidth !== undefined) shape.lineWidth = this.lineWidth;
             if (shape instanceof TextShape) {
                 shape.fontFamily = this.fontFamily;
                 shape.fontSize = this.fontSize;
@@ -404,28 +461,37 @@ class Editor {
             deleteBtn.disabled = false;
             document.getElementById('prop-color').value = shape.color;
             document.getElementById('prop-opacity').value = shape.opacity;
+            if (shape.lineWidth) document.getElementById('prop-stroke').value = shape.lineWidth;
 
             if (shape instanceof TextShape) {
                 document.getElementById('text-props').classList.remove('hidden');
                 document.getElementById('prop-font-family').value = shape.fontFamily;
                 document.getElementById('prop-font-size').value = shape.fontSize;
             } else {
-                if (this.tool !== 'text') {
-                     document.getElementById('text-props').classList.add('hidden');
-                }
+                 if (this.tool !== 'text') document.getElementById('text-props').classList.add('hidden');
             }
         } else {
             deleteBtn.disabled = true;
-            if (this.tool !== 'text') {
-                 document.getElementById('text-props').classList.add('hidden');
-            }
+            if (this.tool !== 'text') document.getElementById('text-props').classList.add('hidden');
         }
+        this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
     attachCanvasListeners() {
+        // Container listener for wheel zoom
+        this.container.addEventListener('wheel', (e) => {
+            if (e.ctrlKey) {
+                e.preventDefault();
+                this.zoom(e.deltaY > 0 ? -0.1 : 0.1);
+            }
+        });
+
+        // Event listeners on container/window to handle drag outside canvas?
+        // Or on canvas itself? Canvas itself is transformed, so coordinates need mapping.
+        // Attaching to window/container for move/up is safer.
         this.canvas.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        this.canvas.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        this.canvas.addEventListener('mouseup', this.handleMouseUp.bind(this));
+        window.addEventListener('mousemove', this.handleMouseMove.bind(this));
+        window.addEventListener('mouseup', this.handleMouseUp.bind(this));
         this.canvas.addEventListener('dblclick', this.handleDoubleClick.bind(this));
 
         window.addEventListener('keydown', (e) => {
@@ -435,20 +501,28 @@ class Editor {
             if (e.key === 'Enter' && this.tool === 'crop' && this.cropRect) {
                 this.applyCrop();
             }
+            // Shortcuts
+            if (e.key.toLowerCase() === 'v') this.setTool('select');
+            if (e.key === ' ') this.setTool('pan');
+            if (e.key.toLowerCase() === 'c') this.setTool('crop');
+            if (e.key.toLowerCase() === 'r') this.setTool('rect');
+            if (e.key.toLowerCase() === 'a') this.setTool('arrow');
+            if (e.key.toLowerCase() === 't') this.setTool('text');
         });
     }
 
-    getMousePos(e) {
+    // Convert screen coordinates (clientX) to Canvas coordinates (accounting for scale/pan)
+    getCanvasPos(clientX, clientY) {
         const rect = this.canvas.getBoundingClientRect();
         return {
-            x: (e.clientX - rect.left) * (this.canvas.width / rect.width),
-            y: (e.clientY - rect.top) * (this.canvas.height / rect.height)
+            x: (clientX - rect.left) / this.scale,
+            y: (clientY - rect.top) / this.scale
         };
     }
 
     handleDoubleClick(e) {
         if (this.tool !== 'select') return;
-        const pos = this.getMousePos(e);
+        const pos = this.getCanvasPos(e.clientX, e.clientY);
 
         for (let i = this.shapes.length - 1; i >= 0; i--) {
             if (this.shapes[i] instanceof TextShape && this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
@@ -463,26 +537,32 @@ class Editor {
     }
 
     handleMouseDown(e) {
-        const pos = this.getMousePos(e);
-        this.dragStart = pos;
-        this.lastPos = pos;
+        const pos = this.getCanvasPos(e.clientX, e.clientY);
+        this.dragStart = { x: e.clientX, y: e.clientY }; // Screen coords for panning
+        this.lastPos = pos; // Canvas coords for drawing
         this.isDragging = true;
         this.draggingHandle = null;
 
+        if (this.tool === 'pan') {
+            this.isPanning = true;
+            this.canvas.style.cursor = 'grabbing';
+            return;
+        }
+
         if (this.tool === 'select') {
-            // Check handles of selected shape first
+            // Check handles
             const selected = this.getSelectedShape();
             if (selected) {
                 const handles = selected.getHandles();
                 for (let h of handles) {
-                    if (Math.abs(pos.x - h.x) < 6 && Math.abs(pos.y - h.y) < 6) {
+                    if (Math.abs(pos.x - h.x) < 8/this.scale && Math.abs(pos.y - h.y) < 8/this.scale) {
                         this.draggingHandle = { shape: selected, type: h.type };
-                        return; // Found handle, stop
+                        return;
                     }
                 }
             }
 
-            // Hit test shapes
+            // Hit test
             let hit = false;
             for (let i = this.shapes.length - 1; i >= 0; i--) {
                 if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
@@ -512,10 +592,10 @@ class Editor {
                 this.cropHandle = 'se';
             }
         } else if (this.tool === 'rect') {
-            this.currentShape = new RectShape(pos.x, pos.y, 0, 0, this.color, this.opacity);
+            this.currentShape = new RectShape(pos.x, pos.y, 0, 0, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'arrow') {
-            this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity);
+            this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'text') {
             const text = prompt('Enter text:');
@@ -533,44 +613,56 @@ class Editor {
     }
 
     handleMouseMove(e) {
-        const pos = this.getMousePos(e);
-        const dx = pos.x - this.lastPos.x;
-        const dy = pos.y - this.lastPos.y;
-        this.lastPos = pos;
-
-        // Update cursors
-        if (this.tool === 'select') {
-            // Check handles
-            const selected = this.getSelectedShape();
-            let cursor = 'default';
-            if (selected) {
-                 const handles = selected.getHandles();
-                 for (let h of handles) {
-                     if (Math.abs(pos.x - h.x) < 6 && Math.abs(pos.y - h.y) < 6) {
-                         cursor = h.cursor;
-                         break;
-                     }
-                 }
-                 if (cursor === 'default' && selected.contains(pos.x, pos.y, this.ctx)) {
-                     cursor = 'move';
-                 }
-            } else {
-                // Check if hovering over any shape
-                 for (let i = this.shapes.length - 1; i >= 0; i--) {
-                    if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
-                        cursor = 'move';
-                        break;
-                    }
-                }
-            }
-            this.canvas.style.cursor = cursor;
-        } else if (this.tool === 'crop' && this.cropRect && !this.isDragging) {
-             const handle = this.getCropHandle(pos.x, pos.y);
-             if (handle) this.canvas.style.cursor = handle === 'move' ? 'move' : 'nwse-resize';
-             else this.canvas.style.cursor = 'crosshair';
+        if (this.isPanning) {
+            const dx = e.clientX - this.dragStart.x;
+            const dy = e.clientY - this.dragStart.y;
+            this.panX += dx;
+            this.panY += dy;
+            this.dragStart = { x: e.clientX, y: e.clientY };
+            this.updateTransform();
+            return;
         }
 
-        if (!this.isDragging) return;
+        const pos = this.getCanvasPos(e.clientX, e.clientY);
+        const dx = pos.x - this.lastPos.x;
+        const dy = pos.y - this.lastPos.y;
+
+        // Update cursors if not dragging
+        if (!this.isDragging) {
+             this.lastPos = pos;
+             if (this.tool === 'select') {
+                const selected = this.getSelectedShape();
+                let cursor = 'default';
+                if (selected) {
+                     const handles = selected.getHandles();
+                     for (let h of handles) {
+                         if (Math.abs(pos.x - h.x) < 8/this.scale && Math.abs(pos.y - h.y) < 8/this.scale) {
+                             cursor = h.cursor;
+                             break;
+                         }
+                     }
+                     if (cursor === 'default' && selected.contains(pos.x, pos.y, this.ctx)) {
+                         cursor = 'move';
+                     }
+                } else {
+                     for (let i = this.shapes.length - 1; i >= 0; i--) {
+                        if (this.shapes[i].contains(pos.x, pos.y, this.ctx)) {
+                            cursor = 'move';
+                            break;
+                        }
+                    }
+                }
+                this.canvas.style.cursor = cursor;
+            } else if (this.tool === 'crop' && this.cropRect) {
+                 const handle = this.getCropHandle(pos.x, pos.y);
+                 if (handle) this.canvas.style.cursor = handle === 'move' ? 'move' : 'nwse-resize';
+                 else this.canvas.style.cursor = 'crosshair';
+            }
+            return;
+        }
+
+        // Processing Drag
+        this.lastPos = pos;
 
         if (this.tool === 'select') {
             if (this.draggingHandle) {
@@ -595,6 +687,12 @@ class Editor {
     }
 
     handleMouseUp(e) {
+        if (this.isPanning) {
+            this.isPanning = false;
+            this.canvas.style.cursor = 'grab';
+            return;
+        }
+
         this.isDragging = false;
         this.draggingHandle = null;
         if (this.tool === 'rect' || this.tool === 'arrow') {
@@ -618,7 +716,7 @@ class Editor {
             sw: [r.x, r.y + r.h],
             se: [r.x + r.w, r.y + r.h]
         };
-        const dist = 10;
+        const dist = 10 / this.scale;
         for (let h in handles) {
             const [hx, hy] = handles[h];
             if (Math.abs(x - hx) < dist && Math.abs(y - hy) < dist) return h;
@@ -673,6 +771,7 @@ class Editor {
             this.backgroundImage = newImg;
             this.shapes = [];
             this.cropRect = null;
+            this.fitToScreen(); // Re-fit after crop
             this.render();
         };
         newImg.src = this.canvas.toDataURL();
@@ -707,6 +806,7 @@ class Editor {
         let nw = Math.abs(r.w);
         let nh = Math.abs(r.h);
 
+        // Draw overlay in 4 parts
         ctx.fillRect(0, 0, this.canvas.width, ny);
         ctx.fillRect(0, ny + nh, this.canvas.width, this.canvas.height - (ny + nh));
         ctx.fillRect(0, ny, nx, nh);
@@ -722,18 +822,70 @@ class Editor {
             [nx, ny], [nx + nw, ny],
             [nx, ny + nh], [nx + nw, ny + nh]
         ];
-        handles.forEach(([hx, hy]) => ctx.fillRect(hx - 3, hy - 3, 6, 6));
+        const hSize = 6 / this.scale;
+        handles.forEach(([hx, hy]) => ctx.fillRect(hx - hSize/2, hy - hSize/2, hSize, hSize));
 
         ctx.restore();
+    }
+
+    getExportCanvas() {
+        // If crop is active (visible but not applied), use it for export
+        // Otherwise use full canvas
+        let exportX = 0, exportY = 0, exportW = this.canvas.width, exportH = this.canvas.height;
+
+        if (this.tool === 'crop' && this.cropRect) {
+             const r = this.cropRect;
+             let nx = r.w < 0 ? r.x + r.w : r.x;
+             let ny = r.h < 0 ? r.y + r.h : r.y;
+             let nw = Math.abs(r.w);
+             let nh = Math.abs(r.h);
+
+             // Clamp
+             nx = Math.max(0, nx);
+             ny = Math.max(0, ny);
+             nw = Math.min(nw, this.canvas.width - nx);
+             nh = Math.min(nh, this.canvas.height - ny);
+
+             if (nw > 0 && nh > 0) {
+                 exportX = nx; exportY = ny; exportW = nw; exportH = nh;
+             }
+        }
+
+        // Create temp canvas
+        const tCanvas = document.createElement('canvas');
+        tCanvas.width = exportW;
+        tCanvas.height = exportH;
+        const tCtx = tCanvas.getContext('2d');
+
+        // Render current state to main canvas first (without overlay)
+        const prevTool = this.tool;
+        const prevCrop = this.cropRect;
+
+        // Temporarily disable tool overlay for rendering
+        this.tool = 'select'; // or 'none'
+        this.cropRect = null;
+        this.render();
+
+        // Copy to temp canvas
+        tCtx.drawImage(this.canvas, exportX, exportY, exportW, exportH, 0, 0, exportW, exportH);
+
+        // Restore
+        this.tool = prevTool;
+        this.cropRect = prevCrop;
+        this.render();
+
+        return tCanvas;
     }
 
     saveImage() {
         this.shapes.forEach(s => s.selected = false);
         this.render();
 
+        const canvas = this.getExportCanvas();
+
         const link = document.createElement('a');
         link.download = `screenshot-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.jpg`;
-        link.href = this.canvas.toDataURL('image/jpeg', 0.9);
+        link.href = canvas.toDataURL('image/jpeg', 0.9);
         link.click();
     }
 
@@ -741,8 +893,10 @@ class Editor {
         this.shapes.forEach(s => s.selected = false);
         this.render();
 
+        const canvas = this.getExportCanvas();
+
         try {
-            const blob = await new Promise(resolve => this.canvas.toBlob(resolve, 'image/png'));
+            const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
             await navigator.clipboard.write([
                 new ClipboardItem({ 'image/png': blob })
             ]);
@@ -759,5 +913,5 @@ class Editor {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    window.editor = new Editor('editor-canvas');
+    window.editor = new Editor('editor-canvas', 'canvas-container');
 });
