@@ -261,6 +261,96 @@ class TextShape extends Shape {
     }
 }
 
+class BlurShape extends Shape {
+    constructor(x, y, w, h, opacity) {
+        super('blur', '#000', opacity, 0);
+        this.x = x;
+        this.y = y;
+        this.w = w;
+        this.h = h;
+    }
+
+    draw(ctx, backgroundImage) {
+        if (!backgroundImage) return;
+
+        let nx = this.w < 0 ? this.x + this.w : this.x;
+        let ny = this.h < 0 ? this.y + this.h : this.y;
+        let nw = Math.abs(this.w);
+        let nh = Math.abs(this.h);
+
+        if (nw === 0 || nh === 0) return;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(nx, ny, nw, nh);
+        ctx.clip();
+
+        // Apply blur - scale with opacity
+        const blurAmount = 15 * (this.opacity || 1);
+        ctx.filter = `blur(${blurAmount}px)`;
+        ctx.drawImage(backgroundImage, 0, 0);
+        ctx.restore();
+
+        if (this.selected) {
+            drawSelectionBox(ctx, nx, ny, nw, nh);
+        }
+    }
+
+    contains(x, y) {
+        let nx = this.w < 0 ? this.x + this.w : this.x;
+        let ny = this.h < 0 ? this.y + this.h : this.y;
+        let nw = Math.abs(this.w);
+        let nh = Math.abs(this.h);
+        return (x >= nx && x <= nx + nw && y >= ny && y <= ny + nh);
+    }
+
+    move(dx, dy) {
+        this.x += dx;
+        this.y += dy;
+    }
+
+    getHandles() {
+        if (!this.selected) return [];
+        let nx = this.w < 0 ? this.x + this.w : this.x;
+        let ny = this.h < 0 ? this.y + this.h : this.y;
+        let nw = Math.abs(this.w);
+        let nh = Math.abs(this.h);
+
+        return [
+            { x: nx, y: ny, type: 'nw', cursor: 'nwse-resize' },
+            { x: nx + nw, y: ny, type: 'ne', cursor: 'nesw-resize' },
+            { x: nx + nw, y: ny + nh, type: 'se', cursor: 'nwse-resize' },
+            { x: nx, y: ny + nh, type: 'sw', cursor: 'nesw-resize' }
+        ];
+    }
+
+    updateHandle(handleType, x, y, dx, dy) {
+        let nx = this.w < 0 ? this.x + this.w : this.x;
+        let ny = this.h < 0 ? this.y + this.h : this.y;
+        let nw = Math.abs(this.w);
+        let nh = Math.abs(this.h);
+
+        switch(handleType) {
+            case 'nw': nx = x; ny = y; nw -= dx; nh -= dy; break;
+            case 'ne': ny = y; nw = x - nx; nh -= dy; break;
+            case 'se': nw = x - nx; nh = y - ny; break;
+            case 'sw': nx = x; nw -= dx; nh = y - ny; break;
+        }
+
+        this.x = nx;
+        this.y = ny;
+        this.w = nw;
+        this.h = nh;
+    }
+
+    clone() {
+        const copy = new BlurShape(this.x, this.y, this.w, this.h, this.opacity);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
+    }
+}
+
 function drawSelectionBox(ctx, x, y, w, h) {
     ctx.save();
     ctx.strokeStyle = '#00a1ff';
@@ -478,7 +568,7 @@ class Editor {
     }
 
     attachToolbarListeners() {
-        const tools = ['select', 'pan', 'crop', 'arrow', 'rect', 'text'];
+        const tools = ['select', 'pan', 'crop', 'arrow', 'rect', 'text', 'blur'];
         tools.forEach(t => {
             const el = document.getElementById(`tool-${t}`);
             if (el) el.addEventListener('click', () => this.setTool(t));
@@ -762,6 +852,7 @@ class Editor {
             if (key === 'r') this.setTool('rect');
             if (key === 'a') this.setTool('arrow');
             if (key === 't') this.setTool('text');
+            if (key === 'b') this.setTool('blur');
         });
     }
 
@@ -870,6 +961,10 @@ class Editor {
             this.saveHistory();
             this.currentShape = new RectShape(pos.x, pos.y, 0, 0, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
+        } else if (this.tool === 'blur') {
+            this.saveHistory();
+            this.currentShape = new BlurShape(pos.x, pos.y, 0, 0, this.opacity);
+            this.shapes.push(this.currentShape);
         } else if (this.tool === 'arrow') {
             this.saveHistory();
             this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
@@ -881,6 +976,8 @@ class Editor {
                 const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize);
                 this.shapes.push(shape);
                 shape.selected = true;
+                this.tool = 'select';
+                this.updateToolbarUI();
                 this.updateUI();
                 this.render();
             }
@@ -958,7 +1055,7 @@ class Editor {
                 this.currentShape.move(dx, dy);
                 this.render();
             }
-        } else if (this.tool === 'rect' && this.currentShape) {
+        } else if ((this.tool === 'rect' || this.tool === 'blur') && this.currentShape) {
             this.currentShape.w = pos.x - this.currentShape.x;
             this.currentShape.h = pos.y - this.currentShape.y;
             this.render();
@@ -981,9 +1078,11 @@ class Editor {
 
         this.isDragging = false;
         this.draggingHandle = null;
-        if (this.tool === 'rect' || this.tool === 'arrow') {
+        if (this.tool === 'rect' || this.tool === 'arrow' || this.tool === 'blur') {
             if (this.currentShape) {
                 this.currentShape.selected = true;
+                this.tool = 'select';
+                this.updateToolbarUI();
                 this.updateUI();
                 this.render();
             }
@@ -1077,7 +1176,7 @@ class Editor {
         this.ctx.drawImage(this.backgroundImage, 0, 0);
 
         this.ctx.save();
-        this.shapes.forEach(shape => shape.draw(this.ctx));
+        this.shapes.forEach(shape => shape.draw(this.ctx, this.backgroundImage));
         this.ctx.restore();
 
         if (this.tool === 'crop' && this.cropRect) {
