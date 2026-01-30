@@ -33,6 +33,7 @@ const SHORTCUT_CONFIG = {
     emoji: '💬',
     tooltip: 'Chat with llm',
     handler: () => handleGetMarkdown(),
+    key: 'c',
   },
   saveUnsorted: {
     emoji: '📤',
@@ -42,6 +43,7 @@ const SHORTCUT_CONFIG = {
         void handleSaveToUnsorted(saveUnsortedButton, statusMessage);
       }
     },
+    key: 'u',
   },
   encryptSave: {
     emoji: '🔐',
@@ -51,11 +53,13 @@ const SHORTCUT_CONFIG = {
         void handleEncryptAndSaveActive(encryptSaveButton, statusMessage);
       }
     },
+    key: 'e',
   },
   saveClipboardToUnsorted: {
     emoji: '🔗',
     tooltip: 'Save link in clipboard to unsorted',
     handler: () => void handleSaveClipboardToUnsorted(),
+    key: 'l',
   },
   importCustomCode: {
     emoji: '💾',
@@ -65,51 +69,61 @@ const SHORTCUT_CONFIG = {
         importCustomCodeFileInput.click();
       }
     },
+    key: 'j',
   },
   customFilter: {
     emoji: '⚡️',
     tooltip: 'Hide elements in page',
     handler: () => void handleCustomFilter(),
+    key: 'h',
   },
   splitPage: {
     emoji: '🈹',
     tooltip: 'Split page',
     handler: () => void handleSplitPage(),
+    key: 's',
   },
   autoReload: {
     emoji: '🔁',
     tooltip: 'Auto reload this page',
     handler: () => void handleAutoReload(),
+    key: 'r',
   },
   brightMode: {
     emoji: '🔆',
     tooltip: 'Render this page in bright mode',
     handler: () => void handleBrightMode(),
+    key: 'b',
   },
   darkMode: {
     emoji: '🌘',
     tooltip: 'Render this page in dark mode',
     handler: () => void handleDarkMode(),
+    key: 'd',
   },
   highlightText: {
     emoji: '🟨',
     tooltip: 'Highlight text in this page',
     handler: () => void handleHighlightText(),
+    key: 't',
   },
   customCode: {
     emoji: '📑',
     tooltip: 'Inject js/css into this page',
     handler: () => void handleCustomCode(),
+    key: 'i',
   },
   pictureInPicture: {
     emoji: '🖼️',
     tooltip: 'Picture in Picture',
     handler: () => void handlePictureInPicture(),
+    key: 'p',
   },
   openInPopup: {
     emoji: '↗️',
     tooltip: 'Open in popup',
     handler: () => handleOpenInPopup(),
+    key: 'o',
   },
   openOptions: {
     emoji: '⚙️',
@@ -266,9 +280,21 @@ async function loadAndRenderShortcuts() {
 
       const button = document.createElement('button');
       button.id = `${shortcutId}Button`;
-      button.className = 'btn btn-square btn-sm btn-ghost';
+      button.className = 'btn btn-square btn-sm btn-ghost relative';
       button.type = 'button';
-      button.textContent = config.emoji;
+
+      const emojiSpan = document.createElement('span');
+      emojiSpan.textContent = config.emoji;
+      button.appendChild(emojiSpan);
+
+      if (config.key) {
+        const keyBadge = document.createElement('span');
+        keyBadge.className =
+          'absolute -bottom-1 -right-1 text-[9px] opacity-50 font-mono leading-none pointer-events-none';
+        keyBadge.textContent = config.key;
+        button.appendChild(keyBadge);
+      }
+
       button.addEventListener('click', () => {
         void config.handler();
       });
@@ -3452,6 +3478,22 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       if (index >= 0 && index < pinnedItems.length) {
         const item = pinnedItems[index];
         void openBookmark(item.url);
+      }
+    }
+  });
+
+  // Handle Cmd/Ctrl + [key] shortcuts for pinned shortcut actions
+  window.addEventListener('keydown', (event) => {
+    if (event.metaKey || event.ctrlKey) {
+      const key = event.key.toLowerCase();
+      const matchedShortcut = Object.values(SHORTCUT_CONFIG).find(
+        (config) => config.key === key,
+      );
+
+      if (matchedShortcut) {
+        event.preventDefault();
+        event.stopPropagation();
+        void matchedShortcut.handler();
       }
     }
   });
