@@ -16,11 +16,7 @@ import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / backup';
-const LEGACY_COLLECTION_TITLE_1 = 'nenya / options';
-const LEGACY_COLLECTION_TITLE_2 = 'Options backup';
 
-// Legacy constants
-const BACKUP_ITEM_PREFIX = 'options-backup-chunk-';
 const STATE_STORAGE_KEY = 'optionsBackupState';
 const DEFAULT_PARENT_FOLDER_ID = '1';
 const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
@@ -533,23 +529,15 @@ async function fetchBackupCollections(tokens) {
 }
 
 /**
- * Find existing backup collection ids (current and legacy).
+ * Find the ID of the backup collection.
  * @param {StoredProviderTokens} tokens
- * @returns {Promise<{ primaryId: number | null, legacyId1: number | null, legacyId2: number | null }>}
+ * @returns {Promise<{ primaryId: number | null }>}
  */
 async function findBackupCollectionIds(tokens) {
   const items = await fetchBackupCollections(tokens);
   const primary = items.find((item) => item.title === BACKUP_COLLECTION_TITLE);
-  const legacy1 = items.find(
-    (item) => item.title === LEGACY_COLLECTION_TITLE_1,
-  );
-  const legacy2 = items.find(
-    (item) => item.title === LEGACY_COLLECTION_TITLE_2,
-  );
   return {
     primaryId: getCollectionId(primary),
-    legacyId1: getCollectionId(legacy1),
-    legacyId2: getCollectionId(legacy2),
   };
 }
 
@@ -710,51 +698,6 @@ async function downloadBackupFile(tokens, collectionId) {
 }
 
 /**
- * Load and reassemble legacy backup chunks from Raindrop.
- * @param {StoredProviderTokens} tokens
- * @param {number} collectionId
- * @returns {Promise<{ payload: OptionsBackupPayload | null, lastModified: number }>}
- */
-async function loadLegacyChunks(tokens, collectionId) {
-  const items = await fetchAllCollectionItems(tokens, collectionId);
-  const chunkItems = items.filter(
-    (item) =>
-      typeof item?.title === 'string' &&
-      item.title.startsWith(BACKUP_ITEM_PREFIX),
-  );
-
-  if (chunkItems.length === 0) {
-    return { payload: null, lastModified: 0 };
-  }
-
-  const sorted = chunkItems.sort((a, b) => {
-    const aMatch = String(a.title || '').match(/(\d+)$/);
-    const bMatch = String(b.title || '').match(/(\d+)$/);
-    const aNum = aMatch ? Number(aMatch[1]) : 0;
-    const bNum = bMatch ? Number(bMatch[1]) : 0;
-    return aNum - bNum;
-  });
-
-  const joined = sorted
-    .map((item) => String(item.excerpt ?? item.note ?? ''))
-    .join('');
-
-  const lastModified = Math.max(
-    0,
-    ...items.map((item) => Date.parse(item?.lastUpdate || '') || 0),
-  );
-
-  try {
-    /** @type {OptionsBackupPayload} */
-    const payload = JSON.parse(joined);
-    return { payload, lastModified };
-  } catch (error) {
-    console.warn('[options-backup] Failed to parse legacy backup payload:', error);
-    return { payload: null, lastModified };
-  }
-}
-
-/**
  * Execute a manual backup.
  * @returns {Promise<{ ok: boolean, errors: string[], state: BackupState }>}
  */
@@ -775,27 +718,14 @@ export async function runAutomaticRestore() {
   }
 
   try {
-    const { primaryId, legacyId1, legacyId2 } = await findBackupCollectionIds(tokens);
-    let targetCollectionId = primaryId;
-    let isLegacy = false;
-
-    if (!targetCollectionId && (legacyId1 || legacyId2)) {
-      targetCollectionId = legacyId1 || legacyId2;
-      isLegacy = true;
-    }
+    const { primaryId } = await findBackupCollectionIds(tokens);
+    const targetCollectionId = primaryId;
 
     if (!targetCollectionId) {
       return;
     }
 
-    let result;
-    if (isLegacy) {
-      result = await loadLegacyChunks(tokens, targetCollectionId);
-    } else {
-      result = await downloadBackupFile(tokens, targetCollectionId);
-    }
-
-    const { lastModified } = result;
+    const { lastModified } = await downloadBackupFile(tokens, targetCollectionId);
     if (!lastModified) {
       return;
     }
@@ -830,29 +760,14 @@ export async function runStartupSync() {
   }
 
   try {
-    const { primaryId, legacyId1, legacyId2 } = await findBackupCollectionIds(tokens);
+    const { primaryId } = await findBackupCollectionIds(tokens);
 
     let raindropLastModified = 0;
 
-    // Check primary first
+    // Check primary
     if (primaryId) {
        const res = await downloadBackupFile(tokens, primaryId);
        raindropLastModified = res.lastModified;
-    }
-
-    // If not found, check legacies
-    if (raindropLastModified === 0) {
-      if (legacyId1) {
-        const res = await loadLegacyChunks(tokens, legacyId1);
-        if (res.lastModified > raindropLastModified) {
-          raindropLastModified = res.lastModified;
-        }
-      } else if (legacyId2) {
-        const res = await loadLegacyChunks(tokens, legacyId2);
-        if (res.lastModified > raindropLastModified) {
-          raindropLastModified = res.lastModified;
-        }
-      }
     }
 
     const state = await loadState();
@@ -943,28 +858,14 @@ export async function runManualRestore() {
   }
 
   try {
-    const { primaryId, legacyId1, legacyId2 } = await findBackupCollectionIds(tokens);
+    const { primaryId } = await findBackupCollectionIds(tokens);
 
     let payload = null;
     let lastModified = 0;
 
-    // Try primary first
+    // Try primary
     if (primaryId) {
       const res = await downloadBackupFile(tokens, primaryId);
-      payload = res.payload;
-      lastModified = res.lastModified;
-    }
-
-    // Fallback to legacy
-    if (!payload && legacyId1) {
-      const res = await loadLegacyChunks(tokens, legacyId1);
-      payload = res.payload;
-      lastModified = res.lastModified;
-    }
-
-    // Fallback to older legacy
-    if (!payload && legacyId2) {
-      const res = await loadLegacyChunks(tokens, legacyId2);
       payload = res.payload;
       lastModified = res.lastModified;
     }
