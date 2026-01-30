@@ -119,6 +119,12 @@ const SHORTCUT_CONFIG = {
     handler: () => void handlePictureInPicture(),
     key: 'p',
   },
+  takeScreenshot: {
+    emoji: '📸',
+    tooltip: 'Take screenshot',
+    handler: () => void handleTakeScreenshot(),
+    key: 'k',
+  },
   openInPopup: {
     emoji: '↗️',
     tooltip: 'Open in popup',
@@ -181,6 +187,7 @@ let darkModeButton = null;
 let highlightTextButton = null;
 let customCodeButton = null;
 let pictureInPictureButton = null;
+let takeScreenshotButton = null;
 
 
 
@@ -342,6 +349,9 @@ async function loadAndRenderShortcuts() {
           break;
         case 'pictureInPicture':
           pictureInPictureButton = button;
+          break;
+        case 'takeScreenshot':
+          takeScreenshotButton = button;
           break;
       }
     });
@@ -2546,6 +2556,56 @@ async function handleSaveClipboardToUnsorted() {
     if (statusMessage) {
       concludeStatus(
         'Unable to save clipboard link to Unsorted.',
+        'error',
+        3000,
+        statusMessage,
+      );
+    }
+  }
+}
+
+/**
+ * Handle taking a screenshot of the current tab.
+ * @returns {Promise<void>}
+ */
+async function handleTakeScreenshot() {
+  try {
+    // Get the current active tab
+    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tabs || tabs.length === 0) {
+      if (statusMessage) {
+        concludeStatus('No active tab found.', 'error', 3000, statusMessage);
+      }
+      return;
+    }
+
+    const currentTab = tabs[0];
+
+    // Check if tab has a valid ID
+    if (typeof currentTab.id !== 'number') {
+      if (statusMessage) {
+        concludeStatus('Invalid tab ID.', 'error', 3000, statusMessage);
+      }
+      return;
+    }
+
+    // Send message to background to take screenshot
+    const response = await chrome.runtime.sendMessage({
+      type: 'clipboard:takeScreenshot',
+      tabId: currentTab.id,
+    });
+
+    if (response && response.success) {
+      // Close the popup as the editor will open in a new tab
+      window.close();
+    } else {
+      throw new Error(response?.error || 'Failed to take screenshot');
+    }
+  } catch (error) {
+    console.error('[popup] Error taking screenshot:', error);
+    if (statusMessage) {
+      concludeStatus(
+        'Unable to take screenshot.',
         'error',
         3000,
         statusMessage,

@@ -76,6 +76,7 @@ import {
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
+const TAKE_SCREENSHOT_MESSAGE = 'clipboard:takeScreenshot';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
@@ -2649,7 +2650,34 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === TAKE_SCREENSHOT_MESSAGE) {
+    const tabId = typeof message.tabId === 'number' ? message.tabId : null;
+    void (async () => {
+      try {
+        let targetTabId = tabId;
+        if (targetTabId === null) {
+          const tabs = await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+          });
+          if (tabs && tabs[0] && typeof tabs[0].id === 'number') {
+            targetTabId = tabs[0].id;
+          }
+        }
 
+        if (targetTabId !== null) {
+          const success = await handleScreenshotCopy(targetTabId);
+          sendResponse({ success });
+        } else {
+          sendResponse({ success: false, error: 'No active tab found' });
+        }
+      } catch (error) {
+        console.warn('[background] Failed to take screenshot:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
 
   if (message.type === 'launchElementPicker') {
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
@@ -3690,6 +3718,14 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Take screenshot
+    if (menuItemId === OTHER_MENU_IDS.TAKE_SCREENSHOT) {
+      if (tab && typeof tab.id === 'number') {
+        void handleScreenshotCopy(tab.id);
+      }
       return;
     }
 
