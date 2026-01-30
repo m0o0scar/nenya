@@ -49,6 +49,7 @@ export const OTHER_MENU_IDS = {
   SPLIT_TABS: 'nenya-split-tabs',
   UNSPLIT_TABS: 'nenya-unsplit-tabs',
   OPEN_IN_POPUP: 'nenya-open-in-popup',
+  TAKE_SCREENSHOT: 'nenya-take-screenshot',
 };
 
 /**
@@ -272,6 +273,12 @@ async function createOtherMenus() {
   await createMenuItem({
     id: OTHER_MENU_IDS.OPEN_IN_POPUP,
     title: 'Open in popup',
+    contexts: ['page'],
+  });
+
+  await createMenuItem({
+    id: OTHER_MENU_IDS.TAKE_SCREENSHOT,
+    title: 'Take screenshot',
     contexts: ['page'],
   });
 }

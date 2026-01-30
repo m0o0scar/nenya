@@ -5,6 +5,7 @@
  * @property {string} id - Button identifier
  * @property {string} emoji - Button emoji icon
  * @property {string} tooltip - Button tooltip text
+ * @property {string} [key] - Keyboard shortcut key
  */
 
 /**
@@ -12,28 +13,66 @@
  * @type {ShortcutButton[]}
  */
 const AVAILABLE_SHORTCUTS = [
-  { id: 'getMarkdown', emoji: '💬', tooltip: 'Chat with llm' },
-  { id: 'saveUnsorted', emoji: '📤', tooltip: 'Save to unsorted' },
+  { id: 'getMarkdown', emoji: '💬', tooltip: 'Chat with llm', key: 'c' },
+  { id: 'saveUnsorted', emoji: '📤', tooltip: 'Save to unsorted', key: 'u' },
   {
     id: 'encryptSave',
     emoji: '🔐',
     tooltip: 'Encrypt & save to unsorted',
+    key: 'e',
   },
   {
     id: 'saveClipboardToUnsorted',
     emoji: '🔗',
     tooltip: 'Save link in clipboard to unsorted',
+    key: 'l',
   },
-  { id: 'importCustomCode', emoji: '💾', tooltip: 'Import custom JS/CSS rule' },
-  { id: 'customFilter', emoji: '⚡️', tooltip: 'Hide elements in page' },
-  { id: 'splitPage', emoji: '🈹', tooltip: 'Split page' },
-  { id: 'autoReload', emoji: '🔁', tooltip: 'Auto reload this page' },
-  { id: 'brightMode', emoji: '🔆', tooltip: 'Render this page in bright mode' },
-  { id: 'darkMode', emoji: '🌘', tooltip: 'Render this page in dark mode' },
-  { id: 'highlightText', emoji: '🟨', tooltip: 'Highlight text in this page' },
-  { id: 'customCode', emoji: '📑', tooltip: 'Inject js/css into this page' },
-  { id: 'pictureInPicture', emoji: '🖼️', tooltip: 'Picture in Picture' },
-  { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup' },
+  {
+    id: 'importCustomCode',
+    emoji: '💾',
+    tooltip: 'Import custom JS/CSS rule',
+    key: 'j',
+  },
+  {
+    id: 'customFilter',
+    emoji: '⚡️',
+    tooltip: 'Hide elements in page',
+    key: 'h',
+  },
+  { id: 'splitPage', emoji: '🈹', tooltip: 'Split page', key: 's' },
+  { id: 'autoReload', emoji: '🔁', tooltip: 'Auto reload this page', key: 'r' },
+  {
+    id: 'brightMode',
+    emoji: '🔆',
+    tooltip: 'Render this page in bright mode',
+    key: 'b',
+  },
+  {
+    id: 'darkMode',
+    emoji: '🌘',
+    tooltip: 'Render this page in dark mode',
+    key: 'd',
+  },
+  {
+    id: 'highlightText',
+    emoji: '🟨',
+    tooltip: 'Highlight text in this page',
+    key: 't',
+  },
+  {
+    id: 'customCode',
+    emoji: '📑',
+    tooltip: 'Inject js/css into this page',
+    key: 'i',
+  },
+  {
+    id: 'pictureInPicture',
+    emoji: '🖼️',
+    tooltip: 'Picture in Picture',
+    key: 'p',
+  },
+  { id: 'takeScreenshot', emoji: '📸', tooltip: 'Take screenshot', key: 'k' },
+  { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup', key: 'o' },
   // Note: openOptions is always shown at the end and cannot be pinned
 ];
 
@@ -189,8 +228,19 @@ function render() {
         <div class="flex items-center gap-2 flex-1">
           <span class="text-2xl select-none">${shortcut.emoji}</span>
           <div class="flex-1">
-            <div class="font-medium text-sm select-none">${shortcut.tooltip}</div>
-            <div class="text-xs text-base-content/60 select-none">${shortcut.id}</div>
+            <div class="flex items-center gap-2">
+              <div class="font-medium text-sm select-none">${
+                shortcut.tooltip
+              }</div>
+              ${
+                shortcut.key
+                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.key.toUpperCase()}</span>`
+                  : ''
+              }
+            </div>
+            <div class="text-xs text-base-content/60 select-none">${
+              shortcut.id
+            }</div>
           </div>
         </div>
         <div class="flex items-center gap-2">
@@ -289,7 +339,14 @@ function render() {
         <div class="flex items-center gap-2 flex-1">
           <span class="text-2xl">${shortcut.emoji}</span>
           <div class="flex-1">
-            <div class="font-medium text-sm">${shortcut.tooltip}</div>
+            <div class="flex items-center gap-2">
+              <div class="font-medium text-sm">${shortcut.tooltip}</div>
+              ${
+                shortcut.key
+                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.key.toUpperCase()}</span>`
+                  : ''
+              }
+            </div>
             <div class="text-xs text-base-content/60">${shortcut.id}</div>
           </div>
         </div>
