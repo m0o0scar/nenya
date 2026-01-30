@@ -16,6 +16,7 @@ import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / backup';
+const BACKUP_FILE_NAME = 'options_backup.txt';
 
 const STATE_STORAGE_KEY = 'optionsBackupState';
 const DEFAULT_PARENT_FOLDER_ID = '1';
@@ -636,8 +637,8 @@ async function uploadBackupFile(tokens, collectionId, payload) {
   const json = JSON.stringify(payload);
   const blob = new Blob([json], { type: 'text/plain' });
   const formData = new FormData();
-  formData.append('file', blob, 'options_backup.json');
   formData.append('collectionId', String(collectionId));
+  formData.append('file', blob, BACKUP_FILE_NAME);
 
   const response = await raindropRequest('/raindrop/file', tokens, {
     method: 'PUT',
@@ -669,9 +670,9 @@ async function downloadBackupFile(tokens, collectionId) {
   // Find the file item
   const fileItem = items.find(
     (item) =>
-      item.title === 'options_backup.json' ||
-      item.file?.name === 'options_backup.json' ||
-      (item.type === 'link' && item.link.endsWith('options_backup.json'))
+      item.title === BACKUP_FILE_NAME ||
+      item.file?.name === BACKUP_FILE_NAME ||
+      (item.type === 'link' && item.link.endsWith(BACKUP_FILE_NAME))
   );
 
   if (!fileItem) {
