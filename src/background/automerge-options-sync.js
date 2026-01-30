@@ -1184,7 +1184,7 @@ export async function syncWithRemote(options = {}) {
 // MIGRATION FROM OLD FORMAT
 // ============================================================================
 
-const JSON_BACKUP_COLLECTION_TITLES = ['nenya / options backup', 'Options backup'];
+const JSON_BACKUP_COLLECTION_TITLES = ['nenya / options', 'Options backup'];
 
 /**
  * Detect if old JSON-based backup exists.

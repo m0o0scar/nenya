@@ -1829,7 +1829,7 @@ async function handleRaindropSearch(query) {
 
     const queryLower = query.toLowerCase();
     const searchTerms = queryLower.split(' ').filter(term => term.length > 0);
-    const EXCLUDED_COLLECTION_NAME = 'nenya / options backup';
+    const EXCLUDED_COLLECTION_NAME = 'nenya / options';
 
     // Identify excluded collection IDs
     const excludedCollectionIds = new Set();

@@ -15,7 +15,7 @@ import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
 const PROVIDER_ID = 'raindrop';
-const BACKUP_COLLECTION_TITLE = 'nenya / options backup';
+const BACKUP_COLLECTION_TITLE = 'nenya / options';
 const LEGACY_BACKUP_COLLECTION_TITLE = 'Options backup';
 const BACKUP_ITEM_PREFIX = 'options-backup-chunk-';
 const BACKUP_TAGS = ['nenya', 'options-backup'];
