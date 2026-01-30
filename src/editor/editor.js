@@ -636,9 +636,21 @@ class Editor {
     async init() {
         this.attachToolbarListeners();
         this.attachCanvasListeners();
+        this.initTheme();
         await this.loadSettings();
         await this.loadImage();
         this.updateUI();
+    }
+
+    initTheme() {
+        const updateTheme = (e) => {
+            const theme = e.matches ? 'dark' : 'light';
+            document.documentElement.setAttribute('data-theme', theme);
+        };
+
+        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+        updateTheme(mediaQuery);
+        mediaQuery.addEventListener('change', updateTheme);
     }
 
     /**

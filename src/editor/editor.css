@@ -14,8 +14,8 @@ body {
 }
 
 #canvas-container {
-    background-color: #f0f2f5;
-    background-image: radial-gradient(#d1d5db 1px, transparent 1px);
+    background-color: var(--color-base-200);
+    background-image: radial-gradient(color-mix(in srgb, var(--color-base-content), transparent 80%) 1px, transparent 1px);
     background-size: 20px 20px;
 }
 
