@@ -290,7 +290,7 @@ async function loadAndRenderShortcuts() {
       if (config.key) {
         const keyBadge = document.createElement('span');
         keyBadge.className =
-          'absolute -bottom-1 -right-1 text-[9px] opacity-50 font-mono leading-none pointer-events-none';
+          'absolute -bottom-1 -right-1 text-[9px] font-mono leading-none pointer-events-none bg-base-content/10 rounded-sm px-1 py-0.5 text-base-content/60';
         keyBadge.textContent = config.key;
         button.appendChild(keyBadge);
       }
