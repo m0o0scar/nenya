@@ -47,7 +47,7 @@ import {
   updateScreenshotMenuVisibility,
   COPY_MENU_IDS,
   RAINDROP_MENU_IDS,
-  OTHER_MENU_IDS,
+  NENYA_MENU_IDS,
   PARENT_MENU_IDS,
   isCopyMenuItem,
   isRaindropMenuItem,
@@ -72,6 +72,7 @@ import {
   initRaindropExport,
   exportRaindropItemsToBookmarks,
 } from './raindrop-export.js';
+import { handlePictureInPicture } from './pip-handler.js';
 
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
@@ -3696,11 +3697,26 @@ if (chrome.contextMenus) {
     }
 
     // ========================================================================
-    // OTHER MENU HANDLERS
+    // NENYA MENU HANDLERS
     // ========================================================================
 
+    // Chat with LLM
+    if (menuItemId === NENYA_MENU_IDS.CHAT) {
+      void (async () => {
+        try {
+          // Set a flag in storage to indicate we should navigate to chat page
+          await chrome.storage.local.set({ openChatPage: true });
+          // Open the extension popup
+          await chrome.action.openPopup();
+        } catch (error) {
+          console.warn('[contextMenu] Failed to open chat:', error);
+        }
+      })();
+      return;
+    }
+
     // Split tabs
-    if (menuItemId === OTHER_MENU_IDS.SPLIT_TABS) {
+    if (menuItemId === NENYA_MENU_IDS.SPLIT_TABS) {
       if (tab) {
         void handleSplitTabsContextMenu(tab);
       }
@@ -3708,7 +3724,7 @@ if (chrome.contextMenus) {
     }
 
     // Unsplit tabs
-    if (menuItemId === OTHER_MENU_IDS.UNSPLIT_TABS) {
+    if (menuItemId === NENYA_MENU_IDS.UNSPLIT_TABS) {
       if (tab) {
         void handleUnsplitTabsContextMenu(tab);
       }
@@ -3716,16 +3732,87 @@ if (chrome.contextMenus) {
     }
 
     // Open in popup
-    if (menuItemId === OTHER_MENU_IDS.OPEN_IN_POPUP) {
+    if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
       return;
     }
 
     // Take screenshot
-    if (menuItemId === OTHER_MENU_IDS.TAKE_SCREENSHOT) {
+    if (menuItemId === NENYA_MENU_IDS.TAKE_SCREENSHOT) {
       if (tab && typeof tab.id === 'number') {
         void handleScreenshotCopy(tab.id);
       }
+      return;
+    }
+
+    // Picture in Picture
+    if (menuItemId === NENYA_MENU_IDS.PIP) {
+      if (tab && typeof tab.id === 'number') {
+        void handlePictureInPicture(tab.id);
+      }
+      return;
+    }
+
+    // Hide elements (Custom Filter)
+    if (menuItemId === NENYA_MENU_IDS.CUSTOM_FILTER) {
+      if (tab && typeof tab.id === 'number') {
+        void launchElementPicker(tab.id);
+      }
+      return;
+    }
+
+    // Highlight Text
+    if (menuItemId === NENYA_MENU_IDS.HIGHLIGHT_TEXT) {
+      if (tab && tab.url) {
+        await chrome.storage.local.set({ highlightTextPrefillUrl: tab.url });
+        chrome.runtime.openOptionsPage();
+      }
+      return;
+    }
+
+    // Auto Reload
+    if (menuItemId === NENYA_MENU_IDS.AUTO_RELOAD) {
+      if (tab && tab.url) {
+        await chrome.storage.local.set({ autoReloadPrefillUrl: tab.url });
+        chrome.runtime.openOptionsPage();
+      }
+      return;
+    }
+
+    // Bright Mode
+    if (menuItemId === NENYA_MENU_IDS.BRIGHT_MODE) {
+      if (tab && tab.url) {
+        await chrome.storage.local.set({ brightModePrefillUrl: tab.url });
+        chrome.runtime.openOptionsPage();
+      }
+      return;
+    }
+
+    // Dark Mode
+    if (menuItemId === NENYA_MENU_IDS.DARK_MODE) {
+      if (tab && tab.url) {
+        const optionsUrl = chrome.runtime.getURL('src/options/index.html');
+        chrome.tabs.create({
+          url: `${optionsUrl}#dark-mode-heading&url=${encodeURIComponent(
+            tab.url,
+          )}`,
+        });
+      }
+      return;
+    }
+
+    // Inject JS/CSS (Custom Code Options)
+    if (menuItemId === NENYA_MENU_IDS.CUSTOM_CODE_OPTIONS) {
+      if (tab && tab.url) {
+        await chrome.storage.local.set({ customCodePrefillUrl: tab.url });
+        chrome.runtime.openOptionsPage();
+      }
+      return;
+    }
+
+    // Open Options
+    if (menuItemId === NENYA_MENU_IDS.OPTIONS) {
+      chrome.runtime.openOptionsPage();
       return;
     }
 
