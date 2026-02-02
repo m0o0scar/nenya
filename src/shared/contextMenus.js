@@ -145,42 +145,42 @@ async function createCopyMenu() {
 
   await createMenuItem({
     id: PARENT_MENU_IDS.COPY,
-    title: 'Copy',
+    title: '📋 Copy',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title',
+    title: '🔤 Title',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE_URL,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title\\nURL',
+    title: '🔤 Title\\nURL',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE_DASH_URL,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title - URL',
+    title: '🔤 Title - URL',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.MARKDOWN_LINK,
     parentId: PARENT_MENU_IDS.COPY,
-    title: '[Title](URL)',
+    title: 'Ⓜ️ [Title](URL)',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.SCREENSHOT,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Screenshot',
+    title: '📸 Screenshot',
     contexts,
   });
 }
@@ -202,35 +202,35 @@ async function createRaindropMenu() {
 
   await createMenuItem({
     id: PARENT_MENU_IDS.RAINDROP,
-    title: 'Raindrop',
+    title: '💧 Raindrop',
     contexts: allContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_PAGE,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save current page to unsorted',
+    title: '💾 Save current page to unsorted',
     contexts: pageContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_LINK,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save link to unsorted',
+    title: '💾 Save link to unsorted',
     contexts: ['link'],
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_CLIPBOARD,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save link in clipboard to unsorted',
+    title: '🔗 Save link in clipboard to unsorted',
     contexts: allContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.ENCRYPT_SAVE,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Encrypt && save to unsorted',
+    title: '🔐 Encrypt && save to unsorted',
     contexts: allContexts,
   });
 
@@ -254,7 +254,7 @@ async function createRaindropMenu() {
 async function createSendToLLMMenu() {
   await createMenuItem({
     id: PARENT_MENU_IDS.SEND_TO_LLM,
-    title: 'Send to LLM',
+    title: '🤖 Send to LLM',
     contexts: ['page'],
   });
 
@@ -293,7 +293,7 @@ async function createRootMenus() {
   await createMenuItem({
     id: NENYA_MENU_IDS.TOOLS_PARENT,
     // No parentId -> Root level
-    title: 'Tools',
+    title: '🛠️ Tools',
     contexts: contexts,
   });
 
@@ -358,7 +358,7 @@ async function createRootMenus() {
   await createMenuItem({
     id: NENYA_MENU_IDS.APPEARANCE_PARENT,
     // No parentId -> Root level
-    title: 'Appearance',
+    title: '🎨 Appearance',
     contexts: contexts,
   });
 
@@ -380,7 +380,7 @@ async function createRootMenus() {
   await createMenuItem({
     id: NENYA_MENU_IDS.DEVELOPER_PARENT,
     // No parentId -> Root level
-    title: 'Developer',
+    title: '💻 Developer',
     contexts: contexts,
   });
 
