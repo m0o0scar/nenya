@@ -276,7 +276,7 @@ async function createSendToLLMMenu() {
 async function createRunCodeMenu() {
   await createMenuItem({
     id: PARENT_MENU_IDS.RUN_CODE,
-    title: 'Run code',
+    title: '🚀 Run code',
     contexts: ['page'],
     visible: false, // Initially hidden
   });
