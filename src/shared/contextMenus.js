@@ -19,6 +19,7 @@ export const PARENT_MENU_IDS = {
   RAINDROP: 'nenya-raindrop-parent',
   SEND_TO_LLM: 'nenya-send-to-llm-parent',
   RUN_CODE: 'nenya-run-code-parent',
+  // NENYA parent removed as requested
 };
 
 /**
@@ -43,13 +44,42 @@ export const RAINDROP_MENU_IDS = {
 };
 
 /**
- * Other menu IDs
+ * Nenya submenu IDs (replacing OTHER_MENU_IDS)
  */
-export const OTHER_MENU_IDS = {
+export const NENYA_MENU_IDS = {
+  // CHAT removed as requested
+  OPTIONS: 'nenya-options',
+
+  // Submenu Parents
+  TOOLS_PARENT: 'nenya-tools-parent',
+  APPEARANCE_PARENT: 'nenya-appearance-parent',
+  DEVELOPER_PARENT: 'nenya-developer-parent',
+
+  // Tools
   SPLIT_TABS: 'nenya-split-tabs',
   UNSPLIT_TABS: 'nenya-unsplit-tabs',
   OPEN_IN_POPUP: 'nenya-open-in-popup',
   TAKE_SCREENSHOT: 'nenya-take-screenshot',
+  PIP: 'nenya-pip',
+  CUSTOM_FILTER: 'nenya-custom-filter',
+  HIGHLIGHT_TEXT: 'nenya-highlight-text',
+  AUTO_RELOAD: 'nenya-auto-reload',
+
+  // Appearance
+  BRIGHT_MODE: 'nenya-bright-mode',
+  DARK_MODE: 'nenya-dark-mode',
+
+  // Developer
+  CUSTOM_CODE_OPTIONS: 'nenya-custom-code-options',
+  IMPORT_RULE: 'nenya-import-rule',
+};
+
+// Deprecated export for backward compatibility during migration
+export const OTHER_MENU_IDS = {
+  SPLIT_TABS: NENYA_MENU_IDS.SPLIT_TABS,
+  UNSPLIT_TABS: NENYA_MENU_IDS.UNSPLIT_TABS,
+  OPEN_IN_POPUP: NENYA_MENU_IDS.OPEN_IN_POPUP,
+  TAKE_SCREENSHOT: NENYA_MENU_IDS.TAKE_SCREENSHOT,
 };
 
 /**
@@ -115,42 +145,42 @@ async function createCopyMenu() {
 
   await createMenuItem({
     id: PARENT_MENU_IDS.COPY,
-    title: 'Copy',
+    title: '📋 Copy',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title',
+    title: '🔤 Title',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE_URL,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title\\nURL',
+    title: '🔤 Title\\nURL',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.TITLE_DASH_URL,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Title - URL',
+    title: '🔤 Title - URL',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.MARKDOWN_LINK,
     parentId: PARENT_MENU_IDS.COPY,
-    title: '[Title](URL)',
+    title: 'Ⓜ️ [Title](URL)',
     contexts,
   });
 
   await createMenuItem({
     id: COPY_MENU_IDS.SCREENSHOT,
     parentId: PARENT_MENU_IDS.COPY,
-    title: 'Screenshot',
+    title: '📸 Screenshot',
     contexts,
   });
 }
@@ -172,35 +202,35 @@ async function createRaindropMenu() {
 
   await createMenuItem({
     id: PARENT_MENU_IDS.RAINDROP,
-    title: 'Raindrop',
+    title: '💧 Raindrop',
     contexts: allContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_PAGE,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save current page to unsorted',
+    title: '💾 Save current page to unsorted',
     contexts: pageContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_LINK,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save link to unsorted',
+    title: '💾 Save link to unsorted',
     contexts: ['link'],
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.SAVE_CLIPBOARD,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Save link in clipboard to unsorted',
+    title: '🔗 Save link in clipboard to unsorted',
     contexts: allContexts,
   });
 
   await createMenuItem({
     id: RAINDROP_MENU_IDS.ENCRYPT_SAVE,
     parentId: PARENT_MENU_IDS.RAINDROP,
-    title: 'Encrypt && save to unsorted',
+    title: '🔐 Encrypt && save to unsorted',
     contexts: allContexts,
   });
 
@@ -224,7 +254,7 @@ async function createRaindropMenu() {
 async function createSendToLLMMenu() {
   await createMenuItem({
     id: PARENT_MENU_IDS.SEND_TO_LLM,
-    title: 'Send to LLM',
+    title: '🤖 Send to LLM',
     contexts: ['page'],
   });
 
@@ -253,33 +283,131 @@ async function createRunCodeMenu() {
 }
 
 /**
- * Create other standalone menu items.
+ * Create root-level "Nenya" menus: Tools, Appearance, and Developer.
  * @returns {Promise<void>}
  */
-async function createOtherMenus() {
+async function createRootMenus() {
+  const contexts = ['page', 'selection', 'link', 'editable', 'image', 'video', 'audio'];
+
+  // --- Tools Submenu (Root Level) ---
   await createMenuItem({
-    id: OTHER_MENU_IDS.SPLIT_TABS,
-    title: 'Split tabs',
-    contexts: ['page'],
+    id: NENYA_MENU_IDS.TOOLS_PARENT,
+    // No parentId -> Root level
+    title: '🛠️ Tools',
+    contexts: contexts,
   });
 
   await createMenuItem({
-    id: OTHER_MENU_IDS.UNSPLIT_TABS,
-    title: 'Unsplit tabs',
-    contexts: ['page'],
-    visible: false, // Initially hidden, shown on split pages
+    id: NENYA_MENU_IDS.SPLIT_TABS,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🈹 Split tabs',
+    contexts: contexts,
   });
 
   await createMenuItem({
-    id: OTHER_MENU_IDS.OPEN_IN_POPUP,
-    title: 'Open in popup',
-    contexts: ['page'],
+    id: NENYA_MENU_IDS.UNSPLIT_TABS,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🈹 Unsplit tabs',
+    contexts: contexts,
+    visible: false, // Initially hidden
   });
 
   await createMenuItem({
-    id: OTHER_MENU_IDS.TAKE_SCREENSHOT,
-    title: 'Take screenshot',
-    contexts: ['page'],
+    id: NENYA_MENU_IDS.OPEN_IN_POPUP,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '↗️ Open in popup',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.TAKE_SCREENSHOT,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '📸 Take screenshot',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.PIP,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🖼️ Picture in Picture',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.CUSTOM_FILTER,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '⚡️ Hide elements',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.HIGHLIGHT_TEXT,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🟨 Highlight text',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.AUTO_RELOAD,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🔁 Auto reload',
+    contexts: contexts,
+  });
+
+  // --- Appearance Submenu (Root Level) ---
+  await createMenuItem({
+    id: NENYA_MENU_IDS.APPEARANCE_PARENT,
+    // No parentId -> Root level
+    title: '🎨 Appearance',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.BRIGHT_MODE,
+    parentId: NENYA_MENU_IDS.APPEARANCE_PARENT,
+    title: '🔆 Bright mode',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.DARK_MODE,
+    parentId: NENYA_MENU_IDS.APPEARANCE_PARENT,
+    title: '🌘 Dark mode',
+    contexts: contexts,
+  });
+
+  // --- Developer Submenu (Root Level) ---
+  await createMenuItem({
+    id: NENYA_MENU_IDS.DEVELOPER_PARENT,
+    // No parentId -> Root level
+    title: '💻 Developer',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.CUSTOM_CODE_OPTIONS,
+    parentId: NENYA_MENU_IDS.DEVELOPER_PARENT,
+    title: '📑 Inject JS/CSS',
+    contexts: contexts,
+  });
+
+  // Note: Import Rule is omitted as file input is difficult from context menu
+  // Users can use the popup or options page for that
+
+  // Separator
+  await createMenuItem({
+    id: 'nenya-separator-options',
+    // No parentId -> Root level
+    type: 'separator',
+    contexts: contexts,
+  });
+
+  // Options (Root Level)
+  await createMenuItem({
+    id: NENYA_MENU_IDS.OPTIONS,
+    // No parentId -> Root level
+    title: '⚙️ Options',
+    contexts: contexts,
   });
 }
 
@@ -466,10 +594,10 @@ export async function updateSplitMenuVisibility(tab) {
   const isSplitPage = tab && tab.url && tab.url.startsWith(splitBaseUrl);
 
   try {
-    await chrome.contextMenus.update(OTHER_MENU_IDS.SPLIT_TABS, {
+    await chrome.contextMenus.update(NENYA_MENU_IDS.SPLIT_TABS, {
       visible: !isSplitPage,
     });
-    await chrome.contextMenus.update(OTHER_MENU_IDS.UNSPLIT_TABS, {
+    await chrome.contextMenus.update(NENYA_MENU_IDS.UNSPLIT_TABS, {
       visible: Boolean(isSplitPage),
     });
   } catch (error) {
@@ -532,7 +660,7 @@ export async function setupContextMenus() {
         await createRaindropMenu();
         await createSendToLLMMenu();
         await createRunCodeMenu();
-        await createOtherMenus();
+        await createRootMenus();
 
 
 
