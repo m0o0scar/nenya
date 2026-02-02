@@ -19,7 +19,7 @@ export const PARENT_MENU_IDS = {
   RAINDROP: 'nenya-raindrop-parent',
   SEND_TO_LLM: 'nenya-send-to-llm-parent',
   RUN_CODE: 'nenya-run-code-parent',
-  NENYA: 'nenya-main-parent',
+  // NENYA parent removed as requested
 };
 
 /**
@@ -47,7 +47,7 @@ export const RAINDROP_MENU_IDS = {
  * Nenya submenu IDs (replacing OTHER_MENU_IDS)
  */
 export const NENYA_MENU_IDS = {
-  CHAT: 'nenya-chat',
+  // CHAT removed as requested
   OPTIONS: 'nenya-options',
 
   // Submenu Parents
@@ -283,31 +283,16 @@ async function createRunCodeMenu() {
 }
 
 /**
- * Create the Nenya menu with Tools, Appearance, and Developer submenus.
+ * Create root-level "Nenya" menus: Tools, Appearance, and Developer.
  * @returns {Promise<void>}
  */
-async function createNenyaMenu() {
+async function createRootMenus() {
   const contexts = ['page', 'selection', 'link', 'editable', 'image', 'video', 'audio'];
 
-  // Main Nenya Parent
-  await createMenuItem({
-    id: PARENT_MENU_IDS.NENYA,
-    title: 'Nenya',
-    contexts: contexts,
-  });
-
-  // Chat with LLM
-  await createMenuItem({
-    id: NENYA_MENU_IDS.CHAT,
-    parentId: PARENT_MENU_IDS.NENYA,
-    title: '💬 Chat with LLM',
-    contexts: contexts,
-  });
-
-  // --- Tools Submenu ---
+  // --- Tools Submenu (Root Level) ---
   await createMenuItem({
     id: NENYA_MENU_IDS.TOOLS_PARENT,
-    parentId: PARENT_MENU_IDS.NENYA,
+    // No parentId -> Root level
     title: 'Tools',
     contexts: contexts,
   });
@@ -369,10 +354,10 @@ async function createNenyaMenu() {
     contexts: contexts,
   });
 
-  // --- Appearance Submenu ---
+  // --- Appearance Submenu (Root Level) ---
   await createMenuItem({
     id: NENYA_MENU_IDS.APPEARANCE_PARENT,
-    parentId: PARENT_MENU_IDS.NENYA,
+    // No parentId -> Root level
     title: 'Appearance',
     contexts: contexts,
   });
@@ -391,10 +376,10 @@ async function createNenyaMenu() {
     contexts: contexts,
   });
 
-  // --- Developer Submenu ---
+  // --- Developer Submenu (Root Level) ---
   await createMenuItem({
     id: NENYA_MENU_IDS.DEVELOPER_PARENT,
-    parentId: PARENT_MENU_IDS.NENYA,
+    // No parentId -> Root level
     title: 'Developer',
     contexts: contexts,
   });
@@ -412,15 +397,15 @@ async function createNenyaMenu() {
   // Separator
   await createMenuItem({
     id: 'nenya-separator-options',
-    parentId: PARENT_MENU_IDS.NENYA,
+    // No parentId -> Root level
     type: 'separator',
     contexts: contexts,
   });
 
-  // Options
+  // Options (Root Level)
   await createMenuItem({
     id: NENYA_MENU_IDS.OPTIONS,
-    parentId: PARENT_MENU_IDS.NENYA,
+    // No parentId -> Root level
     title: '⚙️ Options',
     contexts: contexts,
   });
@@ -675,7 +660,7 @@ export async function setupContextMenus() {
         await createRaindropMenu();
         await createSendToLLMMenu();
         await createRunCodeMenu();
-        await createNenyaMenu();
+        await createRootMenus();
 
 
 

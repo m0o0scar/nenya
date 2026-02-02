@@ -3700,21 +3700,6 @@ if (chrome.contextMenus) {
     // NENYA MENU HANDLERS
     // ========================================================================
 
-    // Chat with LLM
-    if (menuItemId === NENYA_MENU_IDS.CHAT) {
-      void (async () => {
-        try {
-          // Set a flag in storage to indicate we should navigate to chat page
-          await chrome.storage.local.set({ openChatPage: true });
-          // Open the extension popup
-          await chrome.action.openPopup();
-        } catch (error) {
-          console.warn('[contextMenu] Failed to open chat:', error);
-        }
-      })();
-      return;
-    }
-
     // Split tabs
     if (menuItemId === NENYA_MENU_IDS.SPLIT_TABS) {
       if (tab) {
