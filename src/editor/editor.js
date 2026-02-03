@@ -1597,8 +1597,14 @@ class Editor {
             const btnSize = 32 / this.scale;
             const margin = 10 / this.scale;
             const gap = 8 / this.scale;
+            const pillHeight = btnSize + margin * 2;
+
             const bx = nx + nw - (btnSize * 2 + gap + margin * 2);
-            const by = ny + nh + margin;
+            let by = ny + nh + margin;
+
+            if (by + pillHeight > this.canvas.height) {
+                by = ny + nh - margin - pillHeight;
+            }
 
             // Pill Background
             ctx.setLineDash([]);
