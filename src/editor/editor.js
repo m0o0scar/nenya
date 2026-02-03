@@ -1493,12 +1493,52 @@ class Editor {
     updateCropRect(x, y, dx, dy) {
         const r = this.cropRect;
         if (!r) return;
-        switch(this.cropHandle) {
-            case 'se': r.w = x - r.x; r.h = y - r.y; break;
-            case 'sw': r.x = x; r.w -= dx; r.h = y - r.y; break;
-            case 'ne': r.y = y; r.w = x - r.x; r.h -= dy; break;
-            case 'nw': r.x = x; r.y = y; r.w -= dx; r.h -= dy; break;
-            case 'move': r.x += dx; r.y += dy; break;
+
+        // Canvas bounds
+        const maxW = this.canvas.width;
+        const maxH = this.canvas.height;
+
+        // Get current normalized bounds
+        let nx = r.w < 0 ? r.x + r.w : r.x;
+        let ny = r.h < 0 ? r.y + r.h : r.y;
+        let nw = Math.abs(r.w);
+        let nh = Math.abs(r.h);
+
+        if (this.cropHandle === 'move') {
+            // Proposed new position
+            let newNx = nx + dx;
+            let newNy = ny + dy;
+
+            // Clamp
+            if (newNx < 0) dx = -nx;
+            if (newNx + nw > maxW) dx = maxW - (nx + nw);
+            if (newNy < 0) dy = -ny;
+            if (newNy + nh > maxH) dy = maxH - (ny + nh);
+
+            r.x += dx;
+            r.y += dy;
+        } else {
+            // Clamp mouse position
+            const mx = Math.max(0, Math.min(x, maxW));
+            const my = Math.max(0, Math.min(y, maxH));
+
+            // Determine anchor based on handle
+            // anchors are based on current normalized bounds
+            let anchorX, anchorY;
+
+            switch (this.cropHandle) {
+                case 'nw': anchorX = nx + nw; anchorY = ny + nh; break; // Anchor SE
+                case 'ne': anchorX = nx; anchorY = ny + nh; break; // Anchor SW
+                case 'sw': anchorX = nx + nw; anchorY = ny; break; // Anchor NE
+                case 'se': anchorX = nx; anchorY = ny; break; // Anchor NW
+            }
+
+            if (anchorX !== undefined && anchorY !== undefined) {
+                r.x = anchorX;
+                r.y = anchorY;
+                r.w = mx - anchorX;
+                r.h = my - anchorY;
+            }
         }
     }
 
