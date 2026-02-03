@@ -444,16 +444,19 @@ function urlMatchesPattern(url, pattern) {
     return false;
   }
 
-  try {
-    const urlPattern = new URLPattern(pattern);
-    return urlPattern.test(url);
-  } catch (error) {
-    // Fall back to simple string matching for invalid patterns
+  if (typeof URLPattern !== 'undefined') {
     try {
-      return url.includes(pattern) || new RegExp(pattern).test(url);
-    } catch {
-      return false;
+      const urlPattern = new URLPattern(pattern);
+      return urlPattern.test(url);
+    } catch (error) {
+      // Fall back to simple string matching for invalid patterns
     }
+  }
+
+  try {
+    return url.includes(pattern) || new RegExp(pattern).test(url);
+  } catch {
+    return false;
   }
 }
 

@@ -54,6 +54,16 @@ function urlMatchesPatterns(url, patterns) {
     return false;
   }
 
+  // Check if URLPattern is supported
+  if (typeof URLPattern === 'undefined') {
+    try {
+      // Fallback: simple string matching
+      return patterns.some(pattern => url.includes(pattern));
+    } catch {
+      return false;
+    }
+  }
+
   try {
     const urlObj = new URL(url);
     for (const pattern of patterns) {

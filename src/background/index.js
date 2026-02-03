@@ -948,7 +948,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
         (tab) =>
           tab.id &&
           tab.url &&
-          (tab.url.startsWith('http:') || tab.url.startsWith('https:')),
+          (tab.url.startsWith('http:') || tab.url.startsWith('https:')) &&
+          !tab.discarded,
       )
       .map((tab) => {
         const tabId = tab.id;
