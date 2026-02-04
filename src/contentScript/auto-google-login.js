@@ -717,38 +717,37 @@
 
     if (!isGoogleOAuthPage) {
       // Monitor URL changes
-      let lastUrl = currentUrl;
-      const urlCheckInterval = setInterval(() => {
-        const newUrl = getCurrentUrl();
-        if (newUrl !== lastUrl) {
-          lastUrl = newUrl;
-          // Check for OAuth confirmation page
-          if (newUrl.includes('accounts.google.com/signin/oauth/id')) {
-            clearInterval(urlCheckInterval);
-            // Only handle if auto login was initiated by a matching rule
-            void (async () => {
-              const initiated = await wasAutoLoginInitiated();
-              if (initiated) {
-                void handleOAuthConfirmation();
-              }
-            })();
-          } else if (
-            newUrl.includes('accounts.google.com') ||
-            newUrl.includes('oauth') ||
-            newUrl.includes('signin')
-          ) {
-            clearInterval(urlCheckInterval);
-            // Wait a bit for page to load, then attempt account selection
-            setTimeout(() => {
-              void attemptAccountSelection();
-            }, 1000);
-          }
-        }
-      }, 500);
+      let cleanupObserver = null;
 
-      // Clear interval after 30 seconds
+      const handleUrlChange = (newUrl) => {
+        // Check for OAuth confirmation page
+        if (newUrl.includes('accounts.google.com/signin/oauth/id')) {
+          if (cleanupObserver) cleanupObserver();
+          // Only handle if auto login was initiated by a matching rule
+          void (async () => {
+            const initiated = await wasAutoLoginInitiated();
+            if (initiated) {
+              void handleOAuthConfirmation();
+            }
+          })();
+        } else if (
+          newUrl.includes('accounts.google.com') ||
+          newUrl.includes('oauth') ||
+          newUrl.includes('signin')
+        ) {
+          if (cleanupObserver) cleanupObserver();
+          // Wait a bit for page to load, then attempt account selection
+          setTimeout(() => {
+            void attemptAccountSelection();
+          }, 1000);
+        }
+      };
+
+      cleanupObserver = createUrlObserver(handleUrlChange);
+
+      // Clear observer after 30 seconds
       setTimeout(() => {
-        clearInterval(urlCheckInterval);
+        if (cleanupObserver) cleanupObserver();
         loginInProgress = false;
       }, 30000);
     } else {
@@ -1195,6 +1194,40 @@
   }
 
   /**
+   * Create a URL observer that calls the callback when URL changes
+   * @param {function(string): void} callback
+   * @returns {function(): void} Cleanup function
+   */
+  function createUrlObserver(callback) {
+    let lastUrl = getCurrentUrl();
+
+    const check = () => {
+      const currentUrl = getCurrentUrl();
+      if (currentUrl !== lastUrl) {
+        lastUrl = currentUrl;
+        callback(currentUrl);
+      }
+    };
+
+    // Modern Navigation API
+    if (window.navigation) {
+      window.navigation.addEventListener('navigatesuccess', check);
+    }
+
+    // History API events
+    window.addEventListener('popstate', check);
+    window.addEventListener('hashchange', check);
+
+    return () => {
+      if (window.navigation) {
+        window.navigation.removeEventListener('navigatesuccess', check);
+      }
+      window.removeEventListener('popstate', check);
+      window.removeEventListener('hashchange', check);
+    };
+  }
+
+  /**
    * Load rules from storage
    * @returns {Promise<void>}
    */
@@ -1225,6 +1258,75 @@
    */
   async function init() {
     await loadRules();
+
+    let lastProcessedUrl = getCurrentUrl();
+
+    const handleUrlChange = (currentUrl) => {
+      if (currentUrl === lastProcessedUrl) {
+        return;
+      }
+      lastProcessedUrl = currentUrl;
+
+      // Check if we navigated to OAuth confirmation page
+      if (currentUrl.includes('accounts.google.com/signin/oauth/id')) {
+        // Only handle if auto login was initiated by a matching rule
+        void (async () => {
+          const initiated = await wasAutoLoginInitiated();
+          if (initiated) {
+            void handleOAuthConfirmation();
+          }
+        })();
+      }
+
+      // Check if we navigated to account selection page
+      if (
+        currentUrl.includes('accounts.google.com') &&
+        (currentUrl.includes('oauthchooseaccount') ||
+          currentUrl.includes('oauth') ||
+          currentUrl.includes('signin')) &&
+        !currentUrl.includes('accounts.google.com/signin/oauth/id')
+      ) {
+        // Wait a bit for the page to load, then try to get email from chrome.storage.local
+        setTimeout(async () => {
+          // Only proceed if auto login was initiated by a matching rule
+          const initiated = await wasAutoLoginInitiated();
+          if (!initiated) {
+            return;
+          }
+
+          try {
+            if (chrome?.storage?.local) {
+              const result = await chrome.storage.local.get(
+                TEMP_EMAIL_STORAGE_KEY,
+              );
+              const storedEmail = result?.[TEMP_EMAIL_STORAGE_KEY];
+              if (storedEmail) {
+                void handleGoogleAccountSelection(storedEmail);
+                // Clear the flag after use (with delay to allow retries)
+                setTimeout(() => {
+                  void clearAutoLoginFlag();
+                }, 15000);
+              }
+            }
+          } catch (error) {
+            console.warn(
+              '[auto-google-login] Failed to read email after navigation:',
+              error,
+            );
+          }
+        }, 1000);
+      }
+
+      lastAlertedRuleId = null;
+      // Schedule delayed checks again on URL change
+      const delays = [500, 2000, 5000];
+      delays.forEach((delay) => {
+        setTimeout(() => {
+          lastCheckTime = Date.now();
+          void checkAndAlert();
+        }, delay);
+      });
+    };
 
     // Check if we're on a Google OAuth page
     const currentUrl = getCurrentUrl();
@@ -1301,6 +1403,9 @@
 
       let mutationCount = 0;
       mutationObserver = new MutationObserver((mutations) => {
+        // Check for URL change (fallback for pushState/replaceState)
+        handleUrlChange(getCurrentUrl());
+
         // Only trigger if mutations involve button-like elements
         const hasRelevantMutation = mutations.some((mutation) => {
           const target = mutation.target;
@@ -1357,73 +1462,7 @@
     }
 
     // Reset alert state when URL changes (e.g., navigation)
-    let lastUrl = getCurrentUrl();
-    const urlCheckInterval = setInterval(() => {
-      const currentUrl = getCurrentUrl();
-      if (currentUrl !== lastUrl) {
-        lastUrl = currentUrl;
-
-        // Check if we navigated to OAuth confirmation page
-        if (currentUrl.includes('accounts.google.com/signin/oauth/id')) {
-          // Only handle if auto login was initiated by a matching rule
-          void (async () => {
-            const initiated = await wasAutoLoginInitiated();
-            if (initiated) {
-              void handleOAuthConfirmation();
-            }
-          })();
-        }
-
-        // Check if we navigated to account selection page
-        if (
-          currentUrl.includes('accounts.google.com') &&
-          (currentUrl.includes('oauthchooseaccount') ||
-            currentUrl.includes('oauth') ||
-            currentUrl.includes('signin')) &&
-          !currentUrl.includes('accounts.google.com/signin/oauth/id')
-        ) {
-          // Wait a bit for the page to load, then try to get email from chrome.storage.local
-          setTimeout(async () => {
-            // Only proceed if auto login was initiated by a matching rule
-            const initiated = await wasAutoLoginInitiated();
-            if (!initiated) {
-              return;
-            }
-
-            try {
-              if (chrome?.storage?.local) {
-                const result = await chrome.storage.local.get(
-                  TEMP_EMAIL_STORAGE_KEY,
-                );
-                const storedEmail = result?.[TEMP_EMAIL_STORAGE_KEY];
-                if (storedEmail) {
-                  void handleGoogleAccountSelection(storedEmail);
-                  // Clear the flag after use (with delay to allow retries)
-                  setTimeout(() => {
-                    void clearAutoLoginFlag();
-                  }, 15000);
-                }
-              }
-            } catch (error) {
-              console.warn(
-                '[auto-google-login] Failed to read email after navigation:',
-                error,
-              );
-            }
-          }, 1000);
-        }
-
-        lastAlertedRuleId = null;
-        // Schedule delayed checks again on URL change
-        const delays = [500, 2000, 5000];
-        delays.forEach((delay) => {
-          setTimeout(() => {
-            lastCheckTime = Date.now();
-            void checkAndAlert();
-          }, delay);
-        });
-      }
-    }, 500);
+    createUrlObserver(handleUrlChange);
   }
 
   /**
