@@ -2923,27 +2923,29 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     // Individual Updates
     if (toUpdate.length > 0) {
       console.log(`[mirror] Updating ${toUpdate.length} items individually`);
-      for (const item of toUpdate) {
-        // PUT /raindrop/:id
-        await raindropRequest(`/raindrop/${item.id}`, tokens, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            link: item.link,
-            title: item.title,
-            excerpt: item.excerpt, // Use excerpt for metadata
-            // collection is not needed if not moving
-          }),
-        });
+      await Promise.all(
+        toUpdate.map(async (item) => {
+          // PUT /raindrop/:id
+          await raindropRequest(`/raindrop/${item.id}`, tokens, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              link: item.link,
+              title: item.title,
+              excerpt: item.excerpt, // Use excerpt for metadata
+              // collection is not needed if not moving
+            }),
+          });
 
-        // Upload cover from tab snapshot if available
-        if (item.tabId) {
-          const thumbnail = snapshotMap.get(item.tabId);
-          if (thumbnail) {
-            await uploadCoverFromSnapshot(item.id, thumbnail, tokens);
+          // Upload cover from tab snapshot if available
+          if (item.tabId) {
+            const thumbnail = snapshotMap.get(item.tabId);
+            if (thumbnail) {
+              await uploadCoverFromSnapshot(item.id, thumbnail, tokens);
+            }
           }
-        }
-      }
+        }),
+      );
     }
 
     console.log(
