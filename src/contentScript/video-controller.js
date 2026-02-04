@@ -704,20 +704,76 @@
     });
   }
 
-  const observer = new MutationObserver(async (_mutations) => {
-    // Set up PiP tracking for all videos (including new ones)
-    setupPipTrackingForAllVideos();
-    
-    // Add custom controls only for large videos
-    const videos = await findAllLargeUnprocessedVideos();
-    videos.forEach(processVideoElement);
-    scheduleAutoFullscreenEvaluation('mutation');
+  /**
+   * @param {HTMLVideoElement} video
+   */
+  async function processNewVideo(video) {
+    setupPipTracking(video);
+
+    if (video.hasAttribute('data-video-controller')) {
+      return;
+    }
+
+    try {
+      await waitForVideoMetadata(video);
+
+      if (
+        video.videoWidth >= MIN_VIDEO_WIDTH &&
+        video.videoHeight >= MIN_VIDEO_HEIGHT &&
+        !video.hasAttribute('data-video-controller')
+      ) {
+        processVideoElement(video);
+      }
+    } catch (e) {
+      // Ignore errors (e.g. video removed before metadata loaded)
+    }
+  }
+
+  const observer = new MutationObserver((mutations) => {
+    let shouldEvaluate = false;
+
+    for (const mutation of mutations) {
+      // Check added nodes
+      for (const node of mutation.addedNodes) {
+        if (node instanceof HTMLVideoElement) {
+          processNewVideo(node);
+          shouldEvaluate = true;
+        } else if (node instanceof Element) {
+          const nestedVideos = node.getElementsByTagName('video');
+          if (nestedVideos.length > 0) {
+            shouldEvaluate = true;
+            for (const video of nestedVideos) {
+              processNewVideo(video);
+            }
+          }
+        }
+      }
+
+      // Check removed nodes
+      if (!shouldEvaluate) {
+        for (const node of mutation.removedNodes) {
+          if (node instanceof HTMLVideoElement) {
+            shouldEvaluate = true;
+            break;
+          } else if (node instanceof Element) {
+            // Check if the removed tree contained any videos
+            if (node.getElementsByTagName('video').length > 0) {
+              shouldEvaluate = true;
+              break;
+            }
+          }
+        }
+      }
+    }
+
+    if (shouldEvaluate) {
+      scheduleAutoFullscreenEvaluation('mutation');
+    }
   });
 
   observer.observe(document.body, {
     childList: true,
     subtree: true,
-    // attributes: true,
   });
 
   // Initial setup
