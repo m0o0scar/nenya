@@ -1395,7 +1395,10 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
 
     for (const entry of dedupeResult.entries) {
       try {
-        const pleaseParse = options.pleaseParse || !entry.title;
+        const pleaseParse =
+          options.pleaseParse ||
+          !entry.title ||
+          (!entry.cover && !entry.includeScreenshot);
         const payload = {
           link: entry.url,
           collectionId: -1,
