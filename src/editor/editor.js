@@ -365,10 +365,11 @@ class TextShape extends Shape {
             ctx.shadowOffsetY = 2;
         }
 
+        this.lastWidth = ctx.measureText(this.text).width;
         ctx.fillText(this.text, this.x, this.y);
 
         if (this.isUnderline) {
-            const width = ctx.measureText(this.text).width;
+            const width = this.lastWidth;
             ctx.beginPath();
             ctx.strokeStyle = this.color;
             ctx.lineWidth = Math.max(1, this.fontSize / 15);
@@ -378,7 +379,7 @@ class TextShape extends Shape {
         }
 
         if (this.selected) {
-            const width = ctx.measureText(this.text).width;
+            const width = this.lastWidth;
             const height = this.fontSize; // Approximate
             drawSelectionBox(ctx, this.x, this.y, width, height);
         }
@@ -396,6 +397,7 @@ class TextShape extends Shape {
         const weight = this.isBold ? 'bold ' : '';
         ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
         const width = ctx.measureText(this.text).width;
+        this.lastWidth = width;
         const height = this.fontSize;
         return (x >= this.x && x <= this.x + width && y >= this.y && y <= this.y + height);
     }
@@ -407,6 +409,60 @@ class TextShape extends Shape {
     move(dx, dy) {
         this.x += dx;
         this.y += dy;
+    }
+
+    /**
+     * @returns {Array<{x: number, y: number, type: string, cursor: string}>}
+     */
+    getHandles() {
+        if (!this.selected) return [];
+        const width = this.lastWidth || 0;
+        const height = this.fontSize;
+
+        return [
+            { x: this.x, y: this.y, type: 'nw', cursor: 'nwse-resize' },
+            { x: this.x + width, y: this.y, type: 'ne', cursor: 'nesw-resize' },
+            { x: this.x + width, y: this.y + height, type: 'se', cursor: 'nwse-resize' },
+            { x: this.x, y: this.y + height, type: 'sw', cursor: 'nesw-resize' }
+        ];
+    }
+
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
+    updateHandle(handleType, x, y, dx, dy) {
+        const oldFontSize = this.fontSize;
+        const oldWidth = this.lastWidth || 0;
+        let newFontSize = oldFontSize;
+
+        switch (handleType) {
+            case 'se':
+            case 'sw':
+                newFontSize = y - this.y;
+                break;
+            case 'ne':
+            case 'nw':
+                newFontSize = (this.y + oldFontSize) - y;
+                break;
+        }
+
+        this.fontSize = Math.max(8, Math.min(1000, newFontSize));
+        const scale = this.fontSize / oldFontSize;
+        const newWidth = oldWidth * scale;
+
+        // Adjust position based on anchor
+        if (handleType === 'nw' || handleType === 'sw') {
+            this.x = (this.x + oldWidth) - newWidth;
+        }
+        if (handleType === 'nw' || handleType === 'ne') {
+            this.y = (this.y + oldFontSize) - this.fontSize;
+        }
+        
+        this.lastWidth = newWidth;
     }
 
     /**
@@ -640,6 +696,11 @@ class Editor {
         await this.loadSettings();
         await this.loadImage();
         this.updateUI();
+
+        // Auto-update when fonts load
+        document.fonts.ready.then(() => {
+            this.render();
+        });
     }
 
     initTheme() {
@@ -874,7 +935,8 @@ class Editor {
         const propFontSize = /** @type {HTMLInputElement} */ (document.getElementById('prop-font-size'));
         if (propFontSize) propFontSize.addEventListener('change', (e) => {
             this.saveHistory();
-            this.fontSize = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
+            let newSize = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
+            this.fontSize = Math.max(8, Math.min(1000, newSize));
             this.updateSelectedShape();
             this.saveSettings();
         });
@@ -1119,7 +1181,7 @@ class Editor {
 
                 if (shape instanceof TextShape) {
                     const step = 2;
-                    shape.fontSize = Math.max(8, Math.min(200, shape.fontSize + delta * step));
+                    shape.fontSize = Math.max(8, Math.min(1000, shape.fontSize + delta * step));
                     this.fontSize = shape.fontSize; // Sync global prop
                 } else if (shape instanceof RectShape || shape instanceof ArrowShape || shape instanceof BlurShape) {
                     const s = /** @type {RectShape | ArrowShape | BlurShape} */ (shape);
@@ -1407,12 +1469,14 @@ class Editor {
         // Processing Drag
         this.lastPos = pos;
 
-        if (this.tool === 'select') {
-            if (this.draggingHandle) {
-                this.draggingHandle.shape.updateHandle(this.draggingHandle.type, pos.x, pos.y, dx, dy);
-                this.render();
-            } else if (this.currentShape) {
-                this.currentShape.move(dx, dy);
+                if (this.tool === 'select') {
+                    if (this.draggingHandle) {
+                        this.draggingHandle.shape.updateHandle(this.draggingHandle.type, pos.x, pos.y, dx, dy);
+                        if (this.draggingHandle.shape === this.getSelectedShape()) {
+                            this.updateUI();
+                        }
+                        this.render();
+                    } else if (this.currentShape) {                this.currentShape.move(dx, dy);
                 this.render();
             }
         } else if ((this.tool === 'rect' || this.tool === 'blur') && this.currentShape) {

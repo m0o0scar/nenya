@@ -1,4 +1,4 @@
-@import "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Gloria+Hallelujah&family=Pacifico&family=SN+Pro:ital,wght@0,200..900;1,200..900&display=swap');
 
 :root {
     --navbar-height: 52px;
@@ -129,4 +129,22 @@ body {
     background-color: var(--color-base-100);
     color: var(--color-primary);
     border-color: var(--color-primary);
+}
+
+.sn-pro {
+    font-family: "SN Pro", sans-serif;
+    font-optical-sizing: auto;
+    font-style: normal;
+}
+
+.pacifico-regular {
+    font-family: "Pacifico", cursive;
+    font-weight: 400;
+    font-style: normal;
+}
+
+.gloria-hallelujah-regular {
+    font-family: "Gloria Hallelujah", cursive;
+    font-weight: 400;
+    font-style: normal;
 }
