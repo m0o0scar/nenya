@@ -12,6 +12,9 @@
     </script>
     <title>Nenya - Screenshot Editor</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Gloria+Hallelujah&family=Pacifico&family=SN+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../libs/daisyui@5.css">
     <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
     <link rel="stylesheet" href="./editor.css">
@@ -169,19 +172,18 @@
                 <div class="flex flex-col">
                     <span class="prop-label">Font</span>
                     <select id="prop-font-family"
-                        class="select select-bordered select-[10px] w-24 h-6 min-h-6 py-0 px-1 leading-tight">
-                        <option value="Arial">Arial</option>
-                        <option value="Inter">Inter</option>
-                        <option value="Helvetica">Helvetica</option>
-                        <option value="Times New Roman">Times</option>
-                        <option value="Courier New">Courier</option>
+                        class="select select-bordered select-[10px] w-36 h-6 min-h-6 py-0 px-1 leading-tight">
+                        <option value="Arial" style="font-family: Arial, sans-serif;">Arial</option>
+                        <option value="SN Pro" style="font-family: 'SN Pro', sans-serif;">SN Pro</option>
+                        <option value="Pacifico" style="font-family: 'Pacifico', cursive;">Pacifico</option>
+                        <option value="Gloria Hallelujah" style="font-family: 'Gloria Hallelujah', cursive;">Gloria Hallelujah</option>
                     </select>
                 </div>
                 <div class="flex flex-col">
                     <span class="prop-label">Size</span>
                     <input type="number" id="prop-font-size"
                         class="input input-bordered input-[10px] w-12 h-6 min-h-6 py-0 px-1" value="24" min="8"
-                        max="200">
+                        max="1000">
                 </div>
                 <div class="flex items-center gap-0.5 mt-auto pb-0">
                     <button class="btn btn-xs btn-ghost btn-square h-6 w-6 min-h-6" id="prop-bold" title="Bold">
