@@ -896,6 +896,14 @@ class Editor {
         // but we need to map events correctly.
         if (this.canvas) {
             this.canvas.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+            
+            // Better preview quality: Use smooth interpolation when zoomed out/normal,
+            // and pixelated when zoomed in to see details.
+            if (this.scale > 1.0) {
+                this.canvas.style.imageRendering = 'pixelated';
+            } else {
+                this.canvas.style.imageRendering = 'auto';
+            }
         }
     }
 

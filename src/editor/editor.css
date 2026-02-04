@@ -10,7 +10,7 @@ body {
 
 #editor-canvas {
     touch-action: none;
-    image-rendering: pixelated;
+    /* image-rendering: pixelated; removed for better quality */
 }
 
 #canvas-container {
