@@ -318,6 +318,18 @@ class ArrowShape extends Shape {
     }
 }
 
+/**
+ * @param {string} color
+ * @returns {number}
+ */
+function getBrightness(color) {
+    const hex = color.replace('#', '');
+    const r = parseInt(hex.substring(0, 2), 16);
+    const g = parseInt(hex.substring(2, 4), 16);
+    const b = parseInt(hex.substring(4, 6), 16);
+    return (r * 299 + g * 587 + b * 114) / 1000;
+}
+
 class TextShape extends Shape {
     /**
      * @param {number} x
@@ -330,9 +342,9 @@ class TextShape extends Shape {
      * @param {boolean} [isBold]
      * @param {boolean} [isItalic]
      * @param {boolean} [isUnderline]
-     * @param {boolean} [hasShadow]
+     * @param {boolean} [hasBorder]
      */
-    constructor(x, y, text, color, opacity, fontFamily, fontSize, isBold = false, isItalic = false, isUnderline = false, hasShadow = false) {
+    constructor(x, y, text, color, opacity, fontFamily, fontSize, isBold = false, isItalic = false, isUnderline = false, hasBorder = false) {
         super('text', color, opacity);
         this.x = x;
         this.y = y;
@@ -342,7 +354,7 @@ class TextShape extends Shape {
         this.isBold = isBold;
         this.isItalic = isItalic;
         this.isUnderline = isUnderline;
-        this.hasShadow = hasShadow;
+        this.hasBorder = hasBorder;
     }
 
     /**
@@ -358,11 +370,13 @@ class TextShape extends Shape {
         ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
         ctx.textBaseline = 'top';
 
-        if (this.hasShadow) {
-            ctx.shadowColor = 'rgba(0,0,0,0.5)';
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
+        if (this.hasBorder) {
+            const brightness = getBrightness(this.color);
+            ctx.strokeStyle = brightness < 128 ? '#ffffff' : '#000000';
+            ctx.lineWidth = Math.max(2, this.fontSize / 10);
+            ctx.lineJoin = 'round';
+            ctx.miterLimit = 2;
+            ctx.strokeText(this.text, this.x, this.y);
         }
 
         this.lastWidth = ctx.measureText(this.text).width;
@@ -469,7 +483,7 @@ class TextShape extends Shape {
      * @returns {TextShape}
      */
     clone() {
-        const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasShadow);
+        const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
         copy.selected = this.selected;
         copy.id = this.id;
         return copy;
@@ -671,7 +685,7 @@ class Editor {
         this.isBold = false;
         this.isItalic = false;
         this.isUnderline = false;
-        this.hasShadow = false;
+        this.hasBorder = false;
 
         // Zoom/Pan
         this.scale = 1;
@@ -732,7 +746,7 @@ class Editor {
                     if (s.isBold !== undefined) this.isBold = s.isBold;
                     if (s.isItalic !== undefined) this.isItalic = s.isItalic;
                     if (s.isUnderline !== undefined) this.isUnderline = s.isUnderline;
-                    if (s.hasShadow !== undefined) this.hasShadow = s.hasShadow;
+                    if (s.hasBorder !== undefined) this.hasBorder = s.hasBorder;
                 }
             }
         } catch (e) {
@@ -753,7 +767,7 @@ class Editor {
                         isBold: this.isBold,
                         isItalic: this.isItalic,
                         isUnderline: this.isUnderline,
-                        hasShadow: this.hasShadow
+                        hasBorder: this.hasBorder
                     }
                 });
             }
@@ -969,15 +983,15 @@ class Editor {
             }
         });
 
-        // Text Styles (Bold, Italic, Underline, Shadow)
-        ['bold', 'italic', 'underline', 'shadow'].forEach(s => {
+        // Text Styles (Bold, Italic, Underline, Border)
+        ['bold', 'italic', 'underline', 'border'].forEach(s => {
             const el = document.getElementById(`prop-${s}`);
             if (el) el.addEventListener('click', () => {
                 this.saveHistory();
                 if (s === 'bold') this.isBold = !this.isBold;
                 else if (s === 'italic') this.isItalic = !this.isItalic;
                 else if (s === 'underline') this.isUnderline = !this.isUnderline;
-                else if (s === 'shadow') this.hasShadow = !this.hasShadow;
+                else if (s === 'border') this.hasBorder = !this.hasBorder;
 
                 this.updateSelectedShape();
                 this.saveSettings();
@@ -1066,7 +1080,7 @@ class Editor {
                 shape.isBold = this.isBold;
                 shape.isItalic = this.isItalic;
                 shape.isUnderline = this.isUnderline;
-                shape.hasShadow = this.hasShadow;
+                shape.hasBorder = this.hasBorder;
             }
             this.render();
         }
@@ -1116,7 +1130,7 @@ class Editor {
                 this.isBold = shape.isBold;
                 this.isItalic = shape.isItalic;
                 this.isUnderline = shape.isUnderline;
-                this.hasShadow = shape.hasShadow;
+                this.hasBorder = shape.hasBorder;
             } else {
                  if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
             }
@@ -1125,15 +1139,15 @@ class Editor {
             if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
         }
 
-        // Sync Style Buttons (Bold, Italic, Underline, Shadow)
-        ['bold', 'italic', 'underline', 'shadow'].forEach(s => {
+        // Sync Style Buttons (Bold, Italic, Underline, Border)
+        ['bold', 'italic', 'underline', 'border'].forEach(s => {
             const btn = document.getElementById(`prop-${s}`);
             if (btn) {
                 let isActive = false;
                 if (s === 'bold') isActive = this.isBold;
                 else if (s === 'italic') isActive = this.isItalic;
                 else if (s === 'underline') isActive = this.isUnderline;
-                else if (s === 'shadow') isActive = this.hasShadow;
+                else if (s === 'border') isActive = this.hasBorder;
                 btn.classList.toggle('btn-style-active', isActive);
             }
         });
@@ -1392,7 +1406,7 @@ class Editor {
             const text = prompt('Enter text:');
             if (text) {
                 this.saveHistory();
-                const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasShadow);
+                const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
                 this.shapes.push(shape);
                 shape.selected = true;
                 this.tool = 'select';
