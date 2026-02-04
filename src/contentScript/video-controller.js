@@ -670,13 +670,7 @@
 
     const videosWithMetadata = await Promise.all(
       videos.map(async (video) => {
-        /** @type {() => void} */
-        await new Promise((resolve) => {
-          if (video.readyState >= 1) {
-            resolve(void 0);
-          }
-          video.addEventListener('loadedmetadata', resolve, { once: true });
-        });
+        await waitForVideoMetadata(video);
         return video;
       }),
     );
