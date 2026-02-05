@@ -181,6 +181,132 @@ class RectShape extends Shape {
     }
 }
 
+class HighlightShape extends Shape {
+    /**
+     * @param {number} x1
+     * @param {number} y1
+     * @param {number} x2
+     * @param {number} y2
+     * @param {string} color
+     * @param {number} opacity
+     * @param {number} lineWidth
+     */
+    constructor(x1, y1, x2, y2, color, opacity, lineWidth) {
+        super('highlight', color, opacity, lineWidth);
+        this.x1 = x1;
+        this.y1 = y1;
+        this.x2 = x2;
+        this.y2 = y2;
+    }
+
+    /**
+     * @param {CanvasRenderingContext2D} ctx
+     */
+    draw(ctx) {
+        ctx.save();
+        ctx.globalAlpha = this.opacity;
+        ctx.strokeStyle = this.color;
+        ctx.lineWidth = this.lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        ctx.beginPath();
+        ctx.moveTo(this.x1, this.y1);
+        ctx.lineTo(this.x2, this.y2);
+        ctx.stroke();
+
+        if (this.selected) {
+            ctx.globalAlpha = 1;
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = '#00a1ff';
+            ctx.lineWidth = 1;
+            ctx.fillRect(this.x1 - 4, this.y1 - 4, 8, 8);
+            ctx.strokeRect(this.x1 - 4, this.y1 - 4, 8, 8);
+            ctx.fillRect(this.x2 - 4, this.y2 - 4, 8, 8);
+            ctx.strokeRect(this.x2 - 4, this.y2 - 4, 8, 8);
+        }
+        ctx.restore();
+    }
+
+    /**
+     * @param {number} x
+     * @param {number} y
+     * @returns {boolean}
+     */
+    contains(x, y) {
+        const A = x - this.x1;
+        const B = y - this.y1;
+        const C = this.x2 - this.x1;
+        const D = this.y2 - this.y1;
+
+        const dot = A * C + B * D;
+        const len_sq = C * C + D * D;
+        let param = -1;
+        if (len_sq !== 0) param = dot / len_sq;
+
+        let xx, yy;
+
+        if (param < 0) { xx = this.x1; yy = this.y1; }
+        else if (param > 1) { xx = this.x2; yy = this.y2; }
+        else { xx = this.x1 + param * C; yy = this.y1 + param * D; }
+
+        const dx = x - xx;
+        const dy = y - yy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        return dist < Math.max(6, this.lineWidth / 2);
+    }
+
+    /**
+     * @param {number} dx
+     * @param {number} dy
+     */
+    move(dx, dy) {
+        this.x1 += dx;
+        this.y1 += dy;
+        this.x2 += dx;
+        this.y2 += dy;
+    }
+
+    /**
+     * @returns {Array<{x: number, y: number, type: string, cursor: string}>}
+     */
+    getHandles() {
+        if (!this.selected) return [];
+        return [
+            { x: this.x1, y: this.y1, type: 'start', cursor: 'move' },
+            { x: this.x2, y: this.y2, type: 'end', cursor: 'move' }
+        ];
+    }
+
+    /**
+     * @param {string} handleType
+     * @param {number} x
+     * @param {number} y
+     * @param {number} dx
+     * @param {number} dy
+     */
+    updateHandle(handleType, x, y, dx, dy) {
+        if (handleType === 'start') {
+            this.x1 = x;
+            this.y1 = y;
+        } else if (handleType === 'end') {
+            this.x2 = x;
+            this.y2 = y;
+        }
+    }
+
+    /**
+     * @returns {HighlightShape}
+     */
+    clone() {
+        const copy = new HighlightShape(this.x1, this.y1, this.x2, this.y2, this.color, this.opacity, this.lineWidth);
+        copy.selected = this.selected;
+        copy.id = this.id;
+        return copy;
+    }
+}
+
 class ArrowShape extends Shape {
     /**
      * @param {number} x1
@@ -908,7 +1034,7 @@ class Editor {
     }
 
     attachToolbarListeners() {
-        const tools = ['select', 'pan', 'crop', 'arrow', 'rect', 'text', 'blur'];
+        const tools = ['select', 'pan', 'crop', 'arrow', 'rect', 'highlight', 'text', 'blur'];
         tools.forEach(t => {
             const el = document.getElementById(`tool-${t}`);
             if (el) el.addEventListener('click', () => this.setTool(t));
@@ -1034,8 +1160,16 @@ class Editor {
         if (tool !== 'crop' && this.cropRect) {
             this.cropRect = null;
         }
+        // Set sensible defaults for highlight tool
+        if (tool === 'highlight') {
+            this.color = '#ffff00'; // Yellow
+            this.opacity = 0.4; // Semi-transparent
+            this.lineWidth = 20; // Thick stroke
+            this.saveSettings();
+        }
         this.render();
         this.updateToolbarUI();
+        this.updateUI();
     }
 
     updateToolbarUI() {
@@ -1064,7 +1198,7 @@ class Editor {
 
         const strokeProp = document.getElementById('stroke-prop');
         if (strokeProp) {
-            if (this.tool === 'rect' || this.tool === 'arrow' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape)) {
+            if (this.tool === 'rect' || this.tool === 'arrow' || this.tool === 'highlight' || (this.getSelectedShape() instanceof RectShape) || (this.getSelectedShape() instanceof ArrowShape) || (this.getSelectedShape() instanceof HighlightShape)) {
                 strokeProp.classList.remove('hidden');
             } else {
                 strokeProp.classList.add('hidden');
@@ -1205,10 +1339,10 @@ class Editor {
                     const step = 2;
                     shape.fontSize = Math.max(8, Math.min(1000, shape.fontSize + delta * step));
                     this.fontSize = shape.fontSize; // Sync global prop
-                } else if (shape instanceof RectShape || shape instanceof ArrowShape || shape instanceof BlurShape) {
-                    const s = /** @type {RectShape | ArrowShape | BlurShape} */ (shape);
+                } else if (shape instanceof RectShape || shape instanceof ArrowShape || shape instanceof HighlightShape || shape instanceof BlurShape) {
+                    const s = /** @type {RectShape | ArrowShape | HighlightShape | BlurShape} */ (shape);
                     if (s.lineWidth !== undefined) {
-                        s.lineWidth = Math.max(1, Math.min(40, s.lineWidth + delta));
+                        s.lineWidth = Math.max(1, Math.min(200, s.lineWidth + delta * 2));
                         this.lineWidth = s.lineWidth; // Sync global prop
                     }
                 }
@@ -1278,6 +1412,7 @@ class Editor {
             if (key === 'c') this.setTool('crop');
             if (key === 'r') this.setTool('rect');
             if (key === 'a') this.setTool('arrow');
+            if (key === 'h') this.setTool('highlight');
             if (key === 't') this.setTool('text');
             if (key === 'b') this.setTool('blur');
         });
@@ -1410,6 +1545,10 @@ class Editor {
             this.saveHistory();
             this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
+        } else if (this.tool === 'highlight') {
+            this.saveHistory();
+            this.currentShape = new HighlightShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
+            this.shapes.push(this.currentShape);
         } else if (this.tool === 'text') {
             const text = prompt('Enter text:');
             if (text) {
@@ -1493,14 +1632,38 @@ class Editor {
 
                 if (this.tool === 'select') {
                     if (this.draggingHandle) {
-                        this.draggingHandle.shape.updateHandle(this.draggingHandle.type, pos.x, pos.y, dx, dy);
-                        if (this.draggingHandle.shape === this.getSelectedShape()) {
+                        const shape = this.draggingHandle.shape;
+                        let targetX = pos.x;
+                        let targetY = pos.y;
+                        
+                        // Apply Shift constraint for HighlightShape handles
+                        if (e.shiftKey && shape instanceof HighlightShape) {
+                            const hs = /** @type {HighlightShape} */ (shape);
+                            // Determine the anchor point (the other end of the line)
+                            const anchorX = this.draggingHandle.type === 'start' ? hs.x2 : hs.x1;
+                            const anchorY = this.draggingHandle.type === 'start' ? hs.y2 : hs.y1;
+                            
+                            const deltaX = Math.abs(pos.x - anchorX);
+                            const deltaY = Math.abs(pos.y - anchorY);
+                            
+                            if (deltaX > deltaY) {
+                                // Horizontal line
+                                targetY = anchorY;
+                            } else {
+                                // Vertical line
+                                targetX = anchorX;
+                            }
+                        }
+                        
+                        shape.updateHandle(this.draggingHandle.type, targetX, targetY, targetX - this.lastPos.x, targetY - this.lastPos.y);
+                        if (shape === this.getSelectedShape()) {
                             this.updateUI();
                         }
                         this.render();
-                    } else if (this.currentShape) {                this.currentShape.move(dx, dy);
-                this.render();
-            }
+                    } else if (this.currentShape) {
+                        this.currentShape.move(dx, dy);
+                        this.render();
+                    }
         } else if ((this.tool === 'rect' || this.tool === 'blur') && this.currentShape) {
             const s = /** @type {RectShape | BlurShape} */ (this.currentShape);
             s.w = pos.x - s.x;
@@ -1510,6 +1673,26 @@ class Editor {
             const s = /** @type {ArrowShape} */ (this.currentShape);
             s.x2 = pos.x;
             s.y2 = pos.y;
+            this.render();
+        } else if (this.tool === 'highlight' && this.currentShape) {
+            const s = /** @type {HighlightShape} */ (this.currentShape);
+            // Shift key constrains to horizontal or vertical
+            if (e.shiftKey) {
+                const deltaX = Math.abs(pos.x - s.x1);
+                const deltaY = Math.abs(pos.y - s.y1);
+                if (deltaX > deltaY) {
+                    // Horizontal line
+                    s.x2 = pos.x;
+                    s.y2 = s.y1;
+                } else {
+                    // Vertical line
+                    s.x2 = s.x1;
+                    s.y2 = pos.y;
+                }
+            } else {
+                s.x2 = pos.x;
+                s.y2 = pos.y;
+            }
             this.render();
         } else if (this.tool === 'crop' && this.cropRect) {
             this.updateCropRect(pos.x, pos.y, dx, dy);
@@ -1529,7 +1712,7 @@ class Editor {
 
         this.isDragging = false;
         this.draggingHandle = null;
-        if (this.tool === 'rect' || this.tool === 'arrow' || this.tool === 'blur') {
+        if (this.tool === 'rect' || this.tool === 'arrow' || this.tool === 'highlight' || this.tool === 'blur') {
             if (this.currentShape) {
                 this.currentShape.selected = true;
                 this.tool = 'select';
