@@ -2923,6 +2923,9 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     // Individual Updates
     if (toUpdate.length > 0) {
       console.log(`[mirror] Updating ${toUpdate.length} items individually`);
+      // Note: Raindrop's batch update API only supports bulk-applying the same values (tags, collection, etc.)
+      // to multiple items. Since each item here has unique metadata (title, URL, excerpt), we must update
+      // them individually. We use Promise.all to do this concurrently.
       await Promise.all(
         toUpdate.map(async (item) => {
           // PUT /raindrop/:id
