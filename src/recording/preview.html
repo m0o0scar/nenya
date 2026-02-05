@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="utf-8">
+  <title>Recording Preview - Nenya</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="../libs/daisyui@5.css">
+  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <script src="../libs/tailwindcss@4.js"></script>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+    }
+
+    .video-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    video {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+  </style>
+</head>
+
+<body class="bg-base-200 h-full flex flex-col">
+  <div class="navbar bg-base-100 shadow-sm z-10 shrink-0">
+    <div class="flex-1 flex items-center gap-3">
+      <a class="btn btn-ghost text-xl flex items-center gap-2">
+        <img src="../../assets/icons/icon-48x48.png" alt="Nenya" class="w-6 h-6" />
+        Recording Preview
+      </a>
+    </div>
+    <div class="flex-none gap-2">
+      <button id="downloadBtn" class="btn btn-primary gap-2" disabled>
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd"
+            d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z"
+            clip-rule="evenodd" />
+        </svg>
+        Download
+      </button>
+    </div>
+  </div>
+
+  <main class="flex-1 min-h-0 p-2">
+    <div class="video-container">
+      <!-- Loading state -->
+      <div id="loadingState" class="flex flex-col items-center justify-center h-full">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <p class="mt-4 text-base-content/70">Loading recording...</p>
+      </div>
+
+      <!-- Error state -->
+      <div id="errorState" class="hidden flex flex-col items-center justify-center h-full">
+        <div class="text-6xl mb-4">❌</div>
+        <h2 class="text-xl font-bold text-error mb-2">Failed to load recording</h2>
+        <p id="errorMessage" class="text-base-content/70"></p>
+      </div>
+
+      <!-- Video player -->
+      <div id="videoContainer" class="hidden h-full flex flex-col">
+        <video id="videoPlayer" controls class="flex-1 min-h-0 rounded-lg">
+          Your browser does not support the video tag.
+        </video>
+        <div class="flex flex-wrap items-center justify-between gap-2 py-2 px-1">
+          <div class="flex items-center gap-3">
+            <span class="font-semibold">Screen Recording</span>
+            <span id="videoInfo" class="text-sm text-base-content/70"></span>
+          </div>
+          <button id="newRecordingBtn" class="btn btn-sm btn-outline gap-1">
+            <span>⏺️</span>
+            New Recording
+          </button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="preview.js" type="module"></script>
+</body>
+
+</html>
