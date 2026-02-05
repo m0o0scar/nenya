@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Nenya - Screen Recording Preview</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="../libs/daisyui@5.css">
+  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <script src="../libs/tailwindcss@4.js"></script>
+</head>
+<body class="bg-base-200 min-h-screen flex flex-col items-center justify-center p-4">
+  <div class="card bg-base-100 shadow-xl w-full max-w-4xl">
+    <div class="card-body">
+      <h2 class="card-title justify-center mb-4">Screen Recording Preview</h2>
+
+      <div class="aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+        <video id="previewVideo" controls class="w-full h-full" style="display: none;"></video>
+        <span id="loadingMessage" class="loading loading-spinner loading-lg text-primary"></span>
+        <div id="errorMessage" class="text-error hidden">Failed to load recording.</div>
+      </div>
+
+      <div class="card-actions justify-end mt-6">
+        <button id="downloadButton" class="btn btn-primary" disabled>
+          Download Recording
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="preview.js" type="module"></script>
+</body>
+</html>

@@ -125,6 +125,12 @@ const SHORTCUT_CONFIG = {
     handler: () => void handleTakeScreenshot(),
     key: 'k',
   },
+  screenRecord: {
+    emoji: '🎥',
+    tooltip: 'Screen Record',
+    handler: () => void handleScreenRecord(),
+    key: 'v',
+  },
   openInPopup: {
     emoji: '↗️',
     tooltip: 'Open in popup',
@@ -188,6 +194,7 @@ let highlightTextButton = null;
 let customCodeButton = null;
 let pictureInPictureButton = null;
 let takeScreenshotButton = null;
+let screenRecordButton = null;
 
 
 
@@ -353,6 +360,9 @@ async function loadAndRenderShortcuts() {
         case 'takeScreenshot':
           takeScreenshotButton = button;
           break;
+        case 'screenRecord':
+          screenRecordButton = button;
+          break;
       }
     });
 
@@ -479,6 +489,27 @@ async function handleDarkMode() {
     if (statusMessage) {
       concludeStatus(
         'Unable to open dark mode options.',
+        'error',
+        3000,
+        statusMessage,
+      );
+    }
+  }
+}
+
+/**
+ * Handle screen recording.
+ * @returns {Promise<void>}
+ */
+async function handleScreenRecord() {
+  try {
+    await chrome.runtime.sendMessage({ type: 'screen-record:start' });
+    window.close();
+  } catch (error) {
+    console.error('[popup] Error starting screen record:', error);
+    if (statusMessage) {
+      concludeStatus(
+        'Unable to start screen record.',
         'error',
         3000,
         statusMessage,

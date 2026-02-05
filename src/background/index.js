@@ -73,11 +73,18 @@ import {
   exportRaindropItemsToBookmarks,
 } from './raindrop-export.js';
 import { handlePictureInPicture } from './pip-handler.js';
+import {
+  checkRecordingState,
+  handleScreenRecorderMessage,
+  handleActionClick,
+  startScreenRecording
+} from './screen-recorder.js';
 
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const TAKE_SCREENSHOT_MESSAGE = 'clipboard:takeScreenshot';
+const START_SCREEN_RECORDING_MESSAGE = 'screen-record:start';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
@@ -893,7 +900,10 @@ function handleLifecycleEvent(trigger) {
   chrome.alarms.create('options-backup-check', {
     periodInMinutes: 1,
   });
+  void checkRecordingState();
 }
+
+chrome.action.onClicked.addListener(handleActionClick);
 
 chrome.runtime.onInstalled.addListener(async (details) => {
   handleLifecycleEvent('install');
@@ -2322,6 +2332,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (
+    message.type === 'recording-complete' ||
+    message.type === 'recording-error' ||
+    message.type === 'screen-record:start'
+  ) {
+    void handleScreenRecorderMessage(message, sendResponse);
+    return true;
+  }
+
   if (message.type === GET_AUTO_RELOAD_STATUS_MESSAGE) {
     const status = getActiveAutoReloadStatus();
     sendResponse({ status });
@@ -3728,6 +3747,12 @@ if (chrome.contextMenus) {
       if (tab && typeof tab.id === 'number') {
         void handleScreenshotCopy(tab.id);
       }
+      return;
+    }
+
+    // Screen Recording
+    if (menuItemId === 'nenya-screen-record') { // NENYA_MENU_IDS.SCREEN_RECORD
+      void startScreenRecording(tab);
       return;
     }
 

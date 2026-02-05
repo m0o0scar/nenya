@@ -72,6 +72,7 @@ const AVAILABLE_SHORTCUTS = [
     key: 'p',
   },
   { id: 'takeScreenshot', emoji: '📸', tooltip: 'Take screenshot', key: 'k' },
+  { id: 'screenRecord', emoji: '🎥', tooltip: 'Screen Record', key: 'v' },
   { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup', key: 'o' },
   // Note: openOptions is always shown at the end and cannot be pinned
 ];
