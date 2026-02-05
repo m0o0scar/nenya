@@ -2461,58 +2461,61 @@ async function deleteAllItemsInCollection(collectionId, tokens) {
     if (allItemIds.length > 0) {
       // Raindrop batch delete API limit
       const DELETE_CHUNK_SIZE = 100;
+      const chunks = [];
       for (let i = 0; i < allItemIds.length; i += DELETE_CHUNK_SIZE) {
-        const chunk = allItemIds.slice(i, i + DELETE_CHUNK_SIZE);
-        console.log(
-          `[mirror] Deleting items ${i + 1}-${Math.min(
-            i + chunk.length,
-            allItemIds.length,
-          )} of ${allItemIds.length}`,
-          chunk,
-        );
+        chunks.push(allItemIds.slice(i, i + DELETE_CHUNK_SIZE));
+      }
 
-        // Use the correct API endpoint: DELETE /raindrops/{collectionId}
-        // We send both 'ids' and 'id' to be safe as documentation is ambiguous
-        const response = await raindropRequest(
-          `/raindrops/${collectionId}`,
-          tokens,
-          {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ ids: chunk, id: chunk }),
-          },
-        );
-
-        console.log(
-          `[mirror] Delete response for chunk ${i / DELETE_CHUNK_SIZE + 1}:`,
-          response,
-        );
-
-        // If DELETE didn't work (modified: 0), try the fallback method:
-        // Moving items to Trash (-99) using PUT
-        if (response && response.modified === 0 && chunk.length > 0) {
+      await Promise.all(
+        chunks.map(async (chunk, index) => {
           console.log(
-            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+            `[mirror] Deleting items (chunk ${index + 1}/${chunks.length})`,
+            chunk,
           );
-          const fallbackResponse = await raindropRequest(
+
+          // Use the correct API endpoint: DELETE /raindrops/{collectionId}
+          // We send both 'ids' and 'id' to be safe as documentation is ambiguous
+          const response = await raindropRequest(
             `/raindrops/${collectionId}`,
             tokens,
             {
-              method: 'PUT',
+              method: 'DELETE',
               headers: {
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify({
-                ids: chunk,
-                collection: { $id: -99 },
-              }),
+              body: JSON.stringify({ ids: chunk, id: chunk }),
             },
           );
-          console.log('[mirror] Fallback PUT response:', fallbackResponse);
-        }
-      }
+
+          console.log(
+            `[mirror] Delete response for chunk ${index + 1}:`,
+            response,
+          );
+
+          // If DELETE didn't work (modified: 0), try the fallback method:
+          // Moving items to Trash (-99) using PUT
+          if (response && response.modified === 0 && chunk.length > 0) {
+            console.log(
+              '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+            );
+            const fallbackResponse = await raindropRequest(
+              `/raindrops/${collectionId}`,
+              tokens,
+              {
+                method: 'PUT',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  ids: chunk,
+                  collection: { $id: -99 },
+                }),
+              },
+            );
+            console.log('[mirror] Fallback PUT response:', fallbackResponse);
+          }
+        }),
+      );
 
       console.log(
         `[mirror] Successfully deleted ${allItemIds.length} items from collection ${collectionId}`,
@@ -2890,34 +2893,44 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     // Batch Delete
     if (idsToDelete.length > 0) {
       const CHUNK_SIZE = 100;
+      const chunks = [];
       for (let i = 0; i < idsToDelete.length; i += CHUNK_SIZE) {
-        const chunk = idsToDelete.slice(i, i + CHUNK_SIZE);
-        console.log(`[mirror] Batch Deleting ${chunk.length} items`);
-
-        // Use the same robust delete logic as deleteAllItemsInCollection
-        // sending both 'ids' and 'id' to be safe
-        const response = await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ids: chunk, id: chunk }),
-        });
-
-        // If DELETE didn't work (modified: 0), try the fallback method:
-        // Moving items to Trash (-99) using PUT
-        if (response && response.modified === 0 && chunk.length > 0) {
-          console.log(
-            '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
-          );
-          await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              ids: chunk,
-              collection: { $id: -99 },
-            }),
-          });
-        }
+        chunks.push(idsToDelete.slice(i, i + CHUNK_SIZE));
       }
+
+      await Promise.all(
+        chunks.map(async (chunk) => {
+          console.log(`[mirror] Batch Deleting ${chunk.length} items`);
+
+          // Use the same robust delete logic as deleteAllItemsInCollection
+          // sending both 'ids' and 'id' to be safe
+          const response = await raindropRequest(
+            `/raindrops/${deviceCollectionId}`,
+            tokens,
+            {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ids: chunk, id: chunk }),
+            },
+          );
+
+          // If DELETE didn't work (modified: 0), try the fallback method:
+          // Moving items to Trash (-99) using PUT
+          if (response && response.modified === 0 && chunk.length > 0) {
+            console.log(
+              '[mirror] DELETE returned modified: 0. Trying fallback: move to Trash via PUT',
+            );
+            await raindropRequest(`/raindrops/${deviceCollectionId}`, tokens, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                ids: chunk,
+                collection: { $id: -99 },
+              }),
+            });
+          }
+        }),
+      );
     }
 
     // Individual Updates
