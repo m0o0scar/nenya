@@ -20,6 +20,7 @@ async function startRecordingActual(streamId) {
     }
 
     try {
+        // Try to get stream with standard desktop capture constraints
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
@@ -30,22 +31,44 @@ async function startRecordingActual(streamId) {
             }
         });
 
+        // Ensure stream is active
         if (!stream.active) {
-            throw new Error('Stream is not active');
+            throw new Error('Stream is not active immediately after creation');
         }
 
-        const mimeType = 'video/webm';
+        // Add a small delay to ensure stream is stable
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        if (!stream.active) {
+             throw new Error('Stream became inactive during initialization');
+        }
+
+        // Determine supported mime type
+        let mimeType = 'video/webm;codecs=vp9';
         if (!MediaRecorder.isTypeSupported(mimeType)) {
-             throw new Error(`${mimeType} is not supported`);
+            mimeType = 'video/webm;codecs=vp8';
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+                mimeType = 'video/webm';
+                if (!MediaRecorder.isTypeSupported(mimeType)) {
+                    mimeType = undefined; // Let browser choose default
+                }
+            }
         }
 
-        recorder = new MediaRecorder(stream, { mimeType });
+        const options = mimeType ? { mimeType } : {};
+        recorder = new MediaRecorder(stream, options);
         data = [];
 
-        recorder.ondataavailable = (event) => data.push(event.data);
+        recorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                data.push(event.data);
+            }
+        };
+
         recorder.onstop = async () => {
             try {
-                const blob = new Blob(data, { type: mimeType });
+                const type = mimeType || (data[0] ? data[0].type : 'video/webm');
+                const blob = new Blob(data, { type });
                 await saveRecording(blob);
             } catch (error) {
                 console.error('Failed to save recording:', error);
@@ -65,11 +88,14 @@ async function startRecordingActual(streamId) {
             }
         };
 
-        recorder.start();
+        recorder.start(1000); // Collect data every second to avoid huge chunks
 
     } catch (error) {
         console.error('Recorder error:', error);
-        chrome.runtime.sendMessage({ type: 'recording-error', error: error.message || error.name });
+        chrome.runtime.sendMessage({
+            type: 'recording-error',
+            error: `${error.name}: ${error.message}`
+        });
     }
 }
 
