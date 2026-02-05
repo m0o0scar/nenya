@@ -125,6 +125,12 @@ const SHORTCUT_CONFIG = {
     handler: () => void handleTakeScreenshot(),
     key: 'k',
   },
+  screenRecording: {
+    emoji: '⏺️',
+    tooltip: 'Screen recording',
+    handler: () => void handleScreenRecording(),
+    key: 'v',
+  },
   openInPopup: {
     emoji: '↗️',
     tooltip: 'Open in popup',
@@ -2606,6 +2612,40 @@ async function handleTakeScreenshot() {
     if (statusMessage) {
       concludeStatus(
         'Unable to take screenshot.',
+        'error',
+        3000,
+        statusMessage,
+      );
+    }
+  }
+}
+
+/**
+ * Handle screen recording toggle.
+ * If not recording, starts recording. If recording, stops and opens preview.
+ * @returns {Promise<void>}
+ */
+async function handleScreenRecording() {
+  try {
+    // Send message to background to toggle screen recording
+    const response = await chrome.runtime.sendMessage({
+      type: 'screen-recorder:toggle',
+    });
+
+    if (response && response.success) {
+      // Close the popup
+      window.close();
+    } else if (response && response.error) {
+      // Only show error if it's not a user cancellation
+      if (!response.error.includes('cancelled')) {
+        throw new Error(response.error);
+      }
+    }
+  } catch (error) {
+    console.error('[popup] Error with screen recording:', error);
+    if (statusMessage) {
+      concludeStatus(
+        'Unable to start screen recording.',
         'error',
         3000,
         statusMessage,

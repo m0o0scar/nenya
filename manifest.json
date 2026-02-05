@@ -37,7 +37,10 @@
     "clipboardWrite",
     "clipboardRead",
     "declarativeNetRequest",
-    "downloads"
+    "downloads",
+    "tabCapture",
+    "desktopCapture",
+    "offscreen"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
@@ -62,7 +65,8 @@
         "src/contentScript/epicker-ui.js",
         "src/contentScript/emoji-picker.js",
         "src/contentScript/emoji-picker-ui.html",
-        "src/contentScript/emoji-picker-ui.js"
+        "src/contentScript/emoji-picker-ui.js",
+        "src/recording/*"
       ],
       "matches": [
         "<all_urls>"
@@ -183,6 +187,9 @@
     },
     "open-in-popup": {
       "description": "↗️ Open in popup"
+    },
+    "screen-recording-start": {
+      "description": "⏺️ Start screen recording"
     }
   }
 }

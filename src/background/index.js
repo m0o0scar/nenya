@@ -73,6 +73,12 @@ import {
   exportRaindropItemsToBookmarks,
 } from './raindrop-export.js';
 import { handlePictureInPicture } from './pip-handler.js';
+import {
+  handleScreenRecordingToggle,
+  handleActionClickDuringRecording,
+  isRecording,
+  handleScreenRecorderMessage,
+} from './screen-recorder.js';
 
 const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
@@ -475,6 +481,19 @@ chrome.commands.onCommand.addListener((command) => {
   }
   if (command === 'open-in-popup') {
     void handleOpenInPopup();
+    return;
+  }
+
+  if (command === 'screen-recording-start') {
+    void (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0]?.id;
+        await handleScreenRecordingToggle(tabId);
+      } catch (error) {
+        console.warn('[commands] Screen recording failed:', error);
+      }
+    })();
     return;
   }
 });
@@ -1269,6 +1288,27 @@ chrome.tabs.onHighlighted.addListener(async () => {
       '[contextMenu] Failed to update screenshot visibility:',
       error,
     );
+  }
+});
+
+// Handle action button click during recording
+// When recording, the popup is disabled, so this listener fires
+chrome.action.onClicked.addListener(async (tab) => {
+  // Check if we're recording
+  if (isRecording()) {
+    // Stop recording and open preview
+    const handled = await handleActionClickDuringRecording();
+    if (handled) {
+      return;
+    }
+  }
+  // If not recording, this shouldn't happen since popup is enabled
+  // But just in case, open the popup manually
+  try {
+    await chrome.action.openPopup();
+  } catch (error) {
+    // openPopup might fail in some contexts, ignore
+    console.warn('[background] Failed to open popup:', error);
   }
 });
 
@@ -2319,6 +2359,44 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (handleTokenValidationMessage(message, sendResponse)) {
+    return true;
+  }
+
+  // Handle screen recorder messages
+  const screenRecorderResult = handleScreenRecorderMessage(message, sender, sendResponse);
+  if (screenRecorderResult !== undefined) {
+    return screenRecorderResult;
+  }
+
+  // Screen recording toggle from popup
+  if (message.type === 'screen-recorder:toggle') {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0]?.id;
+        await handleScreenRecordingToggle(tabId);
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('[background] Screen recording toggle failed:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true;
+  }
+
+  // Start new recording from preview page
+  if (message.type === 'screen-recorder:start-new') {
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = tabs[0]?.id;
+        await handleScreenRecordingToggle(tabId);
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error('[background] Screen recording start failed:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
 
@@ -3727,6 +3805,14 @@ if (chrome.contextMenus) {
     if (menuItemId === NENYA_MENU_IDS.TAKE_SCREENSHOT) {
       if (tab && typeof tab.id === 'number') {
         void handleScreenshotCopy(tab.id);
+      }
+      return;
+    }
+
+    // Screen recording
+    if (menuItemId === NENYA_MENU_IDS.SCREEN_RECORDING) {
+      if (tab && typeof tab.id === 'number') {
+        void handleScreenRecordingToggle(tab.id);
       }
       return;
     }
