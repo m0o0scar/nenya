@@ -2881,7 +2881,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
             }
           }
           if (coverUploadPromises.length > 0) {
-            await Promise.all(coverUploadPromises);
+            await Promise.allSettled(coverUploadPromises);
           }
         }
       }
