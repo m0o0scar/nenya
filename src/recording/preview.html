@@ -9,6 +9,8 @@
   <link rel="stylesheet" href="../libs/daisyui@5.css">
   <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
   <script src="../libs/tailwindcss@4.js"></script>
+  <script src="../libs/ffmpeg.js"></script>
+  <script src="../libs/ffmpeg-util.js"></script>
   <style>
     html, body {
       height: 100%;
@@ -82,6 +84,30 @@
             <span>⏺️</span>
             New Recording
           </button>
+        </div>
+
+        <!-- Trim Controls -->
+        <div id="trimControls" class="hidden flex flex-col gap-2 p-3 bg-base-100 rounded-lg shadow-sm border border-base-300 mb-2 mx-1">
+          <div class="flex items-end gap-3 flex-wrap">
+            <div class="form-control w-24">
+              <label class="label py-1"><span class="label-text text-xs">Start</span></label>
+              <input type="text" id="trimStart" placeholder="00:00" class="input input-sm input-bordered" />
+            </div>
+            <div class="form-control w-24">
+              <label class="label py-1"><span class="label-text text-xs">End</span></label>
+              <input type="text" id="trimEnd" placeholder="00:00" class="input input-sm input-bordered" />
+            </div>
+            <button id="trimBtn" class="btn btn-sm btn-secondary">
+              ✂️ Trim
+            </button>
+          </div>
+          <div id="trimProgressContainer" class="hidden w-full mt-2">
+            <div class="flex justify-between text-xs mb-1">
+              <span id="trimStatusText">Processing...</span>
+              <span id="trimPercent">0%</span>
+            </div>
+            <progress id="trimProgressBar" class="progress progress-secondary w-full" value="0" max="100"></progress>
+          </div>
         </div>
       </div>
     </div>

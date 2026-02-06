@@ -21,11 +21,72 @@ import { loadVideoBlob, deleteVideoBlob } from './storage.js';
   const downloadBtn = /** @type {HTMLButtonElement} */ (document.getElementById('downloadBtn'));
   const newRecordingBtn = document.getElementById('newRecordingBtn');
 
+  // Trim Controls
+  const trimControls = document.getElementById('trimControls');
+  const trimStart = /** @type {HTMLInputElement} */ (document.getElementById('trimStart'));
+  const trimEnd = /** @type {HTMLInputElement} */ (document.getElementById('trimEnd'));
+  const trimBtn = /** @type {HTMLButtonElement} */ (document.getElementById('trimBtn'));
+  const trimProgressContainer = document.getElementById('trimProgressContainer');
+  const trimProgressBar = /** @type {HTMLProgressElement} */ (document.getElementById('trimProgressBar'));
+  const trimPercent = document.getElementById('trimPercent');
+  const trimStatusText = document.getElementById('trimStatusText');
+
   /** @type {string | null} */
   let currentVideoUrl = null;
 
   /** @type {Blob | null} */
   let currentVideoBlob = null;
+
+  /** @type {any} */
+  let ffmpeg = null;
+
+  /**
+   * Load FFmpeg instance.
+   */
+  async function loadFFmpeg() {
+    if (ffmpeg) return ffmpeg;
+
+    // @ts-ignore
+    const { FFmpeg } = window.FFmpegWASM;
+    ffmpeg = new FFmpeg();
+
+    ffmpeg.on('log', ({ message }) => {
+      console.log('[ffmpeg]', message);
+    });
+
+    ffmpeg.on('progress', ({ progress }) => {
+       if (trimProgressBar && trimPercent) {
+         const percent = Math.min(Math.max(0, Math.round(progress * 100)), 100);
+         trimProgressBar.value = percent;
+         trimPercent.textContent = `${percent}%`;
+       }
+    });
+
+    await ffmpeg.load({
+        coreURL: '../libs/ffmpeg-core.js',
+        wasmURL: '../libs/ffmpeg-core.wasm',
+    });
+
+    return ffmpeg;
+  }
+
+  /**
+   * Parse time string to seconds.
+   * Supports "MM:SS", "HH:MM:SS", or "SS".
+   * @param {string} timeStr
+   * @returns {number|null}
+   */
+  function parseTime(timeStr) {
+    if (!timeStr) return null;
+    const parts = timeStr.trim().split(':').map(Number);
+    if (parts.some(isNaN)) return null;
+
+    let seconds = 0;
+    if (parts.length === 3) seconds = parts[0] * 3600 + parts[1] * 60 + parts[2];
+    else if (parts.length === 2) seconds = parts[0] * 60 + parts[1];
+    else if (parts.length === 1) seconds = parts[0];
+    return seconds;
+  }
 
   /**
    * Show error state with message.
@@ -46,6 +107,7 @@ import { loadVideoBlob, deleteVideoBlob } from './storage.js';
     if (errorState) errorState.classList.add('hidden');
     if (videoContainer) videoContainer.classList.remove('hidden');
     if (downloadBtn) downloadBtn.disabled = false;
+    if (trimControls) trimControls.classList.remove('hidden');
   }
 
   /**
@@ -320,6 +382,73 @@ import { loadVideoBlob, deleteVideoBlob } from './storage.js';
   }
 
   /**
+   * Trim the video using FFmpeg.
+   */
+  async function handleTrim() {
+    if (!currentVideoBlob) return;
+
+    const start = parseTime(trimStart.value);
+    const end = parseTime(trimEnd.value);
+
+    if (start === null && end === null) {
+      alert('Please enter a start or end time (e.g., 00:05).');
+      return;
+    }
+
+    try {
+      if (trimBtn) trimBtn.disabled = true;
+      if (trimControls) trimControls.classList.add('opacity-50');
+      if (trimProgressContainer) trimProgressContainer.classList.remove('hidden');
+      if (trimStatusText) trimStatusText.textContent = 'Loading FFmpeg...';
+
+      const ffmpeg = await loadFFmpeg();
+
+      // @ts-ignore
+      const { fetchFile } = window.FFmpegUtil;
+
+      if (trimStatusText) trimStatusText.textContent = 'Writing file...';
+      await ffmpeg.writeFile('input.webm', await fetchFile(currentVideoBlob));
+
+      const args = ['-i', 'input.webm'];
+      if (start !== null) args.push('-ss', start.toString());
+      if (end !== null) args.push('-to', end.toString());
+      args.push('-c', 'copy', 'output.webm');
+
+      if (trimStatusText) trimStatusText.textContent = 'Trimming...';
+      await ffmpeg.exec(args);
+
+      if (trimStatusText) trimStatusText.textContent = 'Reading output...';
+      const data = await ffmpeg.readFile('output.webm');
+
+      const newBlob = new Blob([data.buffer], { type: 'video/webm' });
+      currentVideoBlob = newBlob;
+      currentVideoUrl = URL.createObjectURL(newBlob);
+
+      if (videoPlayer) {
+        videoPlayer.src = currentVideoUrl;
+        // Optionally update file size info
+      }
+
+      // Cleanup
+      await ffmpeg.deleteFile('input.webm');
+      await ffmpeg.deleteFile('output.webm');
+
+      if (trimStatusText) trimStatusText.textContent = 'Done!';
+      setTimeout(() => {
+        if (trimProgressContainer) trimProgressContainer.classList.add('hidden');
+      }, 2000);
+
+    } catch (error) {
+      console.error('Trim failed:', error);
+      alert('Trim failed: ' + error.message);
+      if (trimProgressContainer) trimProgressContainer.classList.add('hidden');
+    } finally {
+      if (trimBtn) trimBtn.disabled = false;
+      if (trimControls) trimControls.classList.remove('opacity-50');
+    }
+  }
+
+  /**
    * Start a new recording.
    */
   async function startNewRecording() {
@@ -346,6 +475,10 @@ import { loadVideoBlob, deleteVideoBlob } from './storage.js';
 
   if (newRecordingBtn) {
     newRecordingBtn.addEventListener('click', startNewRecording);
+  }
+
+  if (trimBtn) {
+    trimBtn.addEventListener('click', handleTrim);
   }
 
   // Notify background when page loads (to cancel any pending deletion)
