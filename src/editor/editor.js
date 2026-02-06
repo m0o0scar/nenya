@@ -806,6 +806,9 @@ class Editor {
         this.color = '#ff0000';
         this.opacity = 1.0;
         this.lineWidth = 4;
+        this.rectLineWidth = 4;
+        this.arrowLineWidth = 4;
+        this.highlightLineWidth = 20;
         this.fontFamily = 'Arial';
         this.fontSize = 24;
         this.isBold = false;
@@ -867,6 +870,15 @@ class Editor {
                     if (s.color) this.color = s.color;
                     if (s.opacity !== undefined) this.opacity = s.opacity;
                     if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
+
+                    if (s.rectLineWidth !== undefined) this.rectLineWidth = s.rectLineWidth;
+                    else if (s.lineWidth !== undefined) this.rectLineWidth = s.lineWidth;
+
+                    if (s.arrowLineWidth !== undefined) this.arrowLineWidth = s.arrowLineWidth;
+                    else if (s.lineWidth !== undefined) this.arrowLineWidth = s.lineWidth;
+
+                    if (s.highlightLineWidth !== undefined) this.highlightLineWidth = s.highlightLineWidth;
+
                     if (s.fontFamily) this.fontFamily = s.fontFamily;
                     if (s.fontSize !== undefined) this.fontSize = s.fontSize;
                     if (s.isBold !== undefined) this.isBold = s.isBold;
@@ -888,6 +900,9 @@ class Editor {
                         color: this.color,
                         opacity: this.opacity,
                         lineWidth: this.lineWidth,
+                        rectLineWidth: this.rectLineWidth,
+                        arrowLineWidth: this.arrowLineWidth,
+                        highlightLineWidth: this.highlightLineWidth,
                         fontFamily: this.fontFamily,
                         fontSize: this.fontSize,
                         isBold: this.isBold,
@@ -1063,7 +1078,8 @@ class Editor {
         });
         const propStroke = /** @type {HTMLInputElement} */ (document.getElementById('prop-stroke'));
         if (propStroke) propStroke.addEventListener('input', (e) => {
-            this.lineWidth = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
+            const val = parseInt(/** @type {HTMLInputElement} */ (e.target).value);
+            this.updateCurrentLineWidth(val);
             this.updateSelectedShape();
             this.saveSettings();
         });
@@ -1164,9 +1180,13 @@ class Editor {
         if (tool === 'highlight') {
             this.color = '#ffff00'; // Yellow
             this.opacity = 0.4; // Semi-transparent
-            this.lineWidth = 20; // Thick stroke
-            this.saveSettings();
+            this.lineWidth = this.highlightLineWidth;
+        } else if (tool === 'rect') {
+            this.lineWidth = this.rectLineWidth;
+        } else if (tool === 'arrow') {
+            this.lineWidth = this.arrowLineWidth;
         }
+        this.saveSettings();
         this.render();
         this.updateToolbarUI();
         this.updateUI();
@@ -1208,6 +1228,32 @@ class Editor {
 
     getSelectedShape() {
         return this.shapes.find(s => s.selected);
+    }
+
+    /**
+     * @param {number} width
+     */
+    updateCurrentLineWidth(width) {
+        this.lineWidth = width;
+
+        // Update specific tool settings based on current context
+        if (this.tool === 'rect') {
+            this.rectLineWidth = width;
+        } else if (this.tool === 'highlight') {
+            this.highlightLineWidth = width;
+        } else if (this.tool === 'arrow') {
+            this.arrowLineWidth = width;
+        } else if (this.tool === 'select') {
+            // If we are modifying a selected shape, update the corresponding tool setting
+            const shape = this.getSelectedShape();
+            if (shape instanceof RectShape) {
+                this.rectLineWidth = width;
+            } else if (shape instanceof HighlightShape) {
+                this.highlightLineWidth = width;
+            } else if (shape instanceof ArrowShape) {
+                this.arrowLineWidth = width;
+            }
+        }
     }
 
     updateSelectedShape() {
@@ -1342,8 +1388,9 @@ class Editor {
                 } else if (shape instanceof RectShape || shape instanceof ArrowShape || shape instanceof HighlightShape || shape instanceof BlurShape) {
                     const s = /** @type {RectShape | ArrowShape | HighlightShape | BlurShape} */ (shape);
                     if (s.lineWidth !== undefined) {
-                        s.lineWidth = Math.max(1, Math.min(200, s.lineWidth + delta * 2));
-                        this.lineWidth = s.lineWidth; // Sync global prop
+                        const newVal = Math.max(1, Math.min(200, s.lineWidth + delta * 2));
+                        s.lineWidth = newVal;
+                        this.updateCurrentLineWidth(newVal);
                     }
                 }
 
