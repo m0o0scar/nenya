@@ -70,6 +70,7 @@ const SHORTCUT_CONFIG = {
       }
     },
     key: 'j',
+    shift: true,
   },
   customFilter: {
     emoji: '⚡️',
@@ -81,7 +82,7 @@ const SHORTCUT_CONFIG = {
     emoji: '🈹',
     tooltip: 'Split page',
     handler: () => void handleSplitPage(),
-    key: 's',
+    key: 'i',
   },
   autoReload: {
     emoji: '🔁',
@@ -111,7 +112,7 @@ const SHORTCUT_CONFIG = {
     emoji: '📑',
     tooltip: 'Inject js/css into this page',
     handler: () => void handleCustomCode(),
-    key: 'i',
+    key: 'j',
   },
   pictureInPicture: {
     emoji: '🖼️',
@@ -129,7 +130,7 @@ const SHORTCUT_CONFIG = {
     emoji: '⏺️',
     tooltip: 'Screen recording',
     handler: () => void handleScreenRecording(),
-    key: 'v',
+    key: 's',
   },
   openInPopup: {
     emoji: '↗️',
@@ -3587,7 +3588,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     if (event.metaKey || event.ctrlKey) {
       const key = event.key.toLowerCase();
       const matchedShortcut = Object.values(SHORTCUT_CONFIG).find(
-        (config) => config.key === key,
+        (config) => config.key === key && (config.shift ? event.shiftKey : !event.shiftKey),
       );
 
       if (matchedShortcut) {

@@ -6,6 +6,7 @@
  * @property {string} emoji - Button emoji icon
  * @property {string} tooltip - Button tooltip text
  * @property {string} [key] - Keyboard shortcut key
+ * @property {boolean} [shift] - Whether Shift modifier is required
  */
 
 /**
@@ -32,6 +33,7 @@ const AVAILABLE_SHORTCUTS = [
     emoji: '💾',
     tooltip: 'Import custom JS/CSS rule',
     key: 'j',
+    shift: true,
   },
   {
     id: 'customFilter',
@@ -39,7 +41,7 @@ const AVAILABLE_SHORTCUTS = [
     tooltip: 'Hide elements in page',
     key: 'h',
   },
-  { id: 'splitPage', emoji: '🈹', tooltip: 'Split page', key: 's' },
+  { id: 'splitPage', emoji: '🈹', tooltip: 'Split page', key: 'i' },
   { id: 'autoReload', emoji: '🔁', tooltip: 'Auto reload this page', key: 'r' },
   {
     id: 'brightMode',
@@ -63,7 +65,7 @@ const AVAILABLE_SHORTCUTS = [
     id: 'customCode',
     emoji: '📑',
     tooltip: 'Inject js/css into this page',
-    key: 'i',
+    key: 'j',
   },
   {
     id: 'pictureInPicture',
@@ -72,7 +74,7 @@ const AVAILABLE_SHORTCUTS = [
     key: 'p',
   },
   { id: 'takeScreenshot', emoji: '📸', tooltip: 'Take screenshot', key: 'k' },
-  { id: 'screenRecording', emoji: '⏺️', tooltip: 'Screen recording', key: 'v' },
+  { id: 'screenRecording', emoji: '⏺️', tooltip: 'Screen recording', key: 's' },
   { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup', key: 'o' },
   // Note: openOptions is always shown at the end and cannot be pinned
 ];
@@ -235,7 +237,7 @@ function render() {
               }</div>
               ${
                 shortcut.key
-                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.key.toUpperCase()}</span>`
+                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.shift ? '⇧' : ''}${shortcut.key.toUpperCase()}</span>`
                   : ''
               }
             </div>
@@ -344,7 +346,7 @@ function render() {
               <div class="font-medium text-sm">${shortcut.tooltip}</div>
               ${
                 shortcut.key
-                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.key.toUpperCase()}</span>`
+                  ? `<span class="badge badge-ghost badge-sm text-[10px] font-mono h-5 min-h-0 px-1.5 opacity-70">⌘${shortcut.shift ? '⇧' : ''}${shortcut.key.toUpperCase()}</span>`
                   : ''
               }
             </div>
