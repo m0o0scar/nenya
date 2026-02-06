@@ -481,6 +481,15 @@ class TextShape extends Shape {
         this.isItalic = isItalic;
         this.isUnderline = isUnderline;
         this.hasBorder = hasBorder;
+        this.lineHeight = 1.2; // Line height multiplier
+    }
+
+    /**
+     * Get lines of text split by newlines
+     * @returns {string[]}
+     */
+    getLines() {
+        return this.text.split('\n');
     }
 
     /**
@@ -496,32 +505,47 @@ class TextShape extends Shape {
         ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
         ctx.textBaseline = 'top';
 
-        if (this.hasBorder) {
-            const brightness = getBrightness(this.color);
-            ctx.strokeStyle = brightness < 128 ? '#ffffff' : '#000000';
-            ctx.lineWidth = Math.max(2, this.fontSize / 10);
-            ctx.lineJoin = 'round';
-            ctx.miterLimit = 2;
-            ctx.strokeText(this.text, this.x, this.y);
+        const lines = this.getLines();
+        const lineHeightPx = this.fontSize * this.lineHeight;
+        
+        // Calculate max width for selection box
+        let maxWidth = 0;
+        for (const line of lines) {
+            const lineWidth = ctx.measureText(line).width;
+            if (lineWidth > maxWidth) maxWidth = lineWidth;
         }
+        this.lastWidth = maxWidth;
+        this.lastHeight = lines.length * lineHeightPx;
 
-        this.lastWidth = ctx.measureText(this.text).width;
-        ctx.fillText(this.text, this.x, this.y);
+        // Draw each line
+        for (let i = 0; i < lines.length; i++) {
+            const lineY = this.y + i * lineHeightPx;
+            const lineText = lines[i];
 
-        if (this.isUnderline) {
-            const width = this.lastWidth;
-            ctx.beginPath();
-            ctx.strokeStyle = this.color;
-            ctx.lineWidth = Math.max(1, this.fontSize / 15);
-            ctx.moveTo(this.x, this.y + this.fontSize * 0.9);
-            ctx.lineTo(this.x + width, this.y + this.fontSize * 0.9);
-            ctx.stroke();
+            if (this.hasBorder) {
+                const brightness = getBrightness(this.color);
+                ctx.strokeStyle = brightness < 128 ? '#ffffff' : '#000000';
+                ctx.lineWidth = Math.max(2, this.fontSize / 10);
+                ctx.lineJoin = 'round';
+                ctx.miterLimit = 2;
+                ctx.strokeText(lineText, this.x, lineY);
+            }
+
+            ctx.fillText(lineText, this.x, lineY);
+
+            if (this.isUnderline) {
+                const lineWidth = ctx.measureText(lineText).width;
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = Math.max(1, this.fontSize / 15);
+                ctx.moveTo(this.x, lineY + this.fontSize * 0.9);
+                ctx.lineTo(this.x + lineWidth, lineY + this.fontSize * 0.9);
+                ctx.stroke();
+            }
         }
 
         if (this.selected) {
-            const width = this.lastWidth;
-            const height = this.fontSize; // Approximate
-            drawSelectionBox(ctx, this.x, this.y, width, height);
+            drawSelectionBox(ctx, this.x, this.y, this.lastWidth, this.lastHeight);
         }
         ctx.restore();
     }
@@ -536,10 +560,20 @@ class TextShape extends Shape {
         const style = this.isItalic ? 'italic ' : '';
         const weight = this.isBold ? 'bold ' : '';
         ctx.font = `${style}${weight}${this.fontSize}px "${this.fontFamily}"`;
-        const width = ctx.measureText(this.text).width;
-        this.lastWidth = width;
-        const height = this.fontSize;
-        return (x >= this.x && x <= this.x + width && y >= this.y && y <= this.y + height);
+        
+        const lines = this.getLines();
+        const lineHeightPx = this.fontSize * this.lineHeight;
+        
+        // Calculate max width
+        let maxWidth = 0;
+        for (const line of lines) {
+            const lineWidth = ctx.measureText(line).width;
+            if (lineWidth > maxWidth) maxWidth = lineWidth;
+        }
+        this.lastWidth = maxWidth;
+        this.lastHeight = lines.length * lineHeightPx;
+        
+        return (x >= this.x && x <= this.x + this.lastWidth && y >= this.y && y <= this.y + this.lastHeight);
     }
 
     /**
@@ -557,7 +591,7 @@ class TextShape extends Shape {
     getHandles() {
         if (!this.selected) return [];
         const width = this.lastWidth || 0;
-        const height = this.fontSize;
+        const height = this.lastHeight || this.fontSize;
 
         return [
             { x: this.x, y: this.y, type: 'nw', cursor: 'nwse-resize' },
@@ -577,32 +611,37 @@ class TextShape extends Shape {
     updateHandle(handleType, x, y, dx, dy) {
         const oldFontSize = this.fontSize;
         const oldWidth = this.lastWidth || 0;
+        const oldHeight = this.lastHeight || this.fontSize;
+        const lines = this.getLines();
         let newFontSize = oldFontSize;
 
+        // Calculate based on height change, accounting for number of lines
         switch (handleType) {
             case 'se':
             case 'sw':
-                newFontSize = y - this.y;
+                newFontSize = (y - this.y) / (lines.length * this.lineHeight);
                 break;
             case 'ne':
             case 'nw':
-                newFontSize = (this.y + oldFontSize) - y;
+                newFontSize = ((this.y + oldHeight) - y) / (lines.length * this.lineHeight);
                 break;
         }
 
         this.fontSize = Math.max(8, Math.min(1000, newFontSize));
         const scale = this.fontSize / oldFontSize;
         const newWidth = oldWidth * scale;
+        const newHeight = oldHeight * scale;
 
         // Adjust position based on anchor
         if (handleType === 'nw' || handleType === 'sw') {
             this.x = (this.x + oldWidth) - newWidth;
         }
         if (handleType === 'nw' || handleType === 'ne') {
-            this.y = (this.y + oldFontSize) - this.fontSize;
+            this.y = (this.y + oldHeight) - newHeight;
         }
         
         this.lastWidth = newWidth;
+        this.lastHeight = newHeight;
     }
 
     /**
@@ -612,6 +651,7 @@ class TextShape extends Shape {
         const copy = new TextShape(this.x, this.y, this.text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
         copy.selected = this.selected;
         copy.id = this.id;
+        copy.lineHeight = this.lineHeight;
         return copy;
     }
 }
@@ -835,6 +875,7 @@ class Editor {
     async init() {
         this.attachToolbarListeners();
         this.attachCanvasListeners();
+        this.initTextDialog();
         this.initTheme();
         await this.loadSettings();
         await this.loadImage();
@@ -843,6 +884,81 @@ class Editor {
         // Auto-update when fonts load
         document.fonts.ready.then(() => {
             this.render();
+        });
+    }
+
+    /**
+     * Initialize the text input dialog
+     */
+    initTextDialog() {
+        this.textDialog = /** @type {HTMLDialogElement} */ (document.getElementById('text-dialog'));
+        this.textDialogTitle = /** @type {HTMLHeadingElement} */ (document.getElementById('text-dialog-title'));
+        this.textDialogInput = /** @type {HTMLTextAreaElement} */ (document.getElementById('text-dialog-input'));
+        this.textDialogConfirm = /** @type {HTMLButtonElement} */ (document.getElementById('text-dialog-confirm'));
+        this.textDialogCancel = /** @type {HTMLButtonElement} */ (document.getElementById('text-dialog-cancel'));
+        
+        /** @type {((value: string | null) => void) | null} */
+        this.textDialogResolve = null;
+
+        // Handle confirm button
+        this.textDialogConfirm.addEventListener('click', () => {
+            const text = this.textDialogInput.value;
+            this.textDialog.close();
+            if (this.textDialogResolve) {
+                this.textDialogResolve(text || null);
+                this.textDialogResolve = null;
+            }
+        });
+
+        // Handle cancel button
+        this.textDialogCancel.addEventListener('click', () => {
+            this.textDialog.close();
+            if (this.textDialogResolve) {
+                this.textDialogResolve(null);
+                this.textDialogResolve = null;
+            }
+        });
+
+        // Handle backdrop click (close)
+        this.textDialog.addEventListener('close', () => {
+            if (this.textDialogResolve) {
+                this.textDialogResolve(null);
+                this.textDialogResolve = null;
+            }
+        });
+
+        // Handle Ctrl/Cmd+Enter to confirm
+        this.textDialogInput.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                this.textDialogConfirm.click();
+            }
+            // ESC to cancel is handled by dialog default behavior
+        });
+    }
+
+    /**
+     * Show the text input dialog
+     * @param {string} [initialText] - Initial text to show in the textarea
+     * @param {boolean} [isEdit] - Whether this is editing existing text
+     * @returns {Promise<string | null>} - The entered text or null if cancelled
+     */
+    showTextDialog(initialText = '', isEdit = false) {
+        return new Promise((resolve) => {
+            this.textDialogResolve = resolve;
+            this.textDialogTitle.textContent = isEdit ? 'Edit Text' : 'Enter Text';
+            this.textDialogInput.value = initialText;
+            this.textDialog.showModal();
+            // Focus after dialog animation completes
+            setTimeout(() => {
+                this.textDialogInput.focus();
+                if (isEdit) {
+                    this.textDialogInput.select();
+                } else {
+                    // Move cursor to start for new text
+                    this.textDialogInput.setSelectionRange(0, 0);
+                }
+            }, 50);
         });
     }
 
@@ -1483,7 +1599,7 @@ class Editor {
     /**
      * @param {MouseEvent} e
      */
-    handleDoubleClick(e) {
+    async handleDoubleClick(e) {
         if (this.tool !== 'select') return;
         const pos = this.getCanvasPos(e.clientX, e.clientY);
 
@@ -1492,7 +1608,7 @@ class Editor {
             if (shape instanceof TextShape && shape.contains(pos.x, pos.y, this.ctx)) {
                 this.saveHistory();
                 const textShape = /** @type {TextShape} */ (shape);
-                const newText = prompt('Edit text:', textShape.text);
+                const newText = await this.showTextDialog(textShape.text, true);
                 if (newText !== null) {
                     textShape.text = newText;
                     this.render();
@@ -1597,18 +1713,22 @@ class Editor {
             this.currentShape = new HighlightShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'text') {
-            const text = prompt('Enter text:');
-            if (text) {
-                this.saveHistory();
-                const shape = new TextShape(pos.x, pos.y, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
-                this.shapes.push(shape);
-                shape.selected = true;
-                this.tool = 'select';
-                this.updateToolbarUI();
-                this.updateUI();
-                this.render();
-            }
             this.isDragging = false;
+            // Store position for async dialog
+            const textX = pos.x;
+            const textY = pos.y;
+            this.showTextDialog('').then((text) => {
+                if (text) {
+                    this.saveHistory();
+                    const shape = new TextShape(textX, textY, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
+                    this.shapes.push(shape);
+                    shape.selected = true;
+                    this.tool = 'select';
+                    this.updateToolbarUI();
+                    this.updateUI();
+                    this.render();
+                }
+            });
         }
     }
 

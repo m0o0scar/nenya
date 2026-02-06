@@ -148,3 +148,30 @@ body {
     font-weight: 400;
     font-style: normal;
 }
+
+/* Text Dialog Styles */
+#text-dialog .modal-box {
+    animation: modal-pop 0.2s ease-out;
+}
+
+#text-dialog-input {
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+}
+
+#text-dialog-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary), transparent 80%);
+}
+
+@keyframes modal-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0.95);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}

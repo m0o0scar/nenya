@@ -272,6 +272,27 @@
         <canvas id="editor-canvas" class="shadow-2xl bg-white"></canvas>
     </main>
 
+    <!-- Text Input Dialog -->
+    <dialog id="text-dialog" class="modal">
+        <div class="modal-box max-w-md">
+            <h3 id="text-dialog-title" class="font-bold text-lg mb-4">Enter Text</h3>
+            <textarea id="text-dialog-input" autofocus
+                class="textarea textarea-bordered w-full h-40 resize-y text-base leading-relaxed" 
+                placeholder="Enter your text here...&#10;Press Enter for new lines"></textarea>
+            <p class="text-xs text-base-content/50 mt-2">
+                <kbd class="kbd kbd-xs">Enter</kbd> for new line &nbsp;&bull;&nbsp;
+                <kbd class="kbd kbd-xs">Ctrl</kbd>+<kbd class="kbd kbd-xs">Enter</kbd> to confirm
+            </p>
+            <div class="modal-action">
+                <button id="text-dialog-cancel" class="btn btn-ghost">Cancel</button>
+                <button id="text-dialog-confirm" class="btn btn-primary">Confirm</button>
+            </div>
+        </div>
+        <form method="dialog" class="modal-backdrop">
+            <button>close</button>
+        </form>
+    </dialog>
+
     <script src="./editor.js" type="module"></script>
 </body>
 
