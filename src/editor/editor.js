@@ -1688,7 +1688,23 @@ class Editor {
                  }
 
                  this.cropHandle = this.getCropHandle(pos.x, pos.y);
-                 if (!this.cropHandle) {
+                 if (this.cropHandle && this.cropHandle !== 'move') {
+                     // Reposition rect so (r.x, r.y) is at the anchor (opposite corner of the handle)
+                     const r = this.cropRect;
+                     let nx = r.w < 0 ? r.x + r.w : r.x;
+                     let ny = r.h < 0 ? r.y + r.h : r.y;
+                     let nw = Math.abs(r.w);
+                     let nh = Math.abs(r.h);
+                     
+                     switch (this.cropHandle) {
+                         case 'nw': r.x = nx + nw; r.y = ny + nh; break;
+                         case 'ne': r.x = nx; r.y = ny + nh; break;
+                         case 'sw': r.x = nx + nw; r.y = ny; break;
+                         case 'se': r.x = nx; r.y = ny; break;
+                     }
+                     r.w = pos.x - r.x;
+                     r.h = pos.y - r.y;
+                 } else if (!this.cropHandle) {
                      this.cropRect = { x: pos.x, y: pos.y, w: 0, h: 0 };
                      this.cropHandle = 'se';
                  }
@@ -1934,13 +1950,13 @@ class Editor {
         const maxW = this.canvas.width;
         const maxH = this.canvas.height;
 
-        // Get current normalized bounds
-        let nx = r.w < 0 ? r.x + r.w : r.x;
-        let ny = r.h < 0 ? r.y + r.h : r.y;
-        let nw = Math.abs(r.w);
-        let nh = Math.abs(r.h);
-
         if (this.cropHandle === 'move') {
+            // Get current normalized bounds for move clamping
+            let nx = r.w < 0 ? r.x + r.w : r.x;
+            let ny = r.h < 0 ? r.y + r.h : r.y;
+            let nw = Math.abs(r.w);
+            let nh = Math.abs(r.h);
+
             // Proposed new position
             let newNx = nx + dx;
             let newNy = ny + dy;
@@ -1958,23 +1974,10 @@ class Editor {
             const mx = Math.max(0, Math.min(x, maxW));
             const my = Math.max(0, Math.min(y, maxH));
 
-            // Determine anchor based on handle
-            // anchors are based on current normalized bounds
-            let anchorX, anchorY;
-
-            switch (this.cropHandle) {
-                case 'nw': anchorX = nx + nw; anchorY = ny + nh; break; // Anchor SE
-                case 'ne': anchorX = nx; anchorY = ny + nh; break; // Anchor SW
-                case 'sw': anchorX = nx + nw; anchorY = ny; break; // Anchor NE
-                case 'se': anchorX = nx; anchorY = ny; break; // Anchor NW
-            }
-
-            if (anchorX !== undefined && anchorY !== undefined) {
-                r.x = anchorX;
-                r.y = anchorY;
-                r.w = mx - anchorX;
-                r.h = my - anchorY;
-            }
+            // Anchor is fixed at (r.x, r.y) - set during mousedown
+            // Just update width and height based on mouse position
+            r.w = mx - r.x;
+            r.h = my - r.y;
         }
     }
 
