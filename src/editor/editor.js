@@ -316,48 +316,83 @@ class ArrowShape extends Shape {
      * @param {string} color
      * @param {number} opacity
      * @param {number} lineWidth
+     * @param {boolean} [hasBorder]
      */
-    constructor(x1, y1, x2, y2, color, opacity, lineWidth) {
+    constructor(x1, y1, x2, y2, color, opacity, lineWidth, hasBorder = false) {
         super('arrow', color, opacity, lineWidth);
         this.x1 = x1;
         this.y1 = y1;
         this.x2 = x2;
         this.y2 = y2;
+        this.hasBorder = hasBorder;
     }
 
     /**
      * @param {CanvasRenderingContext2D} ctx
      */
     draw(ctx) {
-        super.draw(ctx);
+        ctx.globalAlpha = this.opacity;
+        
         const headlen = 15 + this.lineWidth * 2;
         const angle = Math.atan2(this.y2 - this.y1, this.x2 - this.x1);
+        const perpAngle = angle + Math.PI / 2;
+        const halfWidth = this.lineWidth / 2;
 
-        // Calculate the base of the arrowhead triangle
-        // The triangle is formed by (x2, y2) and two points at headlen distance 30 degrees off-axis.
-        // The midpoint of the base is on the shaft, headlen * cos(30deg) back from the tip.
+        // Calculate shaft corners (perpendicular to direction)
+        const startLeftX = this.x1 + halfWidth * Math.cos(perpAngle);
+        const startLeftY = this.y1 + halfWidth * Math.sin(perpAngle);
+        const startRightX = this.x1 - halfWidth * Math.cos(perpAngle);
+        const startRightY = this.y1 - halfWidth * Math.sin(perpAngle);
+
+        // Where shaft meets arrowhead base
         const shaftShorten = headlen * Math.cos(Math.PI / 6);
-        const lineEndX = this.x2 - shaftShorten * Math.cos(angle);
-        const lineEndY = this.y2 - shaftShorten * Math.sin(angle);
+        const baseX = this.x2 - shaftShorten * Math.cos(angle);
+        const baseY = this.y2 - shaftShorten * Math.sin(angle);
 
-        // Use butt cap so it doesn't poke through the transparent head
-        ctx.lineCap = 'butt';
-        ctx.beginPath();
-        ctx.moveTo(this.x1, this.y1);
-        ctx.lineTo(lineEndX, lineEndY);
-        ctx.stroke();
+        const baseLeftX = baseX + halfWidth * Math.cos(perpAngle);
+        const baseLeftY = baseY + halfWidth * Math.sin(perpAngle);
+        const baseRightX = baseX - halfWidth * Math.cos(perpAngle);
+        const baseRightY = baseY - halfWidth * Math.sin(perpAngle);
 
+        // Arrowhead wing points
+        const wingLeftX = this.x2 - headlen * Math.cos(angle - Math.PI / 6);
+        const wingLeftY = this.y2 - headlen * Math.sin(angle - Math.PI / 6);
+        const wingRightX = this.x2 - headlen * Math.cos(angle + Math.PI / 6);
+        const wingRightY = this.y2 - headlen * Math.sin(angle + Math.PI / 6);
+
+        // Build arrow as a single polygon path
         ctx.beginPath();
-        ctx.moveTo(this.x2, this.y2);
-        ctx.lineTo(this.x2 - headlen * Math.cos(angle - Math.PI / 6), this.y2 - headlen * Math.sin(angle - Math.PI / 6));
-        ctx.lineTo(this.x2 - headlen * Math.cos(angle + Math.PI / 6), this.y2 - headlen * Math.sin(angle + Math.PI / 6));
+        ctx.moveTo(startLeftX, startLeftY);
+        ctx.lineTo(baseLeftX, baseLeftY);
+        ctx.lineTo(wingLeftX, wingLeftY);
+        ctx.lineTo(this.x2, this.y2); // tip
+        ctx.lineTo(wingRightX, wingRightY);
+        ctx.lineTo(baseRightX, baseRightY);
+        ctx.lineTo(startRightX, startRightY);
+        ctx.closePath();
+
+        // Draw border first (stroke), then fill on top
+        if (this.hasBorder) {
+            const brightness = getBrightness(this.color);
+            const borderColor = brightness < 128 ? '#ffffff' : '#000000';
+            const borderWidth = Math.max(2, this.lineWidth / 3);
+
+            ctx.strokeStyle = borderColor;
+            ctx.lineWidth = borderWidth;
+            ctx.lineJoin = 'round';
+            ctx.lineCap = 'round';
+            ctx.stroke();
+        }
+
+        // Fill the arrow shape
+        ctx.fillStyle = this.color;
         ctx.fill();
 
         if (this.selected) {
+             ctx.globalAlpha = 1;
              ctx.fillStyle = 'white';
              ctx.strokeStyle = '#00a1ff';
              ctx.lineWidth = 1;
-             ctx.lineCap = 'butt'; // Reset for handles if needed
              ctx.fillRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.strokeRect(this.x1 - 4, this.y1 - 4, 8, 8);
              ctx.fillRect(this.x2 - 4, this.y2 - 4, 8, 8);
@@ -437,7 +472,7 @@ class ArrowShape extends Shape {
      * @returns {ArrowShape}
      */
     clone() {
-        const copy = new ArrowShape(this.x1, this.y1, this.x2, this.y2, this.color, this.opacity, this.lineWidth);
+        const copy = new ArrowShape(this.x1, this.y1, this.x2, this.y2, this.color, this.opacity, this.lineWidth, this.hasBorder);
         copy.selected = this.selected;
         copy.id = this.id;
         return copy;
@@ -855,6 +890,7 @@ class Editor {
         this.isItalic = false;
         this.isUnderline = false;
         this.hasBorder = false;
+        this.arrowHasBorder = false;
 
         // Zoom/Pan
         this.scale = 1;
@@ -1001,6 +1037,7 @@ class Editor {
                     if (s.isItalic !== undefined) this.isItalic = s.isItalic;
                     if (s.isUnderline !== undefined) this.isUnderline = s.isUnderline;
                     if (s.hasBorder !== undefined) this.hasBorder = s.hasBorder;
+                    if (s.arrowHasBorder !== undefined) this.arrowHasBorder = s.arrowHasBorder;
                 }
             }
         } catch (e) {
@@ -1024,7 +1061,8 @@ class Editor {
                         isBold: this.isBold,
                         isItalic: this.isItalic,
                         isUnderline: this.isUnderline,
-                        hasBorder: this.hasBorder
+                        hasBorder: this.hasBorder,
+                        arrowHasBorder: this.arrowHasBorder
                     }
                 });
             }
@@ -1264,6 +1302,16 @@ class Editor {
                 this.updateUI();
             });
         });
+
+        // Arrow Border
+        const arrowBorderBtn = document.getElementById('prop-arrow-border');
+        if (arrowBorderBtn) arrowBorderBtn.addEventListener('click', () => {
+            this.saveHistory();
+            this.arrowHasBorder = !this.arrowHasBorder;
+            this.updateSelectedShape();
+            this.saveSettings();
+            this.updateUI();
+        });
     }
 
     /**
@@ -1324,11 +1372,19 @@ class Editor {
 
         // Visibility
         const textProps = document.getElementById('text-props');
+        const arrowBorderProps = document.getElementById('arrow-border-props');
         if (textProps) {
             if (this.tool === 'text' || (this.getSelectedShape() instanceof TextShape)) {
                 textProps.classList.remove('hidden');
             } else {
                 textProps.classList.add('hidden');
+            }
+        }
+        if (arrowBorderProps) {
+            if (this.tool === 'arrow' || (this.getSelectedShape() instanceof ArrowShape)) {
+                arrowBorderProps.classList.remove('hidden');
+            } else {
+                arrowBorderProps.classList.add('hidden');
             }
         }
 
@@ -1386,6 +1442,9 @@ class Editor {
                 shape.isUnderline = this.isUnderline;
                 shape.hasBorder = this.hasBorder;
             }
+            if (shape instanceof ArrowShape) {
+                shape.hasBorder = this.arrowHasBorder;
+            }
             this.render();
         }
     }
@@ -1438,6 +1497,9 @@ class Editor {
             } else {
                  if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
             }
+            if (shape instanceof ArrowShape) {
+                this.arrowHasBorder = shape.hasBorder;
+            }
         } else {
             if (deleteBtn) deleteBtn.disabled = true;
             if (this.tool !== 'text' && textProps) textProps.classList.add('hidden');
@@ -1455,6 +1517,12 @@ class Editor {
                 btn.classList.toggle('btn-style-active', isActive);
             }
         });
+
+        // Sync Arrow Border Button
+        const arrowBorderBtn = document.getElementById('prop-arrow-border');
+        if (arrowBorderBtn) {
+            arrowBorderBtn.classList.toggle('btn-style-active', this.arrowHasBorder);
+        }
 
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
@@ -1722,7 +1790,7 @@ class Editor {
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'arrow') {
             this.saveHistory();
-            this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth);
+            this.currentShape = new ArrowShape(pos.x, pos.y, pos.x, pos.y, this.color, this.opacity, this.lineWidth, this.arrowHasBorder);
             this.shapes.push(this.currentShape);
         } else if (this.tool === 'highlight') {
             this.saveHistory();
