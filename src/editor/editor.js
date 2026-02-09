@@ -1921,7 +1921,7 @@ class Editor {
             sw: [r.x, r.y + r.h],
             se: [r.x + r.w, r.y + r.h]
         };
-        const dist = 10 / this.scale;
+        const dist = 18 / this.scale;
         for (let h in handles) {
             const [hx, hy] = /** @type {Record<string, number[]>} */ (handles)[h];
             if (Math.abs(x - hx) < dist && Math.abs(y - hy) < dist) return h;
