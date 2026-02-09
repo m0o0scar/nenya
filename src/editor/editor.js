@@ -891,6 +891,7 @@ class Editor {
         this.isUnderline = false;
         this.hasBorder = false;
         this.arrowHasBorder = false;
+        this.closeAfterAction = false;
 
         // Zoom/Pan
         this.scale = 1;
@@ -1038,6 +1039,7 @@ class Editor {
                     if (s.isUnderline !== undefined) this.isUnderline = s.isUnderline;
                     if (s.hasBorder !== undefined) this.hasBorder = s.hasBorder;
                     if (s.arrowHasBorder !== undefined) this.arrowHasBorder = s.arrowHasBorder;
+                    if (s.closeAfterAction !== undefined) this.closeAfterAction = s.closeAfterAction;
                 }
             }
         } catch (e) {
@@ -1062,7 +1064,8 @@ class Editor {
                         isItalic: this.isItalic,
                         isUnderline: this.isUnderline,
                         hasBorder: this.hasBorder,
-                        arrowHasBorder: this.arrowHasBorder
+                        arrowHasBorder: this.arrowHasBorder,
+                        closeAfterAction: this.closeAfterAction
                     }
                 });
             }
@@ -1312,6 +1315,13 @@ class Editor {
             this.saveSettings();
             this.updateUI();
         });
+
+        // Close after action toggle
+        const propCloseAfter = /** @type {HTMLInputElement} */ (document.getElementById('prop-close-after'));
+        if (propCloseAfter) propCloseAfter.addEventListener('change', (e) => {
+            this.closeAfterAction = /** @type {HTMLInputElement} */ (e.target).checked;
+            this.saveSettings();
+        });
     }
 
     /**
@@ -1473,6 +1483,8 @@ class Editor {
         if (propFontFamily) propFontFamily.value = this.fontFamily;
         const propFontSize = /** @type {HTMLInputElement} */ (document.getElementById('prop-font-size'));
         if (propFontSize) propFontSize.value = this.fontSize.toString();
+        const propCloseAfter = /** @type {HTMLInputElement} */ (document.getElementById('prop-close-after'));
+        if (propCloseAfter) propCloseAfter.checked = this.closeAfterAction;
 
         const textProps = document.getElementById('text-props');
 
@@ -2275,6 +2287,10 @@ class Editor {
         link.download = `screenshot-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.jpg`;
         link.href = canvas.toDataURL('image/jpeg', 0.9);
         link.click();
+
+        if (this.closeAfterAction) {
+            setTimeout(() => window.close(), 500);
+        }
     }
 
     async copyToClipboard() {
@@ -2296,6 +2312,10 @@ class Editor {
                 setTimeout(() => {
                     if (btn) btn.innerHTML = originalText;
                 }, 2000);
+            }
+
+            if (this.closeAfterAction) {
+                setTimeout(() => window.close(), 500);
             }
         } catch (err) {
             console.error('Failed to copy', err);
