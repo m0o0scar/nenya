@@ -33,6 +33,7 @@
    * @property {boolean} italic
    * @property {boolean} underline
    * @property {boolean} ignoreCase
+   * @property {RegExp} [_regex] - Cached compiled regex
    */
 
   /**
@@ -341,47 +342,42 @@
         break;
       }
       case 'regex': {
-        try {
-          const flags = highlight.ignoreCase ? 'gi' : 'g';
-          const regex = new RegExp(highlight.value, flags);
-          const matches = [...text.matchAll(regex)];
-          if (matches.length > 0) {
-            let lastIndex = 0;
-            const fragment = document.createDocumentFragment();
+        const regex = highlight._regex;
+        if (!regex) {
+          break;
+        }
 
-            for (const match of matches) {
-              if (match.index !== undefined) {
-                if (match.index > lastIndex) {
-                  fragment.appendChild(
-                    document.createTextNode(
-                      text.substring(lastIndex, match.index),
-                    ),
-                  );
-                }
+        const matches = [...text.matchAll(regex)];
+        if (matches.length > 0) {
+          let lastIndex = 0;
+          const fragment = document.createDocumentFragment();
+
+          for (const match of matches) {
+            if (match.index !== undefined) {
+              if (match.index > lastIndex) {
                 fragment.appendChild(
-                  createHighlightElement(match[0], ruleId, highlight),
+                  document.createTextNode(
+                    text.substring(lastIndex, match.index),
+                  ),
                 );
-                lastIndex = match.index + match[0].length;
               }
-            }
-
-            if (lastIndex < text.length) {
               fragment.appendChild(
-                document.createTextNode(text.substring(lastIndex)),
+                createHighlightElement(match[0], ruleId, highlight),
               );
-            }
-
-            if (parent.contains(textNode)) {
-              parent.replaceChild(fragment, textNode);
-              highlighted = true;
+              lastIndex = match.index + match[0].length;
             }
           }
-        } catch (error) {
-          console.warn(
-            '[highlight-text] Invalid regex pattern:',
-            highlight.value,
-            error,
-          );
+
+          if (lastIndex < text.length) {
+            fragment.appendChild(
+              document.createTextNode(text.substring(lastIndex)),
+            );
+          }
+
+          if (parent.contains(textNode)) {
+            parent.replaceChild(fragment, textNode);
+            highlighted = true;
+          }
         }
         break;
       }
@@ -626,14 +622,33 @@
         .map((rule) => ({
           ...rule,
           disabled: typeof rule.disabled === 'boolean' ? rule.disabled : false,
-          highlights: rule.highlights.map((h) => ({
-            ...h,
-            bold: typeof h.bold === 'boolean' ? h.bold : false,
-            italic: typeof h.italic === 'boolean' ? h.italic : false,
-            underline: typeof h.underline === 'boolean' ? h.underline : false,
-            ignoreCase:
-              typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
-          })),
+          highlights: rule.highlights.map((h) => {
+            /** @type {HighlightEntry} */
+            const highlight = {
+              ...h,
+              bold: typeof h.bold === 'boolean' ? h.bold : false,
+              italic: typeof h.italic === 'boolean' ? h.italic : false,
+              underline: typeof h.underline === 'boolean' ? h.underline : false,
+              ignoreCase:
+                typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
+            };
+
+            // Pre-compile regex for performance
+            if (highlight.type === 'regex' && highlight.value) {
+              try {
+                const flags = highlight.ignoreCase ? 'gi' : 'g';
+                highlight._regex = new RegExp(highlight.value, flags);
+              } catch (error) {
+                console.warn(
+                  '[highlight-text] Invalid regex pattern:',
+                  highlight.value,
+                  error,
+                );
+              }
+            }
+
+            return highlight;
+          }),
         }));
     } catch (error) {
       console.warn('[highlight-text] Failed to load rules:', error);
