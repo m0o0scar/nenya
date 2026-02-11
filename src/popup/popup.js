@@ -138,6 +138,14 @@ const SHORTCUT_CONFIG = {
     handler: () => handleOpenInPopup(),
     key: 'o',
   },
+  emojiPicker: {
+    emoji: '😀',
+    tooltip: 'Emoji Picker',
+    handler: () => {
+      window.location.href = 'emoji.html';
+    },
+    key: 'g',
+  },
   openOptions: {
     emoji: '⚙️',
     tooltip: 'Open options',
@@ -172,6 +180,7 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
   'openInPopup', // Open in popup
+  'emojiPicker', // Emoji Picker
 ];
 
 const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
@@ -2099,10 +2108,10 @@ async function initializePopup() {
   }
 }
 
-// Check if we should navigate to chat page (triggered by keyboard shortcut)
+// Check if we should navigate to chat page or emoji page (triggered by keyboard shortcut)
 void (async () => {
   try {
-    const result = await chrome.storage.local.get('openChatPage');
+    const result = await chrome.storage.local.get(['openChatPage', 'openEmojiPage']);
     if (result.openChatPage) {
       // Clear the flag
       await chrome.storage.local.remove('openChatPage');
@@ -2110,8 +2119,15 @@ void (async () => {
       window.location.href = 'chat.html';
       return;
     }
+    if (result.openEmojiPage) {
+      // Clear the flag
+      await chrome.storage.local.remove('openEmojiPage');
+      // Navigate to emoji page
+      window.location.href = 'emoji.html';
+      return;
+    }
   } catch (error) {
-    console.error('[popup] Failed to check chat page flag:', error);
+    console.error('[popup] Failed to check navigation flags:', error);
   }
 
   // Initialize the popup normally

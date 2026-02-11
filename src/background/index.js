@@ -457,22 +457,12 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === 'emoji-picker-show') {
     void (async () => {
       try {
-        // Get the current active tab
-        const tabs = await chrome.tabs.query({
-          currentWindow: true,
-          active: true,
-        });
-        const currentTab = tabs && tabs[0];
-        if (!currentTab || !currentTab.id) {
-          console.warn('[commands] No active tab found for emoji picker');
-          return;
-        }
+        // Set a flag in storage to indicate we should navigate to emoji page
+        await chrome.storage.local.set({ openEmojiPage: true });
 
-        // Inject the emoji picker content script
-        await chrome.scripting.executeScript({
-          target: { tabId: currentTab.id },
-          files: ['src/contentScript/emoji-picker.js'],
-        });
+        // Open the extension popup (this will trigger the popup to open)
+        // The popup will check the flag and navigate to emoji.html
+        await chrome.action.openPopup();
       } catch (error) {
         console.warn('[commands] Emoji picker failed:', error);
       }
@@ -3802,6 +3792,19 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Emoji Picker
+    if (menuItemId === NENYA_MENU_IDS.EMOJI_PICKER) {
+      void (async () => {
+        try {
+          await chrome.storage.local.set({ openEmojiPage: true });
+          await chrome.action.openPopup();
+        } catch (error) {
+          console.warn('[contextMenu] Failed to open emoji picker:', error);
+        }
+      })();
       return;
     }
 

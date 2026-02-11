@@ -59,6 +59,7 @@ export const NENYA_MENU_IDS = {
   SPLIT_TABS: 'nenya-split-tabs',
   UNSPLIT_TABS: 'nenya-unsplit-tabs',
   OPEN_IN_POPUP: 'nenya-open-in-popup',
+  EMOJI_PICKER: 'nenya-emoji-picker',
   TAKE_SCREENSHOT: 'nenya-take-screenshot',
   SCREEN_RECORDING: 'nenya-screen-recording',
   PIP: 'nenya-pip',
@@ -317,6 +318,13 @@ async function createRootMenus() {
     id: NENYA_MENU_IDS.OPEN_IN_POPUP,
     parentId: NENYA_MENU_IDS.TOOLS_PARENT,
     title: '↗️ Open in popup',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.EMOJI_PICKER,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '😀 Emoji Picker',
     contexts: contexts,
   });
 
