@@ -178,10 +178,8 @@ async function clearRaindropFolder(folderId) {
   
   console.log(`[raindrop-export] Clearing ${children.length} bookmarks from folder`);
   
-  // Delete all children
-  for (const child of children) {
-    await chrome.bookmarks.removeTree(child.id);
-  }
+  // Delete all children concurrently
+  await Promise.all(children.map(child => chrome.bookmarks.removeTree(child.id)));
 }
 
 /**
