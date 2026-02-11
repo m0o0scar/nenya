@@ -30,6 +30,15 @@ const EXPORT_DELAY_MINUTES = 1;
  */
 let isExportRunning = false;
 
+// Regex patterns moved outside the loop to avoid re-compilation
+const HREF_PATTERN = /HREF="([^"]+)"/i;
+const ADD_DATE_PATTERN = /ADD_DATE="([^"]+)"/i;
+const LAST_MODIFIED_PATTERN = /LAST_MODIFIED="([^"]+)"/i;
+const TAGS_PATTERN = /TAGS="([^"]*)"/i;
+// Check for description in the following DD element
+const DD_PATTERN = /^\s*<DD>([^<]*(?:<[^D][^>]*>[^<]*)*?)<\/?\s*(?=<DT|$)/i;
+const HTML_TAGS_PATTERN = /<[^>]+>/g;
+
 /**
  * Export Raindrop items by calling the export endpoint and parsing the HTML response.
  * @returns {Promise<RaindropItem[]>}
@@ -75,7 +84,7 @@ function parseRaindropExportHtml(html) {
     const title = match[2].trim();
     
     // Extract HREF attribute
-    const hrefMatch = /HREF="([^"]+)"/i.exec(attributes);
+    const hrefMatch = HREF_PATTERN.exec(attributes);
     if (!hrefMatch) {
       continue; // Skip if no URL
     }
@@ -91,17 +100,17 @@ function parseRaindropExportHtml(html) {
     };
 
     // Extract optional attributes
-    const addDateMatch = /ADD_DATE="([^"]+)"/i.exec(attributes);
+    const addDateMatch = ADD_DATE_PATTERN.exec(attributes);
     if (addDateMatch) {
       item.addDate = parseInt(addDateMatch[1], 10) * 1000; // Convert to milliseconds
     }
 
-    const lastModifiedMatch = /LAST_MODIFIED="([^"]+)"/i.exec(attributes);
+    const lastModifiedMatch = LAST_MODIFIED_PATTERN.exec(attributes);
     if (lastModifiedMatch) {
       item.lastModified = parseInt(lastModifiedMatch[1], 10) * 1000;
     }
 
-    const tagsMatch = /TAGS="([^"]*)"/i.exec(attributes);
+    const tagsMatch = TAGS_PATTERN.exec(attributes);
     if (tagsMatch) {
       item.tags = tagsMatch[1];
     }
@@ -109,10 +118,10 @@ function parseRaindropExportHtml(html) {
     // Check for description in the following DD element
     // Get position after the closing </A> tag
     const afterLink = html.substring(linkPattern.lastIndex);
-    const ddMatch = /^\s*<DD>([^<]*(?:<[^D][^>]*>[^<]*)*?)<\/?\s*(?=<DT|$)/i.exec(afterLink);
+    const ddMatch = DD_PATTERN.exec(afterLink);
     if (ddMatch) {
       const description = ddMatch[1]
-        .replace(/<[^>]+>/g, '') // Remove any HTML tags
+        .replace(HTML_TAGS_PATTERN, '') // Remove any HTML tags
         .trim();
       if (description) {
         item.description = description;
