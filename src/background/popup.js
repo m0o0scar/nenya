@@ -30,21 +30,3 @@ export async function handleOpenInPopup() {
     console.error('[background] Error opening in popup window:', error);
   }
 }
-
-/**
- * Handle opening the emoji picker in a small popup window.
- * @returns {Promise<void>}
- */
-export async function handleOpenEmojiPicker() {
-  try {
-    const url = chrome.runtime.getURL('src/popup/emoji.html');
-    await chrome.windows.create({
-      url,
-      type: 'popup',
-      width: 420,
-      height: 600,
-    });
-  } catch (error) {
-    console.error('[background] Error opening emoji picker:', error);
-  }
-}

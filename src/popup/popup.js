@@ -35,12 +35,6 @@ const SHORTCUT_CONFIG = {
     handler: () => handleGetMarkdown(),
     key: 'c',
   },
-  emojiPicker: {
-    emoji: '😀',
-    tooltip: 'Emoji picker',
-    handler: () => handleEmojiPicker(),
-    key: 'm',
-  },
   saveUnsorted: {
     emoji: '📤',
     tooltip: 'Save to unsorted',
@@ -2212,14 +2206,6 @@ window.addEventListener('unload', () => {
     autoReloadStatusTimer = null;
   }
 });
-
-/**
- * Handle opening the emoji picker.
- * @returns {void}
- */
-function handleEmojiPicker() {
-  window.location.href = 'emoji.html';
-}
 
 /**
  * Handle getting page content as markdown.
