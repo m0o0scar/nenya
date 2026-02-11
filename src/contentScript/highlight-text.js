@@ -513,16 +513,13 @@
         },
       );
 
-      const nodesToProcess = [];
-      let node;
-      while ((node = walker.nextNode())) {
-        nodesToProcess.push(node);
-      }
-
-      for (const node of nodesToProcess) {
+      let node = walker.nextNode();
+      while (node) {
+        const nextNode = walker.nextNode();
         if (node.nodeType === Node.TEXT_NODE) {
           processTextNode(/** @type {Text} */ (node));
         }
+        node = nextNode;
       }
     }
   }
