@@ -15,6 +15,7 @@
  */
 const AVAILABLE_SHORTCUTS = [
   { id: 'getMarkdown', emoji: '💬', tooltip: 'Chat with llm', key: 'c' },
+  { id: 'emojiPicker', emoji: '😀', tooltip: 'Emoji picker', key: 'm' },
   { id: 'saveUnsorted', emoji: '📤', tooltip: 'Save to unsorted', key: 'u' },
   {
     id: 'encryptSave',

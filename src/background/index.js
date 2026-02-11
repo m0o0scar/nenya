@@ -54,6 +54,7 @@ import {
   parseRunCodeMenuItem,
   parseLLMMenuItem,
   getCopyFormatType,
+  NENYA_MENU_IDS,
 } from '../shared/contextMenus.js';
 import { initializeTabSnapshots } from './tab-snapshots.js';
 import {
@@ -66,7 +67,7 @@ import {
   convertSplitUrlForSave,
   convertSplitUrlForRestore,
 } from '../shared/splitUrl.js';
-import { handleOpenInPopup } from './popup.js';
+import { handleOpenInPopup, handleOpenEmojiPicker } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 import {
   initRaindropExport,
@@ -455,28 +456,7 @@ chrome.commands.onCommand.addListener((command) => {
   }
 
   if (command === 'emoji-picker-show') {
-    void (async () => {
-      try {
-        // Get the current active tab
-        const tabs = await chrome.tabs.query({
-          currentWindow: true,
-          active: true,
-        });
-        const currentTab = tabs && tabs[0];
-        if (!currentTab || !currentTab.id) {
-          console.warn('[commands] No active tab found for emoji picker');
-          return;
-        }
-
-        // Inject the emoji picker content script
-        await chrome.scripting.executeScript({
-          target: { tabId: currentTab.id },
-          files: ['src/contentScript/emoji-picker.js'],
-        });
-      } catch (error) {
-        console.warn('[commands] Emoji picker failed:', error);
-      }
-    })();
+    void handleOpenEmojiPicker();
     return;
   }
   if (command === 'open-in-popup') {
@@ -3802,6 +3782,12 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Emoji Picker
+    if (menuItemId === NENYA_MENU_IDS.EMOJI_PICKER) {
+      void handleOpenEmojiPicker();
       return;
     }
 
