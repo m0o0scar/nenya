@@ -1422,65 +1422,84 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
       return finalize();
     }
 
-    for (const entry of dedupeResult.entries) {
-      try {
-        const pleaseParse =
-          options.pleaseParse ||
-          !entry.title ||
-          (!entry.cover && !entry.includeScreenshot);
-        const payload = {
-          link: entry.url,
-          collectionId: -1,
-          ...(pleaseParse ? { pleaseParse: {} } : {}),
-          ...(entry.cover ? { cover: entry.cover } : {}),
-          ...(entry.title ? { title: entry.title } : {}),
-          ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
-        };
+    const creationPromises = dedupeResult.entries.map(async (entry) => {
+      const pleaseParse =
+        options.pleaseParse ||
+        !entry.title ||
+        (!entry.cover && !entry.includeScreenshot);
+      const payload = {
+        link: entry.url,
+        collectionId: -1,
+        ...(pleaseParse ? { pleaseParse: {} } : {}),
+        ...(entry.cover ? { cover: entry.cover } : {}),
+        ...(entry.title ? { title: entry.title } : {}),
+        ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
+      };
 
-        const response = await raindropRequest('/raindrop', tokens, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(payload),
-        });
+      const response = await raindropRequest('/raindrop', tokens, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
 
-        if (!response || typeof response !== 'object' || !response.item) {
-          throw new Error(
-            'Invalid response from Raindrop API: missing item field',
+      if (!response || typeof response !== 'object' || !response.item) {
+        throw new Error(
+          'Invalid response from Raindrop API: missing item field',
+        );
+      }
+      return response;
+    });
+
+    const results = await Promise.allSettled(creationPromises);
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const entry = dedupeResult.entries[i];
+
+      if (result.status === 'fulfilled') {
+        try {
+          const response = result.value;
+          if (entry.includeScreenshot && entry.tabId && entry.windowId) {
+            await chrome.windows.update(entry.windowId, { focused: true });
+            await chrome.tabs.update(entry.tabId, { active: true });
+            const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
+              entry.windowId,
+              {
+                format: 'jpeg',
+                quality: 80,
+              },
+            );
+            const blob = await (await fetch(screenshotDataUrl)).blob();
+            const formData = new FormData();
+            formData.append('cover', blob, 'screenshot.jpg');
+            await raindropRequest(
+              `/raindrop/${response.item._id}/cover`,
+              tokens,
+              {
+                method: 'PUT',
+                body: formData,
+              },
+            );
+          }
+          summary.created += 1;
+        } catch (error) {
+          summary.failed += 1;
+          summary.errors.push(
+            entry.url +
+            ': ' +
+            (error instanceof Error ? error.message : String(error)),
           );
         }
-
-        if (entry.includeScreenshot && entry.tabId && entry.windowId) {
-          await chrome.windows.update(entry.windowId, { focused: true });
-          await chrome.tabs.update(entry.tabId, { active: true });
-          const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
-            entry.windowId,
-            {
-              format: 'jpeg',
-              quality: 80,
-            },
-          );
-          const blob = await (await fetch(screenshotDataUrl)).blob();
-          const formData = new FormData();
-          formData.append('cover', blob, 'screenshot.jpg');
-          await raindropRequest(
-            `/raindrop/${response.item._id}/cover`,
-            tokens,
-            {
-              method: 'PUT',
-              body: formData,
-            },
-          );
-        }
-
-        summary.created += 1;
-      } catch (error) {
+      } else {
         summary.failed += 1;
         summary.errors.push(
           entry.url +
           ': ' +
-          (error instanceof Error ? error.message : String(error)),
+          (result.reason instanceof Error
+            ? result.reason.message
+            : String(result.reason)),
         );
       }
     }
