@@ -18,6 +18,25 @@ let emojiSequence = [];
 let sequenceTimeout = null;
 let isCmdHeld = false;
 
+/**
+ * Focuses the emoji picker search input when available.
+ * The picker renders its internal input asynchronously.
+ *
+ * @param {number} [attempts=20]
+ * @returns {void}
+ */
+function focusPickerSearchInput(attempts = 20) {
+  if (!picker || attempts <= 0) return;
+  const searchInput = picker.shadowRoot?.querySelector('input[type="search"]');
+  if (searchInput instanceof HTMLInputElement) {
+    searchInput.focus();
+    return;
+  }
+  window.setTimeout(() => {
+    focusPickerSearchInput(attempts - 1);
+  }, 50);
+}
+
 // Track modifier keys globally since the custom event doesn't carry them
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Meta' || e.key === 'Control') {
@@ -62,6 +81,12 @@ function showStatus(message, isError = false) {
 }
 
 if (picker) {
+  focusPickerSearchInput();
+
+  window.addEventListener('focus', () => {
+    focusPickerSearchInput(5);
+  });
+
   // Ensure the picker is focused or ready for interaction
   picker.addEventListener('emoji-click', async (event) => {
     const { detail } = event;
