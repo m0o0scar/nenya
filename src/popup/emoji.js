@@ -83,6 +83,8 @@ if (picker) {
       try {
         await navigator.clipboard.writeText(unicode);
         showStatus(`Copied: ${unicode}`);
+        // Close the popup after copying
+        window.close();
       } catch (err) {
         console.error('Failed to copy emoji:', err);
         showStatus('Failed to copy', true);
