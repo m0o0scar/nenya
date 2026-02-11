@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="utf-8">
+  <title>Emoji Picker - Nenya</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <link rel="stylesheet" href="../libs/daisyui@5.css">
+  <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <link rel="stylesheet" href="./popup.css">
+  <script src="../libs/tailwindcss@4.js"></script>
+  <style>
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      min-height: 500px;
+    }
+
+    .emoji-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    emoji-picker {
+      width: 100%;
+      height: 100%;
+      --num-columns: 8;
+      --emoji-size: 1.5rem;
+      --background: transparent;
+    }
+
+    /* Custom scrollbar for emoji picker if needed */
+    emoji-picker::part(picker) {
+      scrollbar-width: thin;
+    }
+
+    #statusMessage {
+      position: absolute;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+  </style>
+</head>
+
+<body class="bg-base-200">
+  <div class="emoji-container">
+    <!-- Header -->
+    <div class="navbar bg-base-100 shadow-sm flex-none z-10">
+      <button id="backButton" class="btn btn-ghost btn-sm" type="button">
+        ← Back
+      </button>
+      <div class="ml-2 text-lg font-semibold flex-1">Emoji Picker</div>
+      <div class="text-xs opacity-50 mr-2">Cmd+Click to append</div>
+    </div>
+
+    <!-- Main content area -->
+    <div class="flex-1 relative bg-base-100">
+      <emoji-picker class="light"></emoji-picker>
+
+      <!-- Status toast -->
+      <div id="statusMessage" class="toast toast-center opacity-0">
+        <div class="alert alert-success text-xs py-2 px-4 shadow-lg min-w-[200px] justify-center">
+          <span id="statusText">Copied!</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="./emoji.js" type="module"></script>
+</body>
+
+</html>
