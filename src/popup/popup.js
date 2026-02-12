@@ -15,6 +15,33 @@ import { concludeStatus } from './shared.js';
 
 import { debounce } from '../shared/debounce.js';
 
+const CURRENT_SURFACE = document.body?.dataset.surface || 'popup';
+const IS_HOME_SURFACE = CURRENT_SURFACE === 'home';
+const HOME_DISABLED_SHORTCUT_IDS = new Set(['getMarkdown', 'emojiPicker']);
+
+/**
+ * Determine whether a shortcut should be available for the current surface.
+ * @param {string} shortcutId
+ * @returns {boolean}
+ */
+function isShortcutSupportedOnCurrentSurface(shortcutId) {
+  if (!IS_HOME_SURFACE) {
+    return true;
+  }
+  return !HOME_DISABLED_SHORTCUT_IDS.has(shortcutId);
+}
+
+/**
+ * Close the current UI surface only when running as popup.
+ * @returns {void}
+ */
+function closeCurrentSurface() {
+  if (IS_HOME_SURFACE) {
+    return;
+  }
+  window.close();
+}
+
 /**
  * Gets all custom search engines from storage.
  * @returns {Promise<Array<{id: string, name: string, shortcut: string, searchUrl: string}>>}
@@ -234,7 +261,7 @@ const mirrorSection = /** @type {HTMLElement | null} */ (
 async function handleOpenInPopup() {
   try {
     await chrome.runtime.sendMessage({ type: 'open-in-popup' });
-    window.close();
+    closeCurrentSurface();
   } catch (error) {
     console.error('[popup] Error opening in popup window:', error);
     if (statusMessage) {
@@ -263,14 +290,18 @@ async function loadAndRenderShortcuts() {
       ? stored[STORAGE_KEY]
       : [];
 
-    // If no shortcuts are pinned, use defaults
-    const shortcutsToRender =
-      pinnedIds.length > 0 ? pinnedIds : DEFAULT_PINNED_SHORTCUTS;
+    // If no shortcuts are pinned, use defaults.
+    const shortcutsToRender = pinnedIds.length > 0
+      ? pinnedIds
+      : DEFAULT_PINNED_SHORTCUTS;
 
-    // Filter out openOptions - it's always shown separately at the end
-    const filteredShortcuts = shortcutsToRender.filter(
-      (id) => id !== 'openOptions',
-    );
+    // Filter out unsupported shortcuts and openOptions (rendered separately).
+    const filteredShortcuts = shortcutsToRender.filter((id) => {
+      if (id === 'openOptions') {
+        return false;
+      }
+      return isShortcutSupportedOnCurrentSurface(id);
+    });
 
     // Clear container
     shortcutsContainer.innerHTML = '';
@@ -489,7 +520,7 @@ async function handleDarkMode() {
         currentUrl,
       )}`,
     });
-    window.close();
+    closeCurrentSurface();
   } catch (error) {
     console.error('[popup] Error opening dark mode options:', error);
     if (statusMessage) {
@@ -535,7 +566,7 @@ async function handleCustomFilter() {
     });
 
     // Close the popup
-    window.close();
+    closeCurrentSurface();
   } catch (error) {
     console.error('[popup] Error launching element picker:', error);
     if (statusMessage) {
@@ -863,6 +894,7 @@ async function openBookmark(url) {
         'about:newtab', // Firefox
         'edge://newtab/', // Edge
         'about:blank', // All browsers
+        chrome.runtime.getURL('src/home/index.html'),
       ];
       if (
         currentTab.id &&
@@ -876,12 +908,12 @@ async function openBookmark(url) {
       // Fallback to creating a new tab if no active tab is found.
       await chrome.tabs.create({ url });
     }
-    window.close();
+    closeCurrentSurface();
   } catch (error) {
     console.error('Error opening bookmark:', error);
     // Fallback in case of error
     chrome.tabs.create({ url });
-    window.close();
+    closeCurrentSurface();
   }
 }
 
@@ -2054,7 +2086,7 @@ async function handleRestoreSession(collectionId, button) {
       if (statusMessage) {
         concludeStatus('Session restored successfully.', 'success', 3000, statusMessage);
       }
-      window.close();
+      closeCurrentSurface();
     } else {
       throw new Error(response?.error || 'Failed to restore session');
     }
@@ -2110,6 +2142,11 @@ async function initializePopup() {
 
 // Check if we should navigate to chat page or emoji page (triggered by keyboard shortcut)
 void (async () => {
+  if (IS_HOME_SURFACE) {
+    void initializePopup();
+    return;
+  }
+
   try {
     const result = await chrome.storage.local.get(['openChatPage', 'openEmojiPage']);
     if (result.openChatPage) {
@@ -2229,6 +2266,12 @@ window.addEventListener('unload', () => {
  * @returns {void}
  */
 function handleGetMarkdown() {
+  if (IS_HOME_SURFACE) {
+    if (statusMessage) {
+      concludeStatus('Chat with LLM is not available on home page.', 'info', 2500, statusMessage);
+    }
+    return;
+  }
   // Navigate to the chat page within the same popup window
   window.location.href = 'chat.html';
 }
@@ -2246,7 +2289,7 @@ async function handleSplitPage() {
     });
 
     // Close the popup
-    window.close();
+    closeCurrentSurface();
   } catch (error) {
     console.error('[popup] Error triggering split/unsplit page:', error);
     if (statusMessage) {
@@ -2310,7 +2353,7 @@ async function handleAutoReload() {
         }
       } else {
         // Close the popup
-        window.close();
+        closeCurrentSurface();
       }
     });
   } catch (error) {
@@ -2376,7 +2419,7 @@ async function handleBrightMode() {
         }
       } else {
         // Close the popup
-        window.close();
+        closeCurrentSurface();
       }
     });
   } catch (error) {
@@ -2442,7 +2485,7 @@ async function handleHighlightText() {
         }
       } else {
         // Close the popup
-        window.close();
+        closeCurrentSurface();
       }
     });
   } catch (error) {
@@ -2508,7 +2551,7 @@ async function handleCustomCode() {
         }
       } else {
         // Close the popup
-        window.close();
+        closeCurrentSurface();
       }
     });
   } catch (error) {
@@ -2620,7 +2663,7 @@ async function handleTakeScreenshot() {
 
     if (response && response.success) {
       // Close the popup as the editor will open in a new tab
-      window.close();
+      closeCurrentSurface();
     } else {
       throw new Error(response?.error || 'Failed to take screenshot');
     }
@@ -2651,7 +2694,7 @@ async function handleScreenRecording() {
 
     if (response && response.success) {
       // Close the popup
-      window.close();
+      closeCurrentSurface();
     } else if (response && response.error) {
       // Only show error if it's not a user cancellation
       if (!response.error.includes('cancelled')) {
@@ -2811,7 +2854,7 @@ async function handlePictureInPicture() {
       }
 
       // Close the popup
-      window.close();
+      closeCurrentSurface();
     } catch (injectError) {
       console.error('[popup] Error injecting PiP script:', injectError);
       if (statusMessage) {
@@ -3101,7 +3144,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
               collectionId,
               collectionTitle,
             });
-            window.close();
+            closeCurrentSurface();
           }
         });
       }
@@ -3180,7 +3223,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           }
         });
 
-        window.close();
+        closeCurrentSurface();
         resolve();
       });
     });
@@ -3526,7 +3569,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
                 encodeURIComponent(searchQuery),
               );
               chrome.tabs.create({ url: searchUrl });
-              window.close();
+              closeCurrentSurface();
               engineFound = true;
               break;
             }
@@ -3538,7 +3581,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
               query,
             )}`;
             chrome.tabs.create({ url: searchUrl });
-            window.close();
+            closeCurrentSurface();
           }
         } catch (error) {
           console.error('[popup] Failed to execute search:', error);
@@ -3547,7 +3590,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
             query,
           )}`;
           chrome.tabs.create({ url: searchUrl });
-          window.close();
+          closeCurrentSurface();
         }
       }
     } else if (event.key === 'ArrowDown') {
@@ -3603,9 +3646,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   window.addEventListener('keydown', (event) => {
     if (event.metaKey || event.ctrlKey) {
       const key = event.key.toLowerCase();
-      const matchedShortcut = Object.values(SHORTCUT_CONFIG).find(
-        (config) => config.key === key && (config.shift ? event.shiftKey : !event.shiftKey),
-      );
+      const matchedShortcut = Object.entries(SHORTCUT_CONFIG).find(
+        ([shortcutId, config]) =>
+          isShortcutSupportedOnCurrentSurface(shortcutId) &&
+          config.key === key &&
+          (config.shift ? event.shiftKey : !event.shiftKey),
+      )?.[1];
 
       if (matchedShortcut) {
         event.preventDefault();

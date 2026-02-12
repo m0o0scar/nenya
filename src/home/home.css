@@ -1,0 +1,134 @@
+:root {
+  --home-max-width: 980px;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background:
+    radial-gradient(circle at 20% 10%, hsl(var(--b1) / 0.75), transparent 45%),
+    radial-gradient(circle at 80% 85%, hsl(var(--b2) / 0.6), transparent 50%),
+    hsl(var(--b2));
+}
+
+.home-shell {
+  max-width: var(--home-max-width);
+  margin: 0 auto;
+  padding: 1.5rem clamp(1rem, 3vw, 2rem) 4rem;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.home-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.home-brand-icon {
+  width: 2rem;
+  height: 2rem;
+}
+
+.home-shortcuts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.home-status-row {
+  min-height: 1.5rem;
+  margin-top: 0.3rem;
+  text-align: right;
+}
+
+.home-main {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 2rem;
+  justify-items: center;
+  margin-top: 2rem;
+}
+
+.home-card {
+  width: min(100%, 640px);
+  background: hsl(var(--b1));
+  border: 1px solid hsl(var(--bc) / 0.28);
+  border-radius: 0.9rem;
+  box-shadow: 0 10px 24px hsl(var(--bc) / 0.07);
+  padding: 1rem;
+}
+
+.home-search-card {
+  margin-top: 0.4rem;
+}
+
+#bookmarksSearchInput {
+  height: 2.95rem;
+  font-size: 1rem;
+}
+
+#bookmarksSearchResults {
+  max-height: 30rem;
+  overflow: auto;
+}
+
+#sessionsList {
+  max-height: min(55vh, 48rem);
+  overflow: auto;
+  padding-right: 0.25rem;
+}
+
+#shortcutsContainer .btn {
+  color: #000000;
+}
+
+[data-theme='dark'] #shortcutsContainer .btn {
+  color: #ffffff;
+}
+
+#pinnedItemsContainer {
+  user-select: none;
+}
+
+#pinnedItemsContainer .badge {
+  cursor: grab;
+}
+
+#pinnedItemsContainer .badge:active {
+  cursor: grabbing;
+}
+
+@media (max-width: 840px) {
+  .home-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .home-brand {
+    font-size: 1.6rem;
+  }
+
+  .home-shortcuts {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .home-status-row {
+    text-align: left;
+  }
+
+  .home-card {
+    width: 100%;
+  }
+}
