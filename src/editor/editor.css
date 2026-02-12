@@ -32,16 +32,18 @@ body {
 
 .ocr-highlight-box {
     position: absolute;
-    border: 1px solid rgba(217, 119, 6, 0.9);
-    background: rgba(250, 204, 21, 0.38);
+    border: 1px solid rgba(217, 119, 6, 0.82);
+    background: rgba(250, 204, 21, 0.34);
     border-radius: 3px;
-    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: background-color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
 }
 
 .ocr-highlight-box-active {
-    background: rgba(250, 204, 21, 0.62);
-    border-color: rgba(245, 158, 11, 1);
-    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25);
+    background: rgba(249, 115, 22, 0.42);
+    border: 2px solid rgba(234, 88, 12, 0.98);
+    box-shadow: 0 0 0 3px rgba(249, 115, 22, 0.62), inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+    opacity: 1;
+    animation: ocr-highlight-pulse 1s ease-in-out infinite;
 }
 
 .ocr-side-panel {
@@ -118,15 +120,16 @@ body {
 
 .ocr-block-item:hover,
 .ocr-block-item:focus-visible {
-    background: color-mix(in srgb, var(--color-warning), transparent 86%);
-    border-color: color-mix(in srgb, var(--color-warning), transparent 45%);
+    background: color-mix(in srgb, var(--color-warning), transparent 80%);
+    border-color: color-mix(in srgb, var(--color-warning), transparent 20%);
     transform: translateX(-1px);
     outline: none;
 }
 
 .ocr-block-item-active {
-    background: color-mix(in srgb, var(--color-warning), transparent 84%);
-    border-color: color-mix(in srgb, var(--color-warning), transparent 30%);
+    background: color-mix(in srgb, var(--color-warning), transparent 76%);
+    border-color: color-mix(in srgb, var(--color-warning), transparent 10%);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-warning), transparent 35%);
 }
 
 .ocr-block-index {
@@ -176,6 +179,18 @@ body {
 
 .ocr-toast-error {
     background: rgba(220, 38, 38, 0.95);
+}
+
+@keyframes ocr-highlight-pulse {
+    0% {
+        box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+    }
+    50% {
+        box-shadow: 0 0 0 5px rgba(249, 115, 22, 0.68), inset 0 0 0 1px rgba(255, 255, 255, 1);
+    }
+    100% {
+        box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+    }
 }
 
 .glass-nav {
