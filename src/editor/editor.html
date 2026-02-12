@@ -303,9 +303,22 @@
     </header>
 
     <!-- Canvas Container -->
-    <main class="flex-1 relative overflow-hidden bg-base-300/10" id="canvas-container">
-        <canvas id="editor-canvas" class="shadow-2xl bg-white"></canvas>
-        <div id="ocr-text-layer" class="ocr-text-layer hidden" aria-label="Recognized text overlay"></div>
+    <main class="flex-1 min-h-0 flex relative overflow-hidden bg-base-300/10" id="editor-main">
+        <section class="relative flex-1 min-w-0 overflow-hidden" id="canvas-container">
+            <canvas id="editor-canvas" class="shadow-2xl bg-white"></canvas>
+            <div id="ocr-text-layer" class="ocr-text-layer hidden" aria-label="OCR highlight overlay"></div>
+        </section>
+
+        <aside id="ocr-side-panel" class="ocr-side-panel" aria-label="Recognized text blocks">
+            <div class="ocr-side-panel-header">
+                <h2 class="ocr-side-panel-title">Recognized Text</h2>
+                <p class="ocr-side-panel-subtitle">Hover to locate. Click to copy.</p>
+            </div>
+            <p id="ocr-block-empty" class="ocr-block-empty">No text blocks detected.</p>
+            <div id="ocr-block-list" class="ocr-block-list" role="list"></div>
+        </aside>
+
+        <div id="ocr-toast" class="ocr-toast" role="status" aria-live="polite"></div>
     </main>
 
     <!-- Text Input Dialog -->

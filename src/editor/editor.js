@@ -849,6 +849,14 @@ function drawSelectionBox(ctx, x, y, w, h) {
     ctx.restore();
 }
 
+/**
+ * @typedef {Object} OcrBlock
+ * @property {number} id
+ * @property {string} text
+ * @property {{x: number, y: number, width: number, height: number}} bbox
+ * @property {number} confidence
+ */
+
 class Editor {
     /**
      * @param {string} canvasId
@@ -911,8 +919,24 @@ class Editor {
         this.ocrWorker = null;
         this.isOcrRunning = false;
         this.isOcrLayerVisible = false;
+        /** @type {OcrBlock[]} */
+        this.ocrBlocks = [];
+        /** @type {number | null} */
+        this.activeOcrBlockId = null;
         /** @type {HTMLDivElement | null} */
         this.ocrTextLayer = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-text-layer'));
+        /** @type {HTMLDivElement | null} */
+        this.ocrSidePanel = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-side-panel'));
+        /** @type {HTMLDivElement | null} */
+        this.ocrBlockList = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-block-list'));
+        /** @type {HTMLParagraphElement | null} */
+        this.ocrBlockEmpty = /** @type {HTMLParagraphElement | null} */ (document.getElementById('ocr-block-empty'));
+        /** @type {HTMLDivElement | null} */
+        this.ocrToast = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-toast'));
+        /** @type {number | null} */
+        this.ocrToastTimer = null;
+        /** @type {number | null} */
+        this.ocrLayoutTimer = null;
         /** @type {HTMLButtonElement | null} */
         this.ocrButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('action-ocr'));
         /** @type {HTMLSpanElement | null} */
@@ -939,6 +963,12 @@ class Editor {
         });
 
         window.addEventListener('beforeunload', () => {
+            if (this.ocrToastTimer !== null) {
+                window.clearTimeout(this.ocrToastTimer);
+            }
+            if (this.ocrLayoutTimer !== null) {
+                window.clearTimeout(this.ocrLayoutTimer);
+            }
             this.disposeOcrWorker();
         });
     }
@@ -949,6 +979,7 @@ class Editor {
                 this.handleOcrAction();
             });
         }
+        this.renderOcrBlockList();
         this.setOcrStatus('');
         this.updateOcrButtonState();
         this.updateOcrLayerTransform();
@@ -964,7 +995,7 @@ class Editor {
             this.ocrButtonLabel.textContent = 'OCR...';
         } else if (this.isOcrLayerVisible) {
             this.ocrButtonLabel.textContent = 'Hide';
-        } else if (this.ocrTextLayer && this.ocrTextLayer.childElementCount > 0) {
+        } else if (this.ocrBlocks.length > 0) {
             this.ocrButtonLabel.textContent = 'Show';
         } else {
             this.ocrButtonLabel.textContent = 'OCR';
@@ -984,21 +1015,36 @@ class Editor {
 
     /**
      * @param {boolean} visible
+     * @param {{fitViewport?: boolean}} [options]
      */
-    setOcrLayerVisible(visible) {
-        this.isOcrLayerVisible = visible;
+    setOcrLayerVisible(visible, options = {}) {
+        const shouldShow = visible && this.ocrBlocks.length > 0;
+        const visibilityChanged = this.isOcrLayerVisible !== shouldShow;
+        this.isOcrLayerVisible = shouldShow;
         if (this.ocrTextLayer) {
-            this.ocrTextLayer.classList.toggle('hidden', !visible);
-            this.ocrTextLayer.classList.toggle('ocr-text-layer-active', visible);
+            this.ocrTextLayer.classList.toggle('hidden', !shouldShow);
+        }
+        if (this.ocrSidePanel) {
+            this.ocrSidePanel.classList.toggle('ocr-side-panel-visible', shouldShow);
+        }
+        if (!shouldShow) {
+            this.setActiveOcrBlock(null);
+        }
+        if (options.fitViewport !== false && visibilityChanged) {
+            this.scheduleOcrViewportFit();
         }
         this.updateOcrButtonState();
     }
 
     clearOcrLayer() {
+        const wasVisible = this.isOcrLayerVisible;
+        this.ocrBlocks = [];
+        this.activeOcrBlockId = null;
         if (this.ocrTextLayer) {
             this.ocrTextLayer.innerHTML = '';
         }
-        this.setOcrLayerVisible(false);
+        this.renderOcrBlockList();
+        this.setOcrLayerVisible(false, { fitViewport: wasVisible });
         this.setOcrStatus('');
     }
 
@@ -1010,6 +1056,129 @@ class Editor {
         this.ocrTextLayer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
     }
 
+    scheduleOcrViewportFit() {
+        if (!this.backgroundImage) return;
+        if (this.ocrLayoutTimer !== null) {
+            window.clearTimeout(this.ocrLayoutTimer);
+        }
+
+        window.requestAnimationFrame(() => {
+            this.fitToScreen();
+            this.render();
+        });
+
+        this.ocrLayoutTimer = window.setTimeout(() => {
+            this.fitToScreen();
+            this.render();
+            this.ocrLayoutTimer = null;
+        }, 260);
+    }
+
+    /**
+     * @param {number | null} blockId
+     */
+    setActiveOcrBlock(blockId) {
+        this.activeOcrBlockId = blockId;
+
+        if (this.ocrTextLayer) {
+            this.ocrTextLayer.querySelectorAll('.ocr-highlight-box').forEach((element) => {
+                const htmlElement = /** @type {HTMLElement} */ (element);
+                const itemId = Number(htmlElement.dataset.ocrBlockId);
+                htmlElement.classList.toggle('ocr-highlight-box-active', blockId !== null && itemId === blockId);
+            });
+        }
+
+        if (this.ocrBlockList) {
+            this.ocrBlockList.querySelectorAll('.ocr-block-item').forEach((element) => {
+                const htmlElement = /** @type {HTMLElement} */ (element);
+                const itemId = Number(htmlElement.dataset.ocrBlockId);
+                htmlElement.classList.toggle('ocr-block-item-active', blockId !== null && itemId === blockId);
+            });
+        }
+    }
+
+    renderOcrBlockList() {
+        if (!this.ocrBlockList) return;
+        this.ocrBlockList.innerHTML = '';
+
+        const hasBlocks = this.ocrBlocks.length > 0;
+        if (this.ocrBlockEmpty) {
+            this.ocrBlockEmpty.classList.toggle('hidden', hasBlocks);
+        }
+
+        if (!hasBlocks) return;
+
+        this.ocrBlocks.forEach((block, index) => {
+            const item = document.createElement('button');
+            item.type = 'button';
+            item.className = 'ocr-block-item';
+            item.dataset.ocrBlockId = `${block.id}`;
+            item.setAttribute('role', 'listitem');
+            item.title = 'Click to copy this text block';
+
+            const badge = document.createElement('span');
+            badge.className = 'ocr-block-index';
+            badge.textContent = `${index + 1}`;
+
+            const text = document.createElement('span');
+            text.className = 'ocr-block-text';
+            text.textContent = block.text;
+
+            item.append(badge, text);
+
+            item.addEventListener('mouseenter', () => {
+                this.setActiveOcrBlock(block.id);
+            });
+            item.addEventListener('mouseleave', () => {
+                this.setActiveOcrBlock(null);
+            });
+            item.addEventListener('focus', () => {
+                this.setActiveOcrBlock(block.id);
+            });
+            item.addEventListener('blur', () => {
+                this.setActiveOcrBlock(null);
+            });
+            item.addEventListener('click', () => {
+                this.copyOcrBlockText(block.text);
+            });
+
+            this.ocrBlockList.appendChild(item);
+        });
+    }
+
+    /**
+     * @param {string} text
+     * @param {boolean} [isError]
+     */
+    showOcrToast(text, isError = false) {
+        if (!this.ocrToast) return;
+        this.ocrToast.textContent = text;
+        this.ocrToast.classList.toggle('ocr-toast-error', isError);
+        this.ocrToast.classList.add('ocr-toast-visible');
+
+        if (this.ocrToastTimer !== null) {
+            window.clearTimeout(this.ocrToastTimer);
+        }
+        this.ocrToastTimer = window.setTimeout(() => {
+            if (!this.ocrToast) return;
+            this.ocrToast.classList.remove('ocr-toast-visible');
+            this.ocrToastTimer = null;
+        }, 1800);
+    }
+
+    /**
+     * @param {string} text
+     */
+    async copyOcrBlockText(text) {
+        try {
+            await navigator.clipboard.writeText(text);
+            this.showOcrToast('Copied to clipboard');
+        } catch (error) {
+            console.error('Failed to copy OCR text block.', error);
+            this.showOcrToast('Failed to copy text', true);
+        }
+    }
+
     /**
      * @param {Array<{text?: string, bbox?: {x0: number, y0: number, x1: number, y1: number}, confidence?: number}>} items
      * @returns {number}
@@ -1017,7 +1186,8 @@ class Editor {
     buildOcrLayer(items) {
         if (!this.ocrTextLayer) return 0;
         this.ocrTextLayer.innerHTML = '';
-        let count = 0;
+        this.ocrBlocks = [];
+        let nextBlockId = 1;
 
         items.forEach((item) => {
             const text = (item.text || '').trim();
@@ -1030,21 +1200,28 @@ class Editor {
             const width = Math.max(1, bbox.x1 - bbox.x0);
             const height = Math.max(1, bbox.y1 - bbox.y0);
 
-            const wordEl = document.createElement('div');
-            wordEl.className = 'ocr-word';
-            wordEl.textContent = text;
-            wordEl.style.left = `${x}px`;
-            wordEl.style.top = `${y}px`;
-            wordEl.style.width = `${width}px`;
-            wordEl.style.height = `${height}px`;
-            wordEl.style.fontSize = `${Math.max(10, Math.round(height * 0.85))}px`;
+            const block = {
+                id: nextBlockId++,
+                text,
+                bbox: { x, y, width, height },
+                confidence: typeof item.confidence === 'number' ? item.confidence : 100
+            };
+            this.ocrBlocks.push(block);
 
-            this.ocrTextLayer.appendChild(wordEl);
-            count += 1;
+            const highlightEl = document.createElement('div');
+            highlightEl.className = 'ocr-highlight-box';
+            highlightEl.dataset.ocrBlockId = `${block.id}`;
+            highlightEl.style.left = `${x}px`;
+            highlightEl.style.top = `${y}px`;
+            highlightEl.style.width = `${width}px`;
+            highlightEl.style.height = `${height}px`;
+            this.ocrTextLayer.appendChild(highlightEl);
         });
 
+        this.setActiveOcrBlock(null);
+        this.renderOcrBlockList();
         this.updateOcrLayerTransform();
-        return count;
+        return this.ocrBlocks.length;
     }
 
     getOcrSourceCanvas() {
@@ -1123,20 +1300,20 @@ class Editor {
 
         if (this.isOcrLayerVisible) {
             this.setOcrLayerVisible(false);
-            this.setOcrStatus('Text layer hidden');
+            this.setOcrStatus('OCR panel hidden');
             return;
         }
 
-        if (this.ocrTextLayer && this.ocrTextLayer.childElementCount > 0) {
+        if (this.ocrBlocks.length > 0) {
             this.setOcrLayerVisible(true);
-            this.setOcrStatus('Text layer shown');
+            this.setOcrStatus('OCR panel shown');
             return;
         }
 
         this.isOcrRunning = true;
         this.updateOcrButtonState();
         this.setOcrStatus('Preparing OCR...');
-        this.setOcrLayerVisible(false);
+        this.setOcrLayerVisible(false, { fitViewport: false });
 
         try {
             const worker = await this.ensureOcrWorker();
@@ -1148,7 +1325,7 @@ class Editor {
 
             if (detectedCount > 0) {
                 this.setOcrLayerVisible(true);
-                this.setOcrStatus(`Detected ${detectedCount} text items`);
+                this.setOcrStatus(`Detected ${detectedCount} text blocks`);
             } else {
                 this.setOcrStatus('No text found');
             }
