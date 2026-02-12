@@ -210,6 +210,31 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'emojiPicker', // Emoji Picker
 ];
 
+/** @type {string[]} */
+const LEGACY_DEFAULT_PINNED_SHORTCUTS = [
+  'getMarkdown',
+  'saveUnsorted',
+  'encryptSave',
+  'saveClipboardToUnsorted',
+  'customFilter',
+  'openInPopup',
+];
+
+/**
+ * Check whether stored shortcuts match the old default set that missed emoji.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isLegacyDefaultShortcuts(value) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  if (value.length !== LEGACY_DEFAULT_PINNED_SHORTCUTS.length) {
+    return false;
+  }
+  return LEGACY_DEFAULT_PINNED_SHORTCUTS.every((id, index) => value[index] === id);
+}
+
 const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
   document.getElementById('shortcutsContainer')
 );
@@ -286,9 +311,14 @@ async function loadAndRenderShortcuts() {
 
   try {
     const stored = await chrome.storage.local.get(STORAGE_KEY);
-    const pinnedIds = Array.isArray(stored?.[STORAGE_KEY])
+    let pinnedIds = Array.isArray(stored?.[STORAGE_KEY])
       ? stored[STORAGE_KEY]
       : [];
+
+    if (isLegacyDefaultShortcuts(pinnedIds)) {
+      pinnedIds = [...DEFAULT_PINNED_SHORTCUTS];
+      await chrome.storage.local.set({ [STORAGE_KEY]: pinnedIds });
+    }
 
     // If no shortcuts are pinned, use defaults.
     const shortcutsToRender = pinnedIds.length > 0
@@ -2140,6 +2170,35 @@ async function initializePopup() {
   }
 }
 
+/**
+ * Navigate to chat/emoji page when command flags are present in storage.
+ * @param {{openChatPage?: boolean, openEmojiPage?: boolean}} flags
+ * @returns {Promise<boolean>}
+ */
+async function handleCommandNavigationFlags(flags) {
+  if (IS_HOME_SURFACE) {
+    return false;
+  }
+
+  if (flags.openChatPage) {
+    await chrome.storage.local.remove('openChatPage');
+    if (!window.location.pathname.endsWith('chat.html')) {
+      window.location.href = 'chat.html';
+    }
+    return true;
+  }
+
+  if (flags.openEmojiPage) {
+    await chrome.storage.local.remove('openEmojiPage');
+    if (!window.location.pathname.endsWith('emoji.html')) {
+      window.location.href = 'emoji.html';
+    }
+    return true;
+  }
+
+  return false;
+}
+
 // Check if we should navigate to chat page or emoji page (triggered by keyboard shortcut)
 void (async () => {
   if (IS_HOME_SURFACE) {
@@ -2149,18 +2208,11 @@ void (async () => {
 
   try {
     const result = await chrome.storage.local.get(['openChatPage', 'openEmojiPage']);
-    if (result.openChatPage) {
-      // Clear the flag
-      await chrome.storage.local.remove('openChatPage');
-      // Navigate to chat page
-      window.location.href = 'chat.html';
-      return;
-    }
-    if (result.openEmojiPage) {
-      // Clear the flag
-      await chrome.storage.local.remove('openEmojiPage');
-      // Navigate to emoji page
-      window.location.href = 'emoji.html';
+    const navigated = await handleCommandNavigationFlags({
+      openChatPage: Boolean(result.openChatPage),
+      openEmojiPage: Boolean(result.openEmojiPage),
+    });
+    if (navigated) {
       return;
     }
   } catch (error) {
@@ -2883,6 +2935,23 @@ async function handlePictureInPicture() {
 chrome.storage.onChanged.addListener((changes, namespace) => {
   if (namespace === 'sync' && changes.cloudAuthTokens) {
     void initializePopup();
+  }
+
+  if (namespace === 'local' && !IS_HOME_SURFACE) {
+    const openChatPage = changes.openChatPage?.newValue === true;
+    const openEmojiPage = changes.openEmojiPage?.newValue === true;
+
+    if (openChatPage || openEmojiPage) {
+      void handleCommandNavigationFlags({
+        openChatPage,
+        openEmojiPage,
+      }).catch((error) => {
+        console.error(
+          '[popup] Failed to navigate from command flags:',
+          error,
+        );
+      });
+    }
   }
 });
 

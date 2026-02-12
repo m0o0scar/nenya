@@ -1336,20 +1336,27 @@ function normalizePinnedShortcuts(value) {
   // Valid shortcut IDs (excluding openOptions which is always shown)
   const validIds = [
     'getMarkdown',
-    'pull',
     'saveUnsorted',
+    'encryptSave',
+    'saveClipboardToUnsorted',
     'importCustomCode',
     'customFilter',
     'splitPage',
     'autoReload',
     'brightMode',
+    'darkMode',
     'highlightText',
     'customCode',
+    'pictureInPicture',
+    'takeScreenshot',
+    'screenRecording',
+    'openInPopup',
+    'emojiPicker',
   ];
 
   return value
     .filter((id) => typeof id === 'string' && validIds.includes(id))
-    .slice(0, 6); // Limit to max 6 shortcuts
+    .slice(0, 7); // Limit to max 7 shortcuts
 }
 
 /**

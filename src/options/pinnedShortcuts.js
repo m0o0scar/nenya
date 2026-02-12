@@ -76,11 +76,12 @@ const AVAILABLE_SHORTCUTS = [
   { id: 'takeScreenshot', emoji: '📸', tooltip: 'Take screenshot', key: 'k' },
   { id: 'screenRecording', emoji: '⏺️', tooltip: 'Screen recording', key: 's' },
   { id: 'openInPopup', emoji: '↗️', tooltip: 'Open in popup', key: 'o' },
+  { id: 'emojiPicker', emoji: '😀', tooltip: 'Emoji Picker', key: 'g' },
   // Note: openOptions is always shown at the end and cannot be pinned
 ];
 
 const STORAGE_KEY = 'pinnedShortcuts';
-const MAX_SHORTCUTS = 6;
+const MAX_SHORTCUTS = 7;
 
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
@@ -90,6 +91,17 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
   'openInPopup', // Open in popup
+  'emojiPicker', // Emoji Picker
+];
+
+/** @type {string[]} */
+const LEGACY_DEFAULT_PINNED_SHORTCUTS = [
+  'getMarkdown',
+  'saveUnsorted',
+  'encryptSave',
+  'saveClipboardToUnsorted',
+  'customFilter',
+  'openInPopup',
 ];
 
 /** @type {string[]} */
@@ -136,6 +148,21 @@ function normalizeShortcuts(value) {
 }
 
 /**
+ * Check whether stored shortcuts match the old default set that missed emoji.
+ * @param {unknown} value
+ * @returns {boolean}
+ */
+function isLegacyDefaultShortcuts(value) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  if (value.length !== LEGACY_DEFAULT_PINNED_SHORTCUTS.length) {
+    return false;
+  }
+  return LEGACY_DEFAULT_PINNED_SHORTCUTS.every((id, index) => value[index] === id);
+}
+
+/**
  * Save pinned shortcuts to storage
  * @param {string[]} shortcuts
  * @returns {Promise<void>}
@@ -171,6 +198,13 @@ async function loadShortcuts() {
 
     // If no value is stored, use defaults
     if (storedValue === undefined || storedValue === null) {
+      pinnedShortcuts = [...DEFAULT_PINNED_SHORTCUTS];
+      await saveShortcuts(pinnedShortcuts);
+      render();
+      return;
+    }
+
+    if (isLegacyDefaultShortcuts(storedValue)) {
       pinnedShortcuts = [...DEFAULT_PINNED_SHORTCUTS];
       await saveShortcuts(pinnedShortcuts);
       render();
