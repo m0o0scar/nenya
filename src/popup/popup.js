@@ -956,6 +956,29 @@ function getStableColor(str) {
   return PINNED_COLOR_PALETTE[index];
 }
 
+/**
+ * Build pinned favicon source for a given page URL.
+ * @param {string} url
+ * @returns {{ url: string, emoji: string }}
+ */
+function getPinnedFaviconSource(url) {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (!hostname) {
+      return { url: '', emoji: '' };
+    }
+    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+      return { url: '', emoji: '🖥️' };
+    }
+    return {
+      url: `https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`,
+      emoji: '',
+    };
+  } catch {
+    return { url: '', emoji: '' };
+  }
+}
+
 async function getPinnedItems() {
   const result = await chrome.storage.local.get(
     PINNED_SEARCH_RESULTS_STORAGE_KEY,
@@ -995,6 +1018,7 @@ async function renderPinnedItems() {
   pinnedItemsContainer.innerHTML = '';
   pinnedItems.forEach((item, index) => {
     const colors = getStableColor(item.url);
+    const faviconSource = getPinnedFaviconSource(item.url);
     const chip = document.createElement('div');
     chip.className =
       'badge gap-2 cursor-pointer hover:opacity-80 pr-1 border-none transition-all duration-200';
@@ -1005,11 +1029,36 @@ async function renderPinnedItems() {
       <span class="text-[10px] opacity-70 font-bold pointer-events-none">${
         index + 1
       }</span>
+      <img class="pinned-result-favicon w-4 h-4 rounded-sm shrink-0 pointer-events-none" alt="" aria-hidden="true" />
+      <span class="pinned-result-favicon-emoji text-sm leading-none shrink-0 pointer-events-none hidden" aria-hidden="true"></span>
       <span class="truncate max-w-xs pointer-events-none">${escapeHtml(
         item.title,
       )}</span>
       <button class="unpin-button btn btn-ghost btn-circle btn-xs" style="color: inherit">✕</button>
     `;
+    const faviconImage = chip.querySelector('.pinned-result-favicon');
+    const faviconEmoji = chip.querySelector('.pinned-result-favicon-emoji');
+    if (faviconSource.emoji) {
+      if (faviconEmoji instanceof HTMLSpanElement) {
+        faviconEmoji.textContent = faviconSource.emoji;
+        faviconEmoji.classList.remove('hidden');
+      }
+      if (faviconImage instanceof HTMLImageElement) {
+        faviconImage.style.display = 'none';
+      }
+    } else if (faviconImage instanceof HTMLImageElement) {
+      if (faviconSource.url) {
+        faviconImage.src = faviconSource.url;
+        faviconImage.loading = 'lazy';
+        faviconImage.decoding = 'async';
+        faviconImage.referrerPolicy = 'no-referrer';
+        faviconImage.addEventListener('error', () => {
+          faviconImage.style.display = 'none';
+        });
+      } else {
+        faviconImage.style.display = 'none';
+      }
+    }
     chip.addEventListener('click', (e) => {
       if (e.target.classList.contains('unpin-button')) return;
       void openBookmark(item.url);
