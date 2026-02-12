@@ -129,6 +129,22 @@
                     <span class="text-[10px] font-bold uppercase tracking-wider">Fit</span>
                 </button>
             </div>
+
+            <div class="divider-vertical opacity-50"></div>
+
+            <div class="flex items-center gap-2">
+                <button class="btn btn-sm btn-outline h-7 min-h-7 px-2 gap-1.5" id="action-ocr"
+                    title="Extract text from image">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect width="14" height="14" x="5" y="5" rx="2"></rect>
+                        <path d="M8 10h8"></path>
+                        <path d="M8 14h6"></path>
+                    </svg>
+                    <span class="text-[10px] font-bold uppercase tracking-wide" id="ocr-button-label">OCR</span>
+                </button>
+                <span class="text-[10px] font-semibold opacity-70 min-w-[86px] max-w-[160px] truncate" id="ocr-status"></span>
+            </div>
         </div>
 
         <!-- Right: Properties & Actions -->
@@ -289,6 +305,7 @@
     <!-- Canvas Container -->
     <main class="flex-1 relative overflow-hidden bg-base-300/10" id="canvas-container">
         <canvas id="editor-canvas" class="shadow-2xl bg-white"></canvas>
+        <div id="ocr-text-layer" class="ocr-text-layer hidden" aria-label="Recognized text overlay"></div>
     </main>
 
     <!-- Text Input Dialog -->
@@ -312,6 +329,7 @@
         </form>
     </dialog>
 
+    <script src="../libs/tesseract/tesseract.min.js"></script>
     <script src="./editor.js" type="module"></script>
 </body>
 

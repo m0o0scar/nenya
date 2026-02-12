@@ -2,6 +2,7 @@
  * Screenshot Editor Logic
  */
 const chrome = /** @type {any} */ (window).chrome;
+const tesseractApi = /** @type {any} */ (window).Tesseract;
 
 class Shape {
     /**
@@ -906,6 +907,19 @@ class Editor {
         this.redoStack = [];
         this.maxHistory = 50;
 
+        /** @type {any | null} */
+        this.ocrWorker = null;
+        this.isOcrRunning = false;
+        this.isOcrLayerVisible = false;
+        /** @type {HTMLDivElement | null} */
+        this.ocrTextLayer = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-text-layer'));
+        /** @type {HTMLButtonElement | null} */
+        this.ocrButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('action-ocr'));
+        /** @type {HTMLSpanElement | null} */
+        this.ocrButtonLabel = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-button-label'));
+        /** @type {HTMLSpanElement | null} */
+        this.ocrStatus = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-status'));
+
         this.init();
     }
 
@@ -914,6 +928,7 @@ class Editor {
         this.attachCanvasListeners();
         this.initTextDialog();
         this.initTheme();
+        this.initOcr();
         await this.loadSettings();
         await this.loadImage();
         this.updateUI();
@@ -922,6 +937,229 @@ class Editor {
         document.fonts.ready.then(() => {
             this.render();
         });
+
+        window.addEventListener('beforeunload', () => {
+            this.disposeOcrWorker();
+        });
+    }
+
+    initOcr() {
+        if (this.ocrButton) {
+            this.ocrButton.addEventListener('click', () => {
+                this.handleOcrAction();
+            });
+        }
+        this.setOcrStatus('');
+        this.updateOcrButtonState();
+        this.updateOcrLayerTransform();
+    }
+
+    updateOcrButtonState() {
+        if (this.ocrButton) {
+            const isImageReady = !!this.backgroundImage && this.backgroundImage.complete;
+            this.ocrButton.disabled = this.isOcrRunning || !isImageReady;
+        }
+        if (!this.ocrButtonLabel) return;
+        if (this.isOcrRunning) {
+            this.ocrButtonLabel.textContent = 'OCR...';
+        } else if (this.isOcrLayerVisible) {
+            this.ocrButtonLabel.textContent = 'Hide';
+        } else if (this.ocrTextLayer && this.ocrTextLayer.childElementCount > 0) {
+            this.ocrButtonLabel.textContent = 'Show';
+        } else {
+            this.ocrButtonLabel.textContent = 'OCR';
+        }
+    }
+
+    /**
+     * @param {string} text
+     * @param {boolean} [isError]
+     */
+    setOcrStatus(text, isError = false) {
+        if (!this.ocrStatus) return;
+        this.ocrStatus.textContent = text;
+        this.ocrStatus.title = text;
+        this.ocrStatus.classList.toggle('text-error', isError);
+    }
+
+    /**
+     * @param {boolean} visible
+     */
+    setOcrLayerVisible(visible) {
+        this.isOcrLayerVisible = visible;
+        if (this.ocrTextLayer) {
+            this.ocrTextLayer.classList.toggle('hidden', !visible);
+            this.ocrTextLayer.classList.toggle('ocr-text-layer-active', visible);
+        }
+        this.updateOcrButtonState();
+    }
+
+    clearOcrLayer() {
+        if (this.ocrTextLayer) {
+            this.ocrTextLayer.innerHTML = '';
+        }
+        this.setOcrLayerVisible(false);
+        this.setOcrStatus('');
+    }
+
+    updateOcrLayerTransform() {
+        if (!this.ocrTextLayer || !this.canvas) return;
+        this.ocrTextLayer.style.width = `${this.canvas.width}px`;
+        this.ocrTextLayer.style.height = `${this.canvas.height}px`;
+        this.ocrTextLayer.style.transformOrigin = getComputedStyle(this.canvas).transformOrigin;
+        this.ocrTextLayer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
+    }
+
+    /**
+     * @param {Array<{text?: string, bbox?: {x0: number, y0: number, x1: number, y1: number}, confidence?: number}>} items
+     * @returns {number}
+     */
+    buildOcrLayer(items) {
+        if (!this.ocrTextLayer) return 0;
+        this.ocrTextLayer.innerHTML = '';
+        let count = 0;
+
+        items.forEach((item) => {
+            const text = (item.text || '').trim();
+            const bbox = item.bbox;
+            if (!bbox || !text) return;
+            if (typeof item.confidence === 'number' && item.confidence < 35) return;
+
+            const x = Math.max(0, bbox.x0);
+            const y = Math.max(0, bbox.y0);
+            const width = Math.max(1, bbox.x1 - bbox.x0);
+            const height = Math.max(1, bbox.y1 - bbox.y0);
+
+            const wordEl = document.createElement('div');
+            wordEl.className = 'ocr-word';
+            wordEl.textContent = text;
+            wordEl.style.left = `${x}px`;
+            wordEl.style.top = `${y}px`;
+            wordEl.style.width = `${width}px`;
+            wordEl.style.height = `${height}px`;
+            wordEl.style.fontSize = `${Math.max(10, Math.round(height * 0.85))}px`;
+
+            this.ocrTextLayer.appendChild(wordEl);
+            count += 1;
+        });
+
+        this.updateOcrLayerTransform();
+        return count;
+    }
+
+    getOcrSourceCanvas() {
+        const sourceCanvas = document.createElement('canvas');
+        sourceCanvas.width = this.canvas.width;
+        sourceCanvas.height = this.canvas.height;
+        const sourceCtx = sourceCanvas.getContext('2d');
+        if (!sourceCtx) return sourceCanvas;
+
+        const prevTool = this.tool;
+        const prevCrop = this.cropRect;
+        const selectedStates = this.shapes.map(shape => shape.selected);
+        this.shapes.forEach(shape => {
+            shape.selected = false;
+        });
+        this.tool = 'select';
+        this.cropRect = null;
+        this.render();
+        sourceCtx.drawImage(this.canvas, 0, 0);
+        this.tool = prevTool;
+        this.cropRect = prevCrop;
+        this.shapes.forEach((shape, index) => {
+            shape.selected = selectedStates[index];
+        });
+        this.render();
+
+        return sourceCanvas;
+    }
+
+    async ensureOcrWorker() {
+        if (this.ocrWorker) return this.ocrWorker;
+        if (!tesseractApi || typeof tesseractApi.createWorker !== 'function') {
+            throw new Error('Tesseract.js is not available.');
+        }
+
+        const getRuntimeUrl = (path) => {
+            if (chrome && chrome.runtime && typeof chrome.runtime.getURL === 'function') {
+                return chrome.runtime.getURL(path);
+            }
+            return path;
+        };
+
+        const workerPath = getRuntimeUrl('src/libs/tesseract/worker.min.js');
+        const corePath = getRuntimeUrl('src/libs/tesseract-core');
+        const langPath = getRuntimeUrl('src/libs/tesseract-lang/4.0.0');
+
+        this.ocrWorker = await tesseractApi.createWorker('eng', 1, {
+            workerBlobURL: false,
+            workerPath,
+            corePath,
+            langPath,
+            logger: (message) => {
+                if (!this.isOcrRunning) return;
+                const status = message.status || 'Processing';
+                const progress = typeof message.progress === 'number'
+                    ? ` ${Math.round(message.progress * 100)}%`
+                    : '';
+                this.setOcrStatus(`${status}${progress}`);
+            }
+        });
+
+        return this.ocrWorker;
+    }
+
+    disposeOcrWorker() {
+        if (!this.ocrWorker || typeof this.ocrWorker.terminate !== 'function') return;
+        this.ocrWorker.terminate().catch((error) => {
+            console.warn('Failed to terminate OCR worker.', error);
+        });
+        this.ocrWorker = null;
+    }
+
+    async handleOcrAction() {
+        const isImageReady = !!this.backgroundImage && this.backgroundImage.complete;
+        if (!isImageReady || this.isOcrRunning) return;
+
+        if (this.isOcrLayerVisible) {
+            this.setOcrLayerVisible(false);
+            this.setOcrStatus('Text layer hidden');
+            return;
+        }
+
+        if (this.ocrTextLayer && this.ocrTextLayer.childElementCount > 0) {
+            this.setOcrLayerVisible(true);
+            this.setOcrStatus('Text layer shown');
+            return;
+        }
+
+        this.isOcrRunning = true;
+        this.updateOcrButtonState();
+        this.setOcrStatus('Preparing OCR...');
+        this.setOcrLayerVisible(false);
+
+        try {
+            const worker = await this.ensureOcrWorker();
+            const sourceCanvas = this.getOcrSourceCanvas();
+            const result = await worker.recognize(sourceCanvas);
+            const lines = result && result.data && Array.isArray(result.data.lines) ? result.data.lines : [];
+            const words = result && result.data && Array.isArray(result.data.words) ? result.data.words : [];
+            const detectedCount = this.buildOcrLayer(lines.length > 0 ? lines : words);
+
+            if (detectedCount > 0) {
+                this.setOcrLayerVisible(true);
+                this.setOcrStatus(`Detected ${detectedCount} text items`);
+            } else {
+                this.setOcrStatus('No text found');
+            }
+        } catch (error) {
+            console.error('OCR extraction failed.', error);
+            this.clearOcrLayer();
+            this.setOcrStatus('OCR failed', true);
+        } finally {
+            this.isOcrRunning = false;
+            this.updateOcrButtonState();
+        }
     }
 
     /**
@@ -1129,6 +1367,7 @@ class Editor {
             this.canvas.width = snapshot.canvasWidth;
             this.canvas.height = snapshot.canvasHeight;
         }
+        this.clearOcrLayer();
         this.fitToScreen();
         this.render();
         this.updateUI();
@@ -1154,8 +1393,10 @@ class Editor {
                         if (this.canvas && this.backgroundImage) {
                             this.canvas.width = this.backgroundImage.width;
                             this.canvas.height = this.backgroundImage.height;
+                            this.clearOcrLayer();
                             this.fitToScreen();
                             this.render();
+                            this.updateOcrButtonState();
                         }
                     };
                     img.src = dataUrl;
@@ -1203,6 +1444,7 @@ class Editor {
                 this.canvas.style.imageRendering = 'auto';
             }
         }
+        this.updateOcrLayerTransform();
     }
 
     attachToolbarListeners() {
@@ -1536,6 +1778,7 @@ class Editor {
             arrowBorderBtn.classList.toggle('btn-style-active', this.arrowHasBorder);
         }
 
+        this.updateOcrButtonState();
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
@@ -2091,8 +2334,10 @@ class Editor {
             this.backgroundImage = newImg;
             this.shapes = [];
             this.cropRect = null;
+            this.clearOcrLayer();
             this.fitToScreen(); // Re-fit after crop
             this.render();
+            this.updateOcrButtonState();
         };
         newImg.src = this.canvas.toDataURL();
 
