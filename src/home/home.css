@@ -86,6 +86,9 @@ body {
 #sessionsList {
   max-height: min(55vh, 48rem);
   overflow: auto;
+  border: 1px solid #d9d9d9;
+  border-radius: 0.75rem;
+  padding: 0.5rem;
   padding-right: 0.25rem;
 }
 
