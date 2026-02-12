@@ -498,6 +498,14 @@ if (!statusMessage) {
 // Initialize shortcuts on page load
 void loadAndRenderShortcuts();
 
+// Force focus on search input when on home surface
+if (IS_HOME_SURFACE && bookmarksSearchInput) {
+  // Use a small timeout to ensure the browser is ready and to override any default focus behavior
+  setTimeout(() => {
+    bookmarksSearchInput.focus();
+  }, 100);
+}
+
 // Listen for storage changes to update UI dynamically
 if (chrome?.storage?.onChanged) {
   chrome.storage.onChanged.addListener((changes, namespace) => {
