@@ -131,6 +131,7 @@ export {
   handleRestoreSession,
   handleOpenAllItemsInCollection,
   handleFetchSessionDetails,
+  fetchAllItemsInCollection,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
   handleUpdateSessionName,
@@ -196,6 +197,85 @@ function getItemMetadata(item) {
     }
   }
   return {};
+}
+
+/**
+ * Fetch all items in a Raindrop collection, parallelizing requests when possible.
+ * @param {number} collectionId
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<any[]>}
+ */
+async function fetchAllItemsInCollection(collectionId, tokens) {
+  // 1. Fetch first page to get metadata (count) and first batch of items
+  const firstPageResponse = await raindropRequest(
+    `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=0`,
+    tokens
+  );
+
+  if (!firstPageResponse) {
+    return [];
+  }
+
+  const items = Array.isArray(firstPageResponse.items) ? [...firstPageResponse.items] : [];
+  const totalCount = firstPageResponse.count;
+
+  // If we got fewer items than page size, we are done
+  if (items.length < FETCH_PAGE_SIZE) {
+    return items;
+  }
+
+  // 2. Determine if we can parallelize
+  if (typeof totalCount === 'number' && totalCount > items.length) {
+    const totalPages = Math.ceil(totalCount / FETCH_PAGE_SIZE);
+
+    // We already have page 0, so fetch 1 to totalPages - 1
+    const pageIndices = [];
+    for (let i = 1; i < totalPages; i++) {
+      pageIndices.push(i);
+    }
+
+    // Limit concurrency to avoid hitting rate limits too fast
+    const CONCURRENCY_LIMIT = 5;
+    const chunks = [];
+    for (let i = 0; i < pageIndices.length; i += CONCURRENCY_LIMIT) {
+      chunks.push(pageIndices.slice(i, i + CONCURRENCY_LIMIT));
+    }
+
+    for (const chunk of chunks) {
+      const promises = chunk.map(page =>
+        raindropRequest(
+          `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+          tokens
+        )
+        .then(response => Array.isArray(response?.items) ? response.items : [])
+      );
+
+      const results = await Promise.all(promises);
+      results.forEach(pageItems => items.push(...pageItems));
+    }
+
+  } else {
+    // Fallback to sequential if count is missing or unreliable
+    let page = 1;
+    let hasMore = true;
+
+    while (hasMore) {
+      const response = await raindropRequest(
+        `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
+        tokens
+      );
+      const pageItems = Array.isArray(response?.items) ? response.items : [];
+      items.push(...pageItems);
+
+      if (pageItems.length < FETCH_PAGE_SIZE) {
+        hasMore = false;
+      } else {
+        page += 1;
+      }
+    }
+  }
+
+  return items;
 }
 
 /**
@@ -288,24 +368,7 @@ async function handleFetchSessionDetails(collectionId) {
   }
 
   // 1. Fetch all items in the collection
-  const items = [];
-  let page = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await raindropRequest(
-      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
-      tokens,
-    );
-    const pageItems = Array.isArray(response?.items) ? response.items : [];
-    items.push(...pageItems);
-
-    if (pageItems.length < FETCH_PAGE_SIZE) {
-      hasMore = false;
-    } else {
-      page += 1;
-    }
-  }
+  const items = await fetchAllItemsInCollection(collectionId, tokens);
 
   if (items.length === 0) {
     return { windows: [] };
@@ -391,24 +454,7 @@ async function handleRestoreSession(collectionId) {
   }
 
   // 1. Fetch all items in the collection
-  const items = [];
-  let page = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await raindropRequest(
-      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
-      tokens,
-    );
-    const pageItems = Array.isArray(response?.items) ? response.items : [];
-    items.push(...pageItems);
-
-    if (pageItems.length < FETCH_PAGE_SIZE) {
-      hasMore = false;
-    } else {
-      page += 1;
-    }
-  }
+  const items = await fetchAllItemsInCollection(collectionId, tokens);
 
   if (items.length === 0) {
     return { success: true };
@@ -537,24 +583,7 @@ async function handleOpenAllItemsInCollection(collectionId, collectionTitle) {
     throw new Error('No Raindrop connection found');
   }
 
-  const items = [];
-  let page = 0;
-  let hasMore = true;
-
-  while (hasMore) {
-    const response = await raindropRequest(
-      `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
-      tokens,
-    );
-    const pageItems = Array.isArray(response?.items) ? response.items : [];
-    items.push(...pageItems);
-
-    if (pageItems.length < FETCH_PAGE_SIZE) {
-      hasMore = false;
-    } else {
-      page += 1;
-    }
-  }
+  const items = await fetchAllItemsInCollection(collectionId, tokens);
 
   // Open all links in new tabs (inactive)
   const tabPromises = items
@@ -2422,36 +2451,11 @@ async function deleteAllItemsInCollection(collectionId, tokens) {
     );
 
     // Step 1: Fetch all item IDs from all pages
-    const allItemIds = [];
-    let page = 0;
-    let hasMore = true;
+    const items = await fetchAllItemsInCollection(collectionId, tokens);
 
-    while (hasMore) {
-      const response = await raindropRequest(
-        `/raindrops/${collectionId}?perpage=${FETCH_PAGE_SIZE}&page=${page}`,
-        tokens,
-      );
-      const items = Array.isArray(response?.items) ? response.items : [];
-
-      if (items.length === 0) {
-        hasMore = false;
-        break;
-      }
-
-      // Extract and collect item IDs
-      const itemIds = items
-        .map((item) => extractItemId(item))
-        .filter((id) => Number.isFinite(id));
-
-      allItemIds.push(...itemIds);
-
-      // Check if there are more pages
-      if (items.length < FETCH_PAGE_SIZE) {
-        hasMore = false;
-      } else {
-        page += 1;
-      }
-    }
+    const allItemIds = items
+      .map((item) => extractItemId(item))
+      .filter((id) => Number.isFinite(id));
 
     console.log(
       `[mirror] Found ${allItemIds.length} items to delete from collection ${collectionId}`,
@@ -2699,21 +2703,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     groups.forEach((g) => groupsMap.set(g.id, g));
 
     // 1. Fetch ALL existing items from Raindrop
-    const existingItems = [];
-    let page = 0;
-    let hasMore = true;
-
-    while (hasMore) {
-      const pageItems = await fetchRaindropItems(tokens, deviceCollectionId, page);
-      if (pageItems && pageItems.length > 0) {
-        existingItems.push(...pageItems);
-        // Optimization: if less than page size, we are done
-        if (pageItems.length < FETCH_PAGE_SIZE) hasMore = false;
-        else page++;
-      } else {
-        hasMore = false;
-      }
-    }
+    const existingItems = await fetchAllItemsInCollection(deviceCollectionId, tokens);
 
     // Maps for matching current tabs to existing Raindrop items
     const metadataMap = new Map(); // uniqueId -> item (keep only one per uniqueId)
