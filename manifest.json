@@ -191,6 +191,9 @@
     "open-in-popup": {
       "description": "↗️ Open in popup"
     },
+    "rename-tab": {
+      "description": "🏷️ Rename tab"
+    },
     "screen-recording-start": {
       "description": "⏺️ Start screen recording"
     }

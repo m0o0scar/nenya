@@ -80,6 +80,8 @@ const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const TAKE_SCREENSHOT_MESSAGE = 'clipboard:takeScreenshot';
+const RENAME_TAB_MESSAGE = 'rename-tab';
+const RENAMED_TAB_TITLES_STORAGE_KEY = 'renamedTabTitles';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
@@ -469,6 +471,20 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'rename-tab') {
+    void (async () => {
+      try {
+        const result = await handleRenameTabRequest();
+        if (!result.success && !result.cancelled && result.error) {
+          console.warn('[commands] Rename tab failed:', result.error);
+        }
+      } catch (error) {
+        console.warn('[commands] Rename tab failed:', error);
+      }
+    })();
+    return;
+  }
+
   if (command === 'screen-recording-start') {
     void (async () => {
       try {
@@ -524,6 +540,283 @@ async function promptForTitle(tabId, prefillTitle) {
     console.warn('[promptForTitle] Unable to prompt for title:', error);
     return prefillTitle;
   }
+}
+
+/**
+ * Get storage area for tab rename persistence.
+ * Prefer session storage so entries do not survive browser restarts.
+ * @returns {chrome.storage.StorageArea | null}
+ */
+function getRenameStorageArea() {
+  if (chrome?.storage?.session) {
+    return chrome.storage.session;
+  }
+  if (chrome?.storage?.local) {
+    return chrome.storage.local;
+  }
+  return null;
+}
+
+/**
+ * Load persisted renamed tab titles keyed by tab ID.
+ * @returns {Promise<Record<string, string>>}
+ */
+async function loadPersistedRenamedTabTitles() {
+  const storageArea = getRenameStorageArea();
+  if (!storageArea) {
+    return {};
+  }
+
+  try {
+    const result = await storageArea.get(RENAMED_TAB_TITLES_STORAGE_KEY);
+    const value = result?.[RENAMED_TAB_TITLES_STORAGE_KEY];
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return {};
+    }
+
+    /** @type {Record<string, string>} */
+    const map = {};
+    Object.entries(value).forEach(([key, title]) => {
+      if (typeof title === 'string' && title.trim()) {
+        map[key] = title;
+      }
+    });
+    return map;
+  } catch (error) {
+    console.warn('[rename-tab] Failed to load persisted titles:', error);
+    return {};
+  }
+}
+
+/**
+ * Save persisted renamed tab titles map.
+ * @param {Record<string, string>} titlesByTabId
+ * @returns {Promise<void>}
+ */
+async function savePersistedRenamedTabTitles(titlesByTabId) {
+  const storageArea = getRenameStorageArea();
+  if (!storageArea) {
+    return;
+  }
+  await storageArea.set({
+    [RENAMED_TAB_TITLES_STORAGE_KEY]: titlesByTabId,
+  });
+}
+
+/**
+ * Persist a renamed title for a tab.
+ * @param {number} tabId
+ * @param {string} title
+ * @returns {Promise<void>}
+ */
+async function persistRenamedTabTitle(tabId, title) {
+  if (typeof tabId !== 'number') {
+    return;
+  }
+  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
+  if (!trimmedTitle) {
+    return;
+  }
+
+  const titlesByTabId = await loadPersistedRenamedTabTitles();
+  titlesByTabId[String(tabId)] = trimmedTitle;
+  await savePersistedRenamedTabTitles(titlesByTabId);
+}
+
+/**
+ * Remove a persisted renamed title for a tab.
+ * @param {number} tabId
+ * @returns {Promise<void>}
+ */
+async function removePersistedRenamedTabTitle(tabId) {
+  if (typeof tabId !== 'number') {
+    return;
+  }
+
+  const titlesByTabId = await loadPersistedRenamedTabTitles();
+  const key = String(tabId);
+  if (!(key in titlesByTabId)) {
+    return;
+  }
+  delete titlesByTabId[key];
+  await savePersistedRenamedTabTitles(titlesByTabId);
+}
+
+/**
+ * Get persisted renamed title for a tab.
+ * @param {number} tabId
+ * @returns {Promise<string>}
+ */
+async function getPersistedRenamedTabTitle(tabId) {
+  if (typeof tabId !== 'number') {
+    return '';
+  }
+  const titlesByTabId = await loadPersistedRenamedTabTitles();
+  const title = titlesByTabId[String(tabId)];
+  return typeof title === 'string' ? title : '';
+}
+
+/**
+ * Re-apply persisted renamed title to a tab.
+ * @param {number} tabId
+ * @returns {Promise<void>}
+ */
+async function reapplyPersistedRenamedTabTitle(tabId) {
+  if (!chrome.scripting || typeof tabId !== 'number') {
+    return;
+  }
+
+  const title = await getPersistedRenamedTabTitle(tabId);
+  if (!title) {
+    return;
+  }
+
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (nextTitle) => {
+        document.title = nextTitle;
+      },
+      args: [title],
+      world: 'MAIN',
+    });
+  } catch (error) {
+    // Restricted pages may not support script injection.
+    console.warn('[rename-tab] Failed to reapply title:', error);
+  }
+}
+
+/**
+ * Re-apply persisted title multiple times to survive pages that overwrite late.
+ * @param {number} tabId
+ * @returns {void}
+ */
+function schedulePersistedRenamedTabTitleReapply(tabId) {
+  void reapplyPersistedRenamedTabTitle(tabId);
+  setTimeout(() => {
+    void reapplyPersistedRenamedTabTitle(tabId);
+  }, 300);
+  setTimeout(() => {
+    void reapplyPersistedRenamedTabTitle(tabId);
+  }, 1200);
+}
+
+/**
+ * Remove persisted rename entries for tabs that are no longer open.
+ * @returns {Promise<void>}
+ */
+async function pruneClosedPersistedRenamedTabs() {
+  const titlesByTabId = await loadPersistedRenamedTabTitles();
+  const keys = Object.keys(titlesByTabId);
+  if (keys.length === 0) {
+    return;
+  }
+
+  try {
+    const tabs = await chrome.tabs.query({});
+    const openTabIds = new Set(
+      tabs
+        .filter((tab) => typeof tab.id === 'number')
+        .map((tab) => String(tab.id)),
+    );
+
+    /** @type {Record<string, string>} */
+    const next = {};
+    let changed = false;
+    Object.entries(titlesByTabId).forEach(([tabId, title]) => {
+      if (openTabIds.has(tabId)) {
+        next[tabId] = title;
+      } else {
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await savePersistedRenamedTabTitles(next);
+    }
+  } catch (error) {
+    console.warn('[rename-tab] Failed to prune persisted titles:', error);
+  }
+}
+
+/**
+ * Prompt for a new tab title in-page and apply it.
+ * @param {number} tabId
+ * @returns {Promise<{ success: boolean, cancelled?: boolean, title?: string, error?: string }>}
+ */
+async function promptAndRenameTab(tabId) {
+  if (!chrome.scripting || typeof tabId !== 'number') {
+    return { success: false, error: 'Active tab unavailable for renaming.' };
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const currentTitle =
+          typeof document.title === 'string' ? document.title : '';
+        const input = window.prompt('Enter a new tab title', currentTitle);
+        if (input === null) {
+          return { success: false, cancelled: true };
+        }
+
+        const nextTitle = String(input).trim();
+        if (!nextTitle) {
+          return { success: false, cancelled: true };
+        }
+
+        document.title = nextTitle;
+        return { success: true, title: nextTitle };
+      },
+      world: 'MAIN',
+    });
+
+    const value =
+      Array.isArray(results) && results[0] ? results[0].result : null;
+    if (!value || typeof value !== 'object') {
+      return { success: false, error: 'Failed to rename tab.' };
+    }
+
+    return /** @type {{ success: boolean, cancelled?: boolean, title?: string, error?: string }} */ (value);
+  } catch (error) {
+    const messageText =
+      error instanceof Error ? error.message : 'Unable to rename tab on this page.';
+    return { success: false, error: messageText };
+  }
+}
+
+/**
+ * Resolve a target tab and trigger the rename prompt.
+ * @param {number | null} [tabId]
+ * @returns {Promise<{ success: boolean, cancelled?: boolean, title?: string, error?: string }>}
+ */
+async function handleRenameTabRequest(tabId = null) {
+  let targetTabId = typeof tabId === 'number' ? tabId : null;
+
+  if (targetTabId === null) {
+    const tabs = await chrome.tabs.query({
+      currentWindow: true,
+      active: true,
+    });
+    if (tabs && tabs[0] && typeof tabs[0].id === 'number') {
+      targetTabId = tabs[0].id;
+    }
+  }
+
+  if (targetTabId === null) {
+    return { success: false, error: 'No active tab found.' };
+  }
+
+  const result = await promptAndRenameTab(targetTabId);
+  if (result.success && typeof result.title === 'string') {
+    try {
+      await persistRenamedTabTitle(targetTabId, result.title);
+    } catch (error) {
+      console.warn('[rename-tab] Failed to persist title:', error);
+    }
+  }
+
+  return result;
 }
 
 const FRIENDLY_TITLE_WORDS = [
@@ -1248,6 +1541,7 @@ async function restoreSplitPages() {
 chrome.runtime.onStartup.addListener(() => {
   handleLifecycleEvent('startup');
   void (async () => {
+    await pruneClosedPersistedRenamedTabs();
     // Restore split pages from storage
     await restoreSplitPages();
   })();
@@ -1352,6 +1646,8 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 
 // Clean up when tabs close
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  void removePersistedRenamedTabTitle(tabId);
+
   // Remove split page URL from storage if this was a split page tab
   // Since the tab is already removed when onRemoved fires, we check all open tabs
   // and remove any URLs from storage that are no longer open
@@ -1498,8 +1794,11 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
   }
 
-  if (changeInfo.status === 'complete' && tab) {
-    void updateContextMenuVisibility(tab);
+  if (changeInfo.status === 'complete') {
+    schedulePersistedRenamedTabTitleReapply(tabId);
+    if (tab) {
+      void updateContextMenuVisibility(tab);
+    }
   }
 });
 
@@ -2733,6 +3032,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
+  if (message.type === RENAME_TAB_MESSAGE) {
+    const requestedTabId =
+      typeof message.tabId === 'number' ? message.tabId : null;
+    void handleRenameTabRequest(requestedTabId)
+      .then((result) => {
+        sendResponse(result);
+      })
+      .catch((error) => {
+        console.error('[background] Failed to rename tab:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+
   if (message.type === 'launchElementPicker') {
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
     if (tabId === null) {
@@ -3772,6 +4085,17 @@ if (chrome.contextMenus) {
     // Open in popup
     if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {
       void handleOpenInPopup();
+      return;
+    }
+
+    // Rename tab
+    if (menuItemId === NENYA_MENU_IDS.RENAME_TAB) {
+      const targetTabId = typeof tab?.id === 'number' ? tab.id : null;
+      void handleRenameTabRequest(targetTabId).then((result) => {
+        if (!result.success && !result.cancelled && result.error) {
+          console.warn('[contextMenu] Rename tab failed:', result.error);
+        }
+      });
       return;
     }
 
