@@ -1422,85 +1422,99 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
       return finalize();
     }
 
-    const creationPromises = dedupeResult.entries.map(async (entry) => {
-      const pleaseParse =
-        options.pleaseParse ||
-        !entry.title ||
-        (!entry.cover && !entry.includeScreenshot);
-      const payload = {
-        link: entry.url,
-        collectionId: -1,
-        ...(pleaseParse ? { pleaseParse: {} } : {}),
-        ...(entry.cover ? { cover: entry.cover } : {}),
-        ...(entry.title ? { title: entry.title } : {}),
-        ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
-      };
+    const CHUNK_SIZE = 100;
+    const chunks = [];
+    for (let i = 0; i < dedupeResult.entries.length; i += CHUNK_SIZE) {
+      chunks.push(dedupeResult.entries.slice(i, i + CHUNK_SIZE));
+    }
 
-      const response = await raindropRequest('/raindrop', tokens, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+    for (const chunk of chunks) {
+      try {
+        const itemsToCreate = chunk.map((entry) => {
+          const pleaseParse =
+            options.pleaseParse ||
+            !entry.title ||
+            (!entry.cover && !entry.includeScreenshot);
+          return {
+            link: entry.url,
+            collectionId: -1,
+            ...(pleaseParse ? { pleaseParse: {} } : {}),
+            ...(entry.cover ? { cover: entry.cover } : {}),
+            ...(entry.title ? { title: entry.title } : {}),
+            ...(entry.excerpt ? { excerpt: entry.excerpt } : {}),
+          };
+        });
 
-      if (!response || typeof response !== 'object' || !response.item) {
-        throw new Error(
-          'Invalid response from Raindrop API: missing item field',
-        );
-      }
-      return response;
-    });
+        const response = await raindropRequest('/raindrops', tokens, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ items: itemsToCreate }),
+        });
 
-    const results = await Promise.allSettled(creationPromises);
+        if (!response || typeof response !== 'object' || !Array.isArray(response.items)) {
+          throw new Error(
+            'Invalid response from Raindrop API: missing items array',
+          );
+        }
 
-    for (let i = 0; i < results.length; i++) {
-      const result = results[i];
-      const entry = dedupeResult.entries[i];
+        // Process results sequentially for screenshots
+        for (let i = 0; i < response.items.length; i++) {
+          const createdItem = response.items[i];
+          const entry = chunk[i];
 
-      if (result.status === 'fulfilled') {
-        try {
-          const response = result.value;
-          if (entry.includeScreenshot && entry.tabId && entry.windowId) {
-            await chrome.windows.update(entry.windowId, { focused: true });
-            await chrome.tabs.update(entry.tabId, { active: true });
-            const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
-              entry.windowId,
-              {
-                format: 'jpeg',
-                quality: 80,
-              },
-            );
-            const blob = await (await fetch(screenshotDataUrl)).blob();
-            const formData = new FormData();
-            formData.append('cover', blob, 'screenshot.jpg');
-            await raindropRequest(
-              `/raindrop/${response.item._id}/cover`,
-              tokens,
-              {
-                method: 'PUT',
-                body: formData,
-              },
+          if (!createdItem || !createdItem._id) {
+            summary.failed += 1;
+            summary.errors.push(`${entry.url}: Failed to create item (no ID returned)`);
+            continue;
+          }
+
+          try {
+            if (entry.includeScreenshot && entry.tabId && entry.windowId) {
+              await chrome.windows.update(entry.windowId, { focused: true });
+              await chrome.tabs.update(entry.tabId, { active: true });
+              const screenshotDataUrl = await chrome.tabs.captureVisibleTab(
+                entry.windowId,
+                {
+                  format: 'jpeg',
+                  quality: 80,
+                },
+              );
+              const blob = await (await fetch(screenshotDataUrl)).blob();
+              const formData = new FormData();
+              formData.append('cover', blob, 'screenshot.jpg');
+              await raindropRequest(
+                `/raindrop/${createdItem._id}/cover`,
+                tokens,
+                {
+                  method: 'PUT',
+                  body: formData,
+                },
+              );
+            }
+            summary.created += 1;
+          } catch (error) {
+            // Item was created but screenshot failed - count as failure or just log error?
+            // Original logic counted as failure if any part failed inside the loop
+            summary.failed += 1;
+            summary.errors.push(
+              entry.url +
+              ': Screenshot failed: ' +
+              (error instanceof Error ? error.message : String(error)),
             );
           }
-          summary.created += 1;
-        } catch (error) {
+        }
+      } catch (error) {
+        // If the batch request fails, all items in the chunk fail
+        for (const entry of chunk) {
           summary.failed += 1;
           summary.errors.push(
             entry.url +
-            ': ' +
+            ': Batch failed: ' +
             (error instanceof Error ? error.message : String(error)),
           );
         }
-      } else {
-        summary.failed += 1;
-        summary.errors.push(
-          entry.url +
-          ': ' +
-          (result.reason instanceof Error
-            ? result.reason.message
-            : String(result.reason)),
-        );
       }
     }
 
