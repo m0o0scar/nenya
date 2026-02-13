@@ -20,9 +20,6 @@ const backupButton = /** @type {HTMLButtonElement | null} */ (
 const restoreButton = /** @type {HTMLButtonElement | null} */ (
   document.getElementById('optionsFloatingRestoreButton')
 );
-const pullButton = /** @type {HTMLButtonElement | null} */ (
-  document.getElementById('optionsFloatingPullButton')
-);
 
 const TOAST_BACKGROUND_BY_VARIANT = {
   success: 'linear-gradient(135deg, #22c55e, #16a34a)',
@@ -32,7 +29,6 @@ const TOAST_BACKGROUND_BY_VARIANT = {
 
 let loggedIn = false;
 let actionInProgress = false;
-let pullInProgress = false;
 
 /**
  * Show a toast via Toastify when available.
@@ -112,14 +108,6 @@ function updateButtonStates(disabled) {
     restoreButton.setAttribute(
       'aria-disabled',
       disableBackupActions ? 'true' : 'false',
-    );
-  }
-  if (pullButton) {
-    const disablePull = pullInProgress || !loggedIn;
-    pullButton.disabled = disablePull;
-    pullButton.setAttribute(
-      'aria-disabled',
-      disablePull ? 'true' : 'false',
     );
   }
 }
@@ -237,54 +225,6 @@ async function runAction(messageType, successMessage) {
 }
 
 /**
- * Pull Raindrop items to local bookmarks.
- * @returns {Promise<void>}
- */
-async function pullRaindropToBookmarks() {
-  if (pullInProgress) {
-    showToast('Export already in progress', 'info');
-    return;
-  }
-  
-  if (!loggedIn) {
-    showToast('Connect your Raindrop account first', 'error');
-    return;
-  }
-  
-  pullInProgress = true;
-  updateButtonStates(false);
-  
-  try {
-    /** @type {{ success: boolean, message: string, count?: number }} */
-    const response = await new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(
-        { type: 'raindrop:exportToBookmarks' },
-        (response) => {
-          const error = chrome.runtime.lastError;
-          if (error) {
-            reject(new Error(error.message));
-            return;
-          }
-          resolve(response);
-        }
-      );
-    });
-    
-    if (response.success) {
-      showToast(response.message, 'success');
-    } else {
-      showToast(response.message || 'Failed to pull Raindrop items', 'error');
-    }
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unexpected error';
-    showToast('Pull failed: ' + message, 'error');
-  } finally {
-    pullInProgress = false;
-    updateButtonStates(false);
-  }
-}
-
-/**
  * Initialize floating backup controls.
  * @returns {void}
  */
@@ -306,12 +246,6 @@ function initializeBackupControls() {
       'Options restored from Raindrop backup.',
     );
   });
-
-  if (pullButton) {
-    pullButton.addEventListener('click', () => {
-      void pullRaindropToBookmarks();
-    });
-  }
 
   void refreshStatus();
 }

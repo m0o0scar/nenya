@@ -68,10 +68,6 @@ import {
 } from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
-import {
-  initRaindropExport,
-  exportRaindropItemsToBookmarks,
-} from './raindrop-export.js';
 import { handlePictureInPicture } from './pip-handler.js';
 import {
   handleScreenRecordingToggle,
@@ -106,7 +102,6 @@ const COLLECT_AND_SEND_TO_LLM_MESSAGE = 'collect-and-send-to-llm';
 const OPEN_LLM_TABS_MESSAGE = 'open-llm-tabs';
 const CLOSE_LLM_TABS_MESSAGE = 'close-llm-tabs';
 const SWITCH_LLM_PROVIDER_MESSAGE = 'switch-llm-provider';
-const RAINDROP_EXPORT_TO_BOOKMARKS_MESSAGE = 'raindrop:exportToBookmarks';
 const ENCRYPT_SERVICE_URL = 'https://oh-auth.vercel.app/secret/encrypt';
 const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
 
@@ -1265,9 +1260,6 @@ void ensureNenyaSessionsCollection();
 void initializeAutoReloadFeature().catch((error) => {
   console.error('[auto-reload] Initialization failed:', error);
 });
-
-// Initialize Raindrop export to bookmarks feature
-initRaindropExport();
 
 chrome.tabs.onHighlighted.addListener(async () => {
   try {
@@ -2503,18 +2495,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch((error) => {
         console.error('[background] Raindrop search failed:', error);
         sendResponse({ items: [], collections: [] });
-      });
-    return true;
-  }
-
-  if (message.type === RAINDROP_EXPORT_TO_BOOKMARKS_MESSAGE) {
-    exportRaindropItemsToBookmarks()
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        console.error('[background] Raindrop export to bookmarks failed:', error);
-        sendResponse({ success: false, message: error.message || 'Export failed' });
       });
     return true;
   }

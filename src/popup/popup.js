@@ -3038,7 +3038,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /** @type {number} */
   let highlightedIndex = -1;
-  /** @type {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} */
+  /** @type {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
 
   // Initial render of pinned items
@@ -3129,7 +3129,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /**
    * Renders the bookmark search results.
-   * @param {Array<{type: 'bookmark', data: chrome.bookmarks.BookmarkTreeNode}>} results
+   * @param {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} results
    */
   function renderSearchResults(results) {
     resultsElement.innerHTML = '';
@@ -3156,12 +3156,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         }
         url = `https://app.raindrop.io/my/${collection._id}`;
         typeIcon = '📥';
-      } else if (result.type === 'bookmark') {
-        const bookmark = result.data;
-        itemType = 'bookmark';
-        title = bookmark.title || bookmark.url;
-        url = bookmark.url;
-        typeIcon = '🔖';
       }
 
       const truncatedUrl = url.startsWith('folder:')
@@ -3349,14 +3343,13 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
 
   /**
    * Deduplicate and sort search results.
-   * @param {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>} results
+   * @param {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} results
    * @param {Object} weights
-   * @returns {Array<{type: 'bookmark'|'raindrop'|'raindrop-collection', data: any}>}
+   * @returns {Array<{type: 'raindrop'|'raindrop-collection', data: any}>}
    */
   function processSearchResults(results, weights) {
     // Deduplicate items with same URL and title (case-insensitive)
     // For collections, deduplicate by _id
-    // For items with same URL, prefer raindrop over bookmark
     const urlMap = new Map(); // Map<url (lowercase), result>
     const seenKeys = new Set(); // For title|url deduplication
     const seenCollectionIds = new Set();
@@ -3384,9 +3377,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       if (result.type === 'raindrop') {
         url = (result.data.link || '').toLowerCase();
         title = (result.data.title || '').toLowerCase();
-      } else if (result.type === 'bookmark') {
-        url = (result.data.url || '').toLowerCase();
-        title = (result.data.title || '').toLowerCase();
       }
 
       // Skip items without URL (shouldn't happen for raindrops, but safety check)
@@ -3398,18 +3388,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       // Check if we've seen this URL before
       const existingResult = urlMap.get(url);
       if (existingResult) {
-        // If current is raindrop and existing is bookmark, replace bookmark with raindrop
-        if (result.type === 'raindrop' && existingResult.type === 'bookmark') {
-          // Remove the bookmark from uniqueResults
-          const bookmarkIndex = uniqueResults.indexOf(existingResult);
-          if (bookmarkIndex !== -1) {
-            uniqueResults.splice(bookmarkIndex, 1);
-          }
-          // Add the raindrop item
-          urlMap.set(url, result);
-          uniqueResults.push(result);
-        }
-        // Otherwise, skip the current item (keep existing)
+        // Skip duplicate URL, keep the first result.
         continue;
       }
 
@@ -3432,16 +3411,12 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         urlA = a.data.link;
       } else if (a.type === 'raindrop-collection') {
         urlA = `https://app.raindrop.io/my/${a.data._id}`;
-      } else if (a.type === 'bookmark') {
-        urlA = a.data.url;
       }
       
       if (b.type === 'raindrop') {
         urlB = b.data.link;
       } else if (b.type === 'raindrop-collection') {
         urlB = `https://app.raindrop.io/my/${b.data._id}`;
-      } else if (b.type === 'bookmark') {
-        urlB = b.data.url;
       }
 
       const weightA = weights[urlA] || 0;
@@ -3472,8 +3447,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   }
 
   /**
-   * Performs a bookmark search and renders the results.
-   * Local bookmarks are rendered immediately (fast), then Raindrop results are added (slower).
+   * Performs a search and renders Raindrop results only.
    * @param {string} query
    */
   async function performSearch(query) {
@@ -3509,42 +3483,7 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       console.warn('[popup] Failed to fetch weights for sorting:', error);
     }
 
-    // Search local bookmarks FIRST (fast, local API)
-    try {
-      const bookmarks = await chrome.bookmarks.search(query);
-      // Filter out folders (items without URL) and internal/system URLs
-      bookmarks
-        .filter((bookmark) => {
-          if (!bookmark.url) {
-            return false;
-          }
-          // Check if URL contains any excluded pattern
-          const url = bookmark.url.toLowerCase();
-          return !excludedUrlPatterns.some((pattern) => url.includes(pattern));
-        })
-        .forEach((bookmark) => {
-          results.push({
-            type: 'bookmark',
-            data: {
-              id: bookmark.id,
-              title: bookmark.title,
-              url: bookmark.url,
-              dateAdded: bookmark.dateAdded,
-            },
-          });
-        });
-
-      // Render local bookmarks IMMEDIATELY
-      if (results.length > 0) {
-        const topResults = processSearchResults(results, weights);
-        currentResults = topResults;
-        renderSearchResults(topResults);
-      }
-    } catch (error) {
-      console.warn('[popup] Local bookmark search failed:', error);
-    }
-
-    // Search Raindrop (slower, network request)
+    // Search Raindrop
     try {
       const response = await chrome.runtime.sendMessage({
         type: 'mirror:search',
@@ -3577,7 +3516,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
         }
       }
 
-      // Re-render with ALL results (local bookmarks + Raindrop)
       const topResults = processSearchResults(results, weights);
       currentResults = topResults;
       
@@ -3592,14 +3530,11 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       }
     } catch (error) {
       console.warn('[popup] Raindrop search failed:', error);
-      // If Raindrop fails but we have local bookmarks, keep showing them
-      if (results.length === 0) {
-        resultsElement.innerHTML = `
-          <div class="p-2 text-center text-base-content/60">
-            No results found
-          </div>
-        `;
-      }
+      resultsElement.innerHTML = `
+        <div class="p-2 text-center text-base-content/60">
+          No results found
+        </div>
+      `;
     }
   }
 
@@ -3648,12 +3583,6 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
           const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
           void updateSearchResultWeight(collectionUrl);
           void openBookmark(collectionUrl);
-        } else if (highlightedResult.type === 'bookmark') {
-          const bookmark = highlightedResult.data;
-          if (bookmark.url) {
-            void updateSearchResultWeight(bookmark.url);
-            void openBookmark(bookmark.url);
-          }
         }
         return;
       }
