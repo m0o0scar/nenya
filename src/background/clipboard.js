@@ -207,19 +207,26 @@ async function captureTabScreenshot(tabId) {
  * @returns {Promise<Array<{title: string, url: string}>>} - Array of tab data.
  */
 async function getTabData(tabs) {
-  const tabData = [];
-  for (const tab of tabs) {
-    if (!tab || typeof tab.url !== 'string' || !tab.url.startsWith('http')) {
-      continue;
-    }
-    const processedUrl = await processUrl(tab.url, 'copy-to-clipboard');
-    const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-    const transformedTitle = await transformTitle(originalTitle, tab.url);
-    tabData.push({
-      title: transformedTitle,
-      url: processedUrl,
-    });
-  }
+  const validTabs = tabs.filter(
+    (tab) => tab && typeof tab.url === 'string' && tab.url.startsWith('http'),
+  );
+
+  const tabData = await Promise.all(
+    validTabs.map(async (tab) => {
+      const originalTitle = typeof tab.title === 'string' ? tab.title : '';
+
+      const [processedUrl, transformedTitle] = await Promise.all([
+        processUrl(tab.url, 'copy-to-clipboard'),
+        transformTitle(originalTitle, tab.url),
+      ]);
+
+      return {
+        title: transformedTitle,
+        url: processedUrl,
+      };
+    }),
+  );
+
   return tabData;
 }
 
