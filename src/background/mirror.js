@@ -2842,6 +2842,7 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
     });
 
     // Batch Create
+    const allCoverUploadPromises = [];
     if (toCreate.length > 0) {
       const CHUNK_SIZE = 100;
       for (let i = 0; i < toCreate.length; i += CHUNK_SIZE) {
@@ -2860,24 +2861,24 @@ async function exportCurrentSessionToRaindrop(deviceCollectionId, tokens) {
 
         // Upload covers from tab snapshots for newly created items
         if (response && response.items && Array.isArray(response.items)) {
-          const coverUploadPromises = [];
           for (let j = 0; j < response.items.length; j++) {
             const createdItem = response.items[j];
             const tabId = tabIds[j];
             if (createdItem && createdItem._id && tabId) {
               const thumbnail = snapshotMap.get(tabId);
               if (thumbnail) {
-                coverUploadPromises.push(
+                allCoverUploadPromises.push(
                   uploadCoverFromSnapshot(createdItem._id, thumbnail, tokens),
                 );
               }
             }
           }
-          if (coverUploadPromises.length > 0) {
-            await Promise.allSettled(coverUploadPromises);
-          }
         }
       }
+    }
+
+    if (allCoverUploadPromises.length > 0) {
+      await Promise.allSettled(allCoverUploadPromises);
     }
 
     // Batch Delete
