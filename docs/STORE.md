@@ -6,10 +6,17 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 🌟 Features
 
+🚀 Latest Updates (v1.46.0 - v1.49.0)
+• Tab Rename: Rename the current tab instantly from popup or keyboard shortcut
+• Screen Recording: Start/stop recording with one shortcut, then preview and download
+• Faster Raindrop Saves: Optimized Unsorted saving with batch APIs and parallel processing
+• Performance Improvements: Faster highlight matching and session export cover uploads
+
 🗂️ Tab & Project Management
 • Save and restore entire browsing sessions as "projects"
 • Automatic tab state preservation with snapshots
 • Quick keyboard shortcuts to navigate between tabs
+• Rename the active tab title directly from popup or shortcut
 • Customize your popup toolbar with pinned shortcuts
 
 🔄 Cross-Browser & Sync
@@ -17,14 +24,16 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 • Full Raindrop.io integration with two-way sync
 ✓ Pull collections from Raindrop
 ✓ Save tabs to Raindrop Unsorted (with optional custom title)
+✓ Encrypt & save to Raindrop Unsorted with password-protected links
 ✓ Mirror Raindrop collections as bookmarks
 ✓ Automatic background synchronization
-• Backup & restore all extension settings
+• Backup & restore all extension settings with conflict-free Automerge sync
 
 🖥️ Advanced Tab Features
 • Split Screen: View up to 4 web pages simultaneously in one tab
 • Auto Reload: Automatically reload pages based on URL patterns
 • Bookmark Search: Fast search with keyboard navigation
+• Custom Search Engines: Add your own keyword + query search shortcuts
 
 🤖 AI/LLM Integration
 • Chat with LLM: Send content to ChatGPT, Claude, Gemini, or Perplexity
@@ -42,6 +51,8 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 • Copy title - URL
 • Copy markdown link [Title](URL)
 • Copy page screenshot
+• Auto-save screenshots to the filesystem (optional)
+• Save clipboard URLs directly to Raindrop Unsorted
 
 ✨ Content Enhancement
 • Video Controller: Enhanced playback controls with keyboard shortcuts
@@ -51,10 +62,17 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 ✓ Multiple highlight styles per rule with individual colors
 ✓ Intuitive chip and accordion UI for easy configuration
 • Bright Mode: Force light mode on any website
+• Dark Mode: Force dark mode rendering on websites when needed
 • Element Blocker: Visual picker to hide distracting elements (instant apply)
 • Custom JavaScript: Inject JS code into specific sites
 • Custom CSS: Inject custom styles into specific sites
 • YouTube Enhancements: Special optimizations for YouTube
+• Emoji Panel: Open anywhere and insert multiple emoji (supports multi-insert)
+
+🎬 Capture & Editing
+• Screen Recorder: Record tab/window/screen, then preview and download recordings
+• Screenshot Editor: Annotate screenshots with crop, arrow, rectangle, highlight, text, and blur tools
+• OCR Support: Extract text from screenshots inside the editor
 
 🔐 Auto Features
 • Auto Google Login: Automatically select your preferred Google account (enhanced button recognition)
