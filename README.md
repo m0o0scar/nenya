@@ -8,11 +8,19 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 ## Features
 
+### 🚀 Latest Updates (v1.46.0 - v1.49.0)
+
+- **Tab Rename:** Rename the current tab instantly from popup or keyboard shortcut
+- **Screen Recording:** Start/stop screen recording with one shortcut, then preview and download recordings
+- **Faster Raindrop Saves:** Optimized Unsorted saving with batch APIs and parallel processing
+- **Performance Improvements:** Faster highlight matching and session export cover uploads
+
 ### 🗂️ Tab & Project Management
 
 - **Project Management:** Save and restore entire browsing sessions as "projects"
 - **Tab Snapshots:** Automatic tab state preservation
 - **Tab Switching:** Quick keyboard shortcuts to navigate between tabs (left/right)
+- **Rename Tab:** Quickly rename the active tab title
 - **Pinned Shortcuts:** Customize your popup toolbar with your most-used features
 
 ### 🔄 Cross-Browser & Sync
@@ -31,6 +39,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 - **Split Screen:** View up to 4 web pages simultaneously in a single tab with resizable split-screen view
 - **Auto Reload:** Automatically reload specific pages based on URL patterns and intervals
 - **Bookmark Search:** Fast search across all your bookmarks with keyboard navigation
+- **Custom Search Engines:** Add your own search shortcuts (`keyword + query`) directly from options
 
 ### 🤖 AI/LLM Integration
 
@@ -51,6 +60,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 - Copy markdown link `[Title](URL)`
 - Copy visible page screenshot
 - Auto-save screenshots to your filesystem (configurable in options)
+- Save clipboard URLs directly to Raindrop Unsorted
 
 ### ✨ Content Enhancement
 
@@ -62,11 +72,18 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   - Pattern chip UI for easy pattern management
   - Collapsible accordion UI for highlight configuration
 - **Bright Mode:** Force light/bright mode on any website (override dark themes)
+- **Dark Mode:** Force dark mode rendering on websites when needed
 - **Element Blocker:** Visual element picker to permanently hide distracting page elements (instant apply—no refresh needed)
 - **Custom JavaScript:** Inject custom JS code into specific websites
 - **Custom CSS:** Inject custom CSS styles into specific websites
 - **YouTube Enhancements:** Special optimizations and fixes for YouTube
 - **Emoji Panel:** Open anywhere and insert multiple emoji (hold Shift); light theme enforced for transparent emoji
+
+### 🎬 Capture & Editing
+
+- **Screen Recorder:** Record tab/window/screen, then preview and download recordings
+- **Screenshot Editor:** Annotate screenshots with crop, arrow, rectangle, highlight, text, and blur tools
+- **OCR Support:** Extract text from screenshots inside the editor
 
 ### 🔐 Auto Features
 
