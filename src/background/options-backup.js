@@ -947,6 +947,8 @@ export async function resetOptionsToDefaults() {
     [AUTO_GOOGLE_LOGIN_RULES_KEY]: [],
     [SCREENSHOT_SETTINGS_KEY]: { autoSave: false },
     [PINNED_SHORTCUTS_KEY]: [],
+    [PINNED_SEARCH_RESULTS_KEY]: [],
+    [CUSTOM_SEARCH_ENGINES_KEY]: [],
   });
 
   const state = await updateState((draft) => {
