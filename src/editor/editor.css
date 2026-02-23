@@ -234,10 +234,11 @@ body {
 
 .input-color-custom {
     width: 24px;
-    height: 24px;
+    height: 22px;
     padding: 0;
-    border: 2px solid var(--color-base-300);
-    border-radius: 6px;
+    border: 0;
+    border-right: 1px solid var(--color-base-300);
+    border-radius: 0;
     overflow: hidden;
     cursor: pointer;
 }
@@ -250,26 +251,38 @@ body {
     border: none;
 }
 
+.color-button-group {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--color-base-300);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
 .color-presets {
     display: flex;
-    gap: 4px;
+    gap: 0;
 }
 
 .color-preset {
     width: 18px;
-    height: 18px;
-    border-radius: 4px;
+    height: 22px;
     cursor: pointer;
-    border: 1px solid var(--color-base-300);
-    transition: transform 0.1s ease;
+    border: 0;
+    border-left: 1px solid var(--color-base-300);
+    transition: filter 0.1s ease;
+}
+
+.color-preset:first-child {
+    border-left: 0;
 }
 
 .color-preset:hover {
-    transform: scale(1.1);
+    filter: brightness(0.95);
 }
 
 .color-preset:active {
-    transform: scale(0.95);
+    filter: brightness(0.9);
 }
 
 /* Tool Shortcut Badges */
