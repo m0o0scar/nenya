@@ -283,6 +283,11 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'window-merge-single-tab-windows') {
+    void handleMergeSingleTabWindowsCommand();
+    return;
+  }
+
   if (command === 'block-element-picker') {
     void (async () => {
       try {
@@ -854,6 +859,116 @@ async function handleResizeCurrentWindowToHalfCommand(side) {
       `[commands] Resize current window to ${side} half failed:`,
       error,
     );
+  }
+}
+
+/**
+ * Collect all single-tab windows and move those tabs into a main window.
+ * Main window selection:
+ * 1) current window if it has more than one tab
+ * 2) focused multi-tab window
+ * 3) first multi-tab window
+ * 4) if no multi-tab window exists, create one from a single-tab window
+ * @returns {Promise<void>}
+ */
+async function handleMergeSingleTabWindowsCommand() {
+  try {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow || typeof currentWindow.id !== 'number') {
+      return;
+    }
+
+    const allWindows = await chrome.windows.getAll({ populate: true });
+    const scopedWindows = (allWindows || []).filter(
+      (windowInfo) =>
+        windowInfo &&
+        windowInfo.type === 'normal' &&
+        Boolean(windowInfo.incognito) === Boolean(currentWindow.incognito),
+    );
+
+    const windowsWithTabs = scopedWindows
+      .map((windowInfo) => {
+        const tabs = (windowInfo.tabs || []).filter(
+          (tab) => typeof tab.id === 'number',
+        );
+        return {
+          window: windowInfo,
+          tabs,
+        };
+      })
+      .filter((entry) => entry.tabs.length > 0);
+
+    if (windowsWithTabs.length === 0) {
+      return;
+    }
+
+    const multiTabWindows = windowsWithTabs.filter((entry) => entry.tabs.length > 1);
+    const singleTabWindows = windowsWithTabs
+      .filter((entry) => entry.tabs.length === 1)
+      .sort((a, b) => (a.window.id ?? 0) - (b.window.id ?? 0));
+
+    if (singleTabWindows.length === 0) {
+      return;
+    }
+
+    let mainWindowId = null;
+    /** @type {number | null} */
+    let seededTabId = null;
+
+    if (multiTabWindows.length > 0) {
+      const currentMultiTabWindow = multiTabWindows.find(
+        (entry) => entry.window.id === currentWindow.id,
+      );
+      const focusedMultiTabWindow = multiTabWindows.find(
+        (entry) => entry.window.focused,
+      );
+      const targetMainWindow =
+        currentMultiTabWindow || focusedMultiTabWindow || multiTabWindows[0];
+      mainWindowId =
+        typeof targetMainWindow.window.id === 'number'
+          ? targetMainWindow.window.id
+          : null;
+    } else {
+      const seedWindow =
+        singleTabWindows.find((entry) => entry.window.id === currentWindow.id)
+        || singleTabWindows[0];
+      const firstTab = seedWindow.tabs[0];
+      seededTabId = typeof firstTab.id === 'number' ? firstTab.id : null;
+      if (seededTabId === null) {
+        return;
+      }
+
+      const createdWindow = await chrome.windows.create({
+        tabId: seededTabId,
+        focused: true,
+        state: 'normal',
+      });
+      mainWindowId =
+        createdWindow && typeof createdWindow.id === 'number'
+          ? createdWindow.id
+          : null;
+    }
+
+    if (mainWindowId === null) {
+      return;
+    }
+
+    const tabsToMove = singleTabWindows
+      .map((entry) => entry.tabs[0]?.id ?? null)
+      .filter(
+        (tabId) => typeof tabId === 'number' && tabId !== seededTabId,
+      );
+
+    if (tabsToMove.length > 0) {
+      await chrome.tabs.move(tabsToMove, {
+        windowId: mainWindowId,
+        index: -1,
+      });
+    }
+
+    await chrome.windows.update(mainWindowId, { focused: true });
+  } catch (error) {
+    console.warn('[commands] Merge single-tab windows failed:', error);
   }
 }
 
