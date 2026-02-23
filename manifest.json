@@ -43,6 +43,7 @@
     "downloads",
     "tabCapture",
     "desktopCapture",
+    "system.display",
     "offscreen"
   ],
   "content_security_policy": {
@@ -160,6 +161,9 @@
     },
     "tabs-activate-right-tab": {
       "description": "🗂️ Activate right tab"
+    },
+    "split-screen-arrange": {
+      "description": "🖥️ Arrange windows for split screen"
     },
     "block-element-picker": {
       "description": "🎯 Element Picker"
