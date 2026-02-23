@@ -1636,8 +1636,8 @@ class Editor {
         if (zoomIn) zoomIn.addEventListener('click', () => this.zoom(0.1));
         const zoomOut = document.getElementById('zoom-out');
         if (zoomOut) zoomOut.addEventListener('click', () => this.zoom(-0.1));
-        const zoomFit = document.getElementById('zoom-fit');
-        if (zoomFit) zoomFit.addEventListener('click', () => this.fitToScreen());
+        const zoomLevel = document.getElementById('zoom-level');
+        if (zoomLevel) zoomLevel.addEventListener('click', () => this.fitToScreen());
 
         // Props
         const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
