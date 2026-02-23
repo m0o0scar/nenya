@@ -168,6 +168,12 @@
     "window-resize-fullscreen": {
       "description": "🖥️ Resize window to full screen"
     },
+    "window-resize-left-half": {
+      "description": "🖥️ Resize window to left half"
+    },
+    "window-resize-right-half": {
+      "description": "🖥️ Resize window to right half"
+    },
     "block-element-picker": {
       "description": "🎯 Element Picker"
     },
