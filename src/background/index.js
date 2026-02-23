@@ -283,6 +283,16 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'window-resize-top-half') {
+    void handleResizeCurrentWindowToHalfCommand('top');
+    return;
+  }
+
+  if (command === 'window-resize-bottom-half') {
+    void handleResizeCurrentWindowToHalfCommand('bottom');
+    return;
+  }
+
   if (command === 'window-merge-single-tab-windows') {
     void handleMergeSingleTabWindowsCommand();
     return;
@@ -815,8 +825,8 @@ async function getCurrentActiveWindowForResize() {
 }
 
 /**
- * Resize the current window to the left or right half of the display.
- * @param {'left' | 'right'} side
+ * Resize the current window to a screen half.
+ * @param {'left' | 'right' | 'top' | 'bottom'} side
  * @returns {Promise<void>}
  */
 async function handleResizeCurrentWindowToHalfCommand(side) {
@@ -829,31 +839,42 @@ async function handleResizeCurrentWindowToHalfCommand(side) {
     const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
     const leftWidth = Math.floor(screenBounds.width / 2);
     const rightWidth = screenBounds.width - leftWidth;
+    const topHeight = Math.floor(screenBounds.height / 2);
+    const bottomHeight = screenBounds.height - topHeight;
 
+    /** @type {WindowLayoutBounds} */
+    let targetBounds;
     if (side === 'left') {
-      await setWindowLayout(
-        currentWindow.id,
-        {
-          left: screenBounds.left,
-          top: screenBounds.top,
-          width: leftWidth,
-          height: screenBounds.height,
-        },
-        true,
-      );
-      return;
-    }
-
-    await setWindowLayout(
-      currentWindow.id,
-      {
+      targetBounds = {
+        left: screenBounds.left,
+        top: screenBounds.top,
+        width: leftWidth,
+        height: screenBounds.height,
+      };
+    } else if (side === 'right') {
+      targetBounds = {
         left: screenBounds.left + leftWidth,
         top: screenBounds.top,
         width: rightWidth,
         height: screenBounds.height,
-      },
-      true,
-    );
+      };
+    } else if (side === 'top') {
+      targetBounds = {
+        left: screenBounds.left,
+        top: screenBounds.top,
+        width: screenBounds.width,
+        height: topHeight,
+      };
+    } else {
+      targetBounds = {
+        left: screenBounds.left,
+        top: screenBounds.top + topHeight,
+        width: screenBounds.width,
+        height: bottomHeight,
+      };
+    }
+
+    await setWindowLayout(currentWindow.id, targetBounds, true);
   } catch (error) {
     console.warn(
       `[commands] Resize current window to ${side} half failed:`,
