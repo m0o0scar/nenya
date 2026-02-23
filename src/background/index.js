@@ -966,7 +966,15 @@ async function handleMergeSingleTabWindowsCommand() {
       });
     }
 
-    await chrome.windows.update(mainWindowId, { focused: true });
+    const mainWindow = await chrome.windows.get(mainWindowId, {
+      populate: false,
+    });
+    if (!mainWindow || typeof mainWindow.id !== 'number') {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(mainWindow);
+    await setWindowLayout(mainWindow.id, screenBounds, true);
   } catch (error) {
     console.warn('[commands] Merge single-tab windows failed:', error);
   }
