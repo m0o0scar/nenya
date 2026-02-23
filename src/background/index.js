@@ -268,6 +268,11 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'window-resize-fullscreen') {
+    void handleResizeCurrentWindowToFullscreenCommand();
+    return;
+  }
+
   if (command === 'block-element-picker') {
     void (async () => {
       try {
@@ -746,6 +751,38 @@ async function handleSplitScreenArrangeCommand() {
     await arrangeSingleTabSplit(activeTab, currentWindow, screenBounds);
   } catch (error) {
     console.warn('[commands] Split-screen arrange command failed:', error);
+  }
+}
+
+/**
+ * Resize the current window to the full display work area without maximizing.
+ * @returns {Promise<void>}
+ */
+async function handleResizeCurrentWindowToFullscreenCommand() {
+  try {
+    const activeTabs = await chrome.tabs.query({
+      currentWindow: true,
+      active: true,
+    });
+    const activeTab = activeTabs && activeTabs[0];
+    if (!activeTab || typeof activeTab.windowId !== 'number') {
+      return;
+    }
+
+    const currentWindow = await chrome.windows.get(activeTab.windowId, {
+      populate: false,
+    });
+    if (!currentWindow || typeof currentWindow.id !== 'number') {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+    await setWindowLayout(currentWindow.id, screenBounds, true);
+  } catch (error) {
+    console.warn(
+      '[commands] Resize current window to full screen failed:',
+      error,
+    );
   }
 }
 
