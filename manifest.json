@@ -165,6 +165,9 @@
     "split-screen-arrange": {
       "description": "🖥️ Arrange windows for split screen"
     },
+    "window-resize-fullscreen": {
+      "description": "🖥️ Resize window to full screen"
+    },
     "block-element-picker": {
       "description": "🎯 Element Picker"
     },
