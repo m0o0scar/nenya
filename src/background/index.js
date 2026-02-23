@@ -43,7 +43,6 @@ import {
 import {
   setupContextMenus as setupCentralizedContextMenus,
   updateRunCodeSubmenu,
-  updateSplitMenuVisibility,
   updateScreenshotMenuVisibility,
   COPY_MENU_IDS,
   RAINDROP_MENU_IDS,
@@ -62,10 +61,6 @@ import {
   getLLMProviderFromURL,
 } from '../shared/llmProviders.js';
 import { processUrl } from '../shared/urlProcessor.js';
-import {
-  convertSplitUrlForSave,
-  convertSplitUrlForRestore,
-} from '../shared/splitUrl.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 import { handlePictureInPicture } from './pip-handler.js';
@@ -268,54 +263,28 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
-  if (command === 'split-screen-toggle') {
-    void (async () => {
-      try {
-        const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
+  if (command === 'split-screen-arrange') {
+    void handleSplitScreenArrangeCommand();
+    return;
+  }
 
-        // Get all highlighted tabs
-        const highlightedTabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
+  if (command === 'window-resize-fullscreen') {
+    void handleResizeCurrentWindowToFullscreenCommand();
+    return;
+  }
 
-        // Check if any highlighted tab is a split.html page
-        const existingSplitTab = highlightedTabs.find(
-          (tab) => tab.url && tab.url.startsWith(splitBaseUrl),
-        );
+  if (command === 'window-resize-left-half') {
+    void handleResizeCurrentWindowToHalfCommand('left');
+    return;
+  }
 
-        if (existingSplitTab && highlightedTabs.length > 1) {
-          // If there are multiple highlighted tabs and one is split.html, activate it
-          if (existingSplitTab.id) {
-            await chrome.tabs.update(existingSplitTab.id, { active: true });
-          }
-          return;
-        }
+  if (command === 'window-resize-right-half') {
+    void handleResizeCurrentWindowToHalfCommand('right');
+    return;
+  }
 
-        // Get current active tab
-        const tabs = await chrome.tabs.query({
-          currentWindow: true,
-          active: true,
-        });
-        const currentTab = tabs && tabs[0];
-        if (!currentTab) {
-          return;
-        }
-
-        const isSplitPage =
-          currentTab.url && currentTab.url.startsWith(splitBaseUrl);
-
-        if (isSplitPage) {
-          // Current tab is split.html - unsplit it
-          await handleUnsplitTabsContextMenu(currentTab);
-        } else {
-          // Current tab is NOT split.html - create split page
-          await handleSplitTabsContextMenu(currentTab);
-        }
-      } catch (error) {
-        console.warn('[commands] Toggle split screen failed:', error);
-      }
-    })();
+  if (command === 'window-merge-single-tab-windows') {
+    void handleMergeSingleTabWindowsCommand();
     return;
   }
 
@@ -502,6 +471,514 @@ chrome.commands.onCommand.addListener((command) => {
 // ============================================================================
 // HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * @typedef {Object} WindowLayoutBounds
+ * @property {number} left
+ * @property {number} top
+ * @property {number} width
+ * @property {number} height
+ */
+
+/**
+ * Normalize a window metric with a numeric fallback.
+ * @param {number | undefined} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+function normalizeWindowMetric(value, fallback) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.round(value);
+}
+
+/**
+ * Convert a Chrome window object to simple numeric bounds.
+ * @param {chrome.windows.Window} windowInfo
+ * @returns {WindowLayoutBounds}
+ */
+function getWindowBoundsFromWindow(windowInfo) {
+  const left = normalizeWindowMetric(windowInfo.left, 0);
+  const top = normalizeWindowMetric(windowInfo.top, 0);
+  const width = Math.max(1, normalizeWindowMetric(windowInfo.width, 1280));
+  const height = Math.max(1, normalizeWindowMetric(windowInfo.height, 720));
+  return { left, top, width, height };
+}
+
+/**
+ * Resolve display work area bounds for a window.
+ * Falls back to current window bounds when display info is unavailable.
+ * @param {chrome.windows.Window} windowInfo
+ * @returns {Promise<WindowLayoutBounds>}
+ */
+async function getDisplayWorkAreaForWindow(windowInfo) {
+  const fallback = getWindowBoundsFromWindow(windowInfo);
+  if (
+    !chrome.system ||
+    !chrome.system.display ||
+    typeof chrome.system.display.getInfo !== 'function'
+  ) {
+    return fallback;
+  }
+
+  try {
+    const displays = await chrome.system.display.getInfo();
+    if (!Array.isArray(displays) || displays.length === 0) {
+      return fallback;
+    }
+
+    const centerX = fallback.left + fallback.width / 2;
+    const centerY = fallback.top + fallback.height / 2;
+
+    let selectedDisplay = displays.find((display) => {
+      const area = display.workArea || display.bounds;
+      if (!area) {
+        return false;
+      }
+      return (
+        centerX >= area.left &&
+        centerX < area.left + area.width &&
+        centerY >= area.top &&
+        centerY < area.top + area.height
+      );
+    });
+
+    if (!selectedDisplay) {
+      selectedDisplay = displays.find((display) => display.isPrimary) || displays[0];
+    }
+
+    const area = selectedDisplay.workArea || selectedDisplay.bounds;
+    if (!area) {
+      return fallback;
+    }
+
+    return {
+      left: normalizeWindowMetric(area.left, fallback.left),
+      top: normalizeWindowMetric(area.top, fallback.top),
+      width: Math.max(1, normalizeWindowMetric(area.width, fallback.width)),
+      height: Math.max(1, normalizeWindowMetric(area.height, fallback.height)),
+    };
+  } catch (error) {
+    console.warn('[commands] Failed to read display work area:', error);
+    return fallback;
+  }
+}
+
+/**
+ * Apply position/size to a window in normal state.
+ * @param {number} windowId
+ * @param {WindowLayoutBounds} bounds
+ * @param {boolean} focused
+ * @returns {Promise<void>}
+ */
+async function setWindowLayout(windowId, bounds, focused) {
+  try {
+    await chrome.windows.update(windowId, { state: 'normal' });
+  } catch {
+    // Continue; some contexts may not allow state transition.
+  }
+
+  await chrome.windows.update(windowId, {
+    left: Math.round(bounds.left),
+    top: Math.round(bounds.top),
+    width: Math.max(1, Math.round(bounds.width)),
+    height: Math.max(1, Math.round(bounds.height)),
+    focused,
+  });
+}
+
+/**
+ * Case 1: move the current tab to a right-half window.
+ * @param {chrome.tabs.Tab} activeTab
+ * @param {chrome.windows.Window} currentWindow
+ * @param {WindowLayoutBounds} screenBounds
+ * @returns {Promise<void>}
+ */
+async function arrangeSingleTabSplit(activeTab, currentWindow, screenBounds) {
+  if (
+    typeof activeTab.id !== 'number' ||
+    typeof activeTab.windowId !== 'number' ||
+    typeof currentWindow.id !== 'number'
+  ) {
+    return;
+  }
+
+  const currentTabs = Array.isArray(currentWindow.tabs) ? currentWindow.tabs : [];
+  if (currentTabs.length === 1) {
+    await chrome.tabs.create({
+      windowId: activeTab.windowId,
+      url: 'chrome://newtab/',
+      active: false,
+    });
+  }
+
+  const rightWindow = await chrome.windows.create({
+    tabId: activeTab.id,
+    focused: true,
+    state: 'normal',
+  });
+
+  if (!rightWindow || typeof rightWindow.id !== 'number') {
+    return;
+  }
+
+  const leftWidth = Math.floor(screenBounds.width / 2);
+  const rightWidth = screenBounds.width - leftWidth;
+
+  await setWindowLayout(
+    currentWindow.id,
+    {
+      left: screenBounds.left,
+      top: screenBounds.top,
+      width: leftWidth,
+      height: screenBounds.height,
+    },
+    false,
+  );
+
+  await setWindowLayout(
+    rightWindow.id,
+    {
+      left: screenBounds.left + leftWidth,
+      top: screenBounds.top,
+      width: rightWidth,
+      height: screenBounds.height,
+    },
+    true,
+  );
+}
+
+/**
+ * Case 2: move highlighted tabs into N equal-width windows.
+ * @param {chrome.tabs.Tab[]} highlightedTabs
+ * @param {WindowLayoutBounds} screenBounds
+ * @param {number} activeTabId
+ * @returns {Promise<void>}
+ */
+async function arrangeHighlightedTabsColumns(
+  highlightedTabs,
+  screenBounds,
+  activeTabId,
+) {
+  /** @type {Array<{windowId: number, tabId: number}>} */
+  const createdWindows = [];
+
+  for (const tab of highlightedTabs) {
+    if (typeof tab.id !== 'number') {
+      continue;
+    }
+
+    const newWindow = await chrome.windows.create({
+      tabId: tab.id,
+      focused: false,
+      state: 'normal',
+    });
+
+    if (newWindow && typeof newWindow.id === 'number') {
+      createdWindows.push({
+        windowId: newWindow.id,
+        tabId: tab.id,
+      });
+    }
+  }
+
+  if (createdWindows.length === 0) {
+    return;
+  }
+
+  const totalWidth = screenBounds.width;
+  const baseWidth = Math.max(1, Math.floor(totalWidth / createdWindows.length));
+  let nextLeft = screenBounds.left;
+
+  for (let index = 0; index < createdWindows.length; index++) {
+    const item = createdWindows[index];
+    const isLast = index === createdWindows.length - 1;
+    const width = isLast
+      ? Math.max(1, screenBounds.left + totalWidth - nextLeft)
+      : baseWidth;
+
+    await setWindowLayout(
+      item.windowId,
+      {
+        left: nextLeft,
+        top: screenBounds.top,
+        width,
+        height: screenBounds.height,
+      },
+      false,
+    );
+
+    nextLeft += width;
+  }
+
+  const focusTarget =
+    createdWindows.find((item) => item.tabId === activeTabId)
+    || createdWindows[0];
+  await chrome.windows.update(focusTarget.windowId, { focused: true });
+}
+
+/**
+ * Handle the split-screen arrangement command with Chrome windows.
+ * @returns {Promise<void>}
+ */
+async function handleSplitScreenArrangeCommand() {
+  try {
+    const activeTabs = await chrome.tabs.query({
+      currentWindow: true,
+      active: true,
+    });
+    const activeTab = activeTabs && activeTabs[0];
+    if (
+      !activeTab ||
+      typeof activeTab.id !== 'number' ||
+      typeof activeTab.windowId !== 'number'
+    ) {
+      return;
+    }
+
+    const currentWindow = await chrome.windows.get(activeTab.windowId, {
+      populate: true,
+    });
+    if (!currentWindow) {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+
+    const highlightedTabsRaw = await chrome.tabs.query({
+      currentWindow: true,
+      highlighted: true,
+    });
+    const highlightedTabs = (highlightedTabsRaw || [])
+      .filter((tab) => typeof tab.id === 'number')
+      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+    if (highlightedTabs.length >= 2) {
+      await arrangeHighlightedTabsColumns(
+        highlightedTabs,
+        screenBounds,
+        activeTab.id,
+      );
+      return;
+    }
+
+    await arrangeSingleTabSplit(activeTab, currentWindow, screenBounds);
+  } catch (error) {
+    console.warn('[commands] Split-screen arrange command failed:', error);
+  }
+}
+
+/**
+ * Resize the current window to the full display work area without maximizing.
+ * @returns {Promise<void>}
+ */
+async function handleResizeCurrentWindowToFullscreenCommand() {
+  try {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow) {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+    await setWindowLayout(currentWindow.id, screenBounds, true);
+  } catch (error) {
+    console.warn(
+      '[commands] Resize current window to full screen failed:',
+      error,
+    );
+  }
+}
+
+/**
+ * Resolve the current active window for resize commands.
+ * @returns {Promise<chrome.windows.Window | null>}
+ */
+async function getCurrentActiveWindowForResize() {
+  const activeTabs = await chrome.tabs.query({
+    currentWindow: true,
+    active: true,
+  });
+  const activeTab = activeTabs && activeTabs[0];
+  if (!activeTab || typeof activeTab.windowId !== 'number') {
+    return null;
+  }
+
+  const currentWindow = await chrome.windows.get(activeTab.windowId, {
+    populate: false,
+  });
+  if (!currentWindow || typeof currentWindow.id !== 'number') {
+    return null;
+  }
+
+  return currentWindow;
+}
+
+/**
+ * Resize the current window to the left or right half of the display.
+ * @param {'left' | 'right'} side
+ * @returns {Promise<void>}
+ */
+async function handleResizeCurrentWindowToHalfCommand(side) {
+  try {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow) {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+    const leftWidth = Math.floor(screenBounds.width / 2);
+    const rightWidth = screenBounds.width - leftWidth;
+
+    if (side === 'left') {
+      await setWindowLayout(
+        currentWindow.id,
+        {
+          left: screenBounds.left,
+          top: screenBounds.top,
+          width: leftWidth,
+          height: screenBounds.height,
+        },
+        true,
+      );
+      return;
+    }
+
+    await setWindowLayout(
+      currentWindow.id,
+      {
+        left: screenBounds.left + leftWidth,
+        top: screenBounds.top,
+        width: rightWidth,
+        height: screenBounds.height,
+      },
+      true,
+    );
+  } catch (error) {
+    console.warn(
+      `[commands] Resize current window to ${side} half failed:`,
+      error,
+    );
+  }
+}
+
+/**
+ * Collect all single-tab windows and move those tabs into a main window.
+ * Main window selection:
+ * 1) current window if it has more than one tab
+ * 2) focused multi-tab window
+ * 3) first multi-tab window
+ * 4) if no multi-tab window exists, create one from a single-tab window
+ * @returns {Promise<void>}
+ */
+async function handleMergeSingleTabWindowsCommand() {
+  try {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow || typeof currentWindow.id !== 'number') {
+      return;
+    }
+
+    const allWindows = await chrome.windows.getAll({ populate: true });
+    const scopedWindows = (allWindows || []).filter(
+      (windowInfo) =>
+        windowInfo &&
+        windowInfo.type === 'normal' &&
+        Boolean(windowInfo.incognito) === Boolean(currentWindow.incognito),
+    );
+
+    const windowsWithTabs = scopedWindows
+      .map((windowInfo) => {
+        const tabs = (windowInfo.tabs || []).filter(
+          (tab) => typeof tab.id === 'number',
+        );
+        return {
+          window: windowInfo,
+          tabs,
+        };
+      })
+      .filter((entry) => entry.tabs.length > 0);
+
+    if (windowsWithTabs.length === 0) {
+      return;
+    }
+
+    const multiTabWindows = windowsWithTabs.filter((entry) => entry.tabs.length > 1);
+    const singleTabWindows = windowsWithTabs
+      .filter((entry) => entry.tabs.length === 1)
+      .sort((a, b) => (a.window.id ?? 0) - (b.window.id ?? 0));
+
+    if (singleTabWindows.length === 0) {
+      return;
+    }
+
+    let mainWindowId = null;
+    /** @type {number | null} */
+    let seededTabId = null;
+
+    if (multiTabWindows.length > 0) {
+      const currentMultiTabWindow = multiTabWindows.find(
+        (entry) => entry.window.id === currentWindow.id,
+      );
+      const focusedMultiTabWindow = multiTabWindows.find(
+        (entry) => entry.window.focused,
+      );
+      const targetMainWindow =
+        currentMultiTabWindow || focusedMultiTabWindow || multiTabWindows[0];
+      mainWindowId =
+        typeof targetMainWindow.window.id === 'number'
+          ? targetMainWindow.window.id
+          : null;
+    } else {
+      const seedWindow =
+        singleTabWindows.find((entry) => entry.window.id === currentWindow.id)
+        || singleTabWindows[0];
+      const firstTab = seedWindow.tabs[0];
+      seededTabId = typeof firstTab.id === 'number' ? firstTab.id : null;
+      if (seededTabId === null) {
+        return;
+      }
+
+      const createdWindow = await chrome.windows.create({
+        tabId: seededTabId,
+        focused: true,
+        state: 'normal',
+      });
+      mainWindowId =
+        createdWindow && typeof createdWindow.id === 'number'
+          ? createdWindow.id
+          : null;
+    }
+
+    if (mainWindowId === null) {
+      return;
+    }
+
+    const tabsToMove = singleTabWindows
+      .map((entry) => entry.tabs[0]?.id ?? null)
+      .filter(
+        (tabId) => typeof tabId === 'number' && tabId !== seededTabId,
+      );
+
+    if (tabsToMove.length > 0) {
+      await chrome.tabs.move(tabsToMove, {
+        windowId: mainWindowId,
+        index: -1,
+      });
+    }
+
+    const mainWindow = await chrome.windows.get(mainWindowId, {
+      populate: false,
+    });
+    if (!mainWindow || typeof mainWindow.id !== 'number') {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(mainWindow);
+    await setWindowLayout(mainWindow.id, screenBounds, true);
+  } catch (error) {
+    console.warn('[commands] Merge single-tab windows failed:', error);
+  }
+}
 
 /**
  * Prompt the user for a title in the provided tab.
@@ -1030,8 +1507,7 @@ async function handleSaveClipboardUrlToUnsorted(clipboardText) {
     }
 
     // Process URL through the standard pipeline
-    const convertedUrl = convertSplitUrlForSave(normalizedUrl);
-    const processedUrl = await processUrl(convertedUrl, 'save-to-raindrop');
+    const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
 
     // Derive title from URL
     const title = new URL(processedUrl).hostname || processedUrl;
@@ -1098,7 +1574,7 @@ async function handleEncryptAndSave(options) {
     }
     return { ok: false, error: message };
   }
-  const finalUrl = convertSplitUrlForSave(processedUrl);
+  const finalUrl = processedUrl;
   if (!finalUrl) {
     const error = 'This URL cannot be saved.';
     if (notifyOnError) {
@@ -1213,13 +1689,7 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 
   if (details.reason === 'install' || details.reason === 'update') {
-    // Restore split pages on extension reload/update (not on wake-up)
-    // Use a small delay to ensure all initialization is complete
-    void (async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100));
-      await restoreSplitPages();
-      await ensureNenyaSessionsCollection();
-    })();
+    void ensureNenyaSessionsCollection();
 
     // Inject content scripts into existing tabs instead of reloading them
     // This preserves user state (scroll position, form data, etc.)
@@ -1292,259 +1762,9 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   }
 });
 
-// Flag to prevent concurrent restoration
-let isRestoringSplitPages = false;
-
-/**
- * Update split page group information in storage
- * @param {string} url - The split page URL
- * @param {string | null} groupName - The group name, or null if ungrouped
- * @returns {Promise<void>}
- */
-async function updateSplitPageGroupInfo(url, groupName) {
-  try {
-    const result = await chrome.storage.local.get(['splitPageUrls']);
-    const savedEntries = Array.isArray(result.splitPageUrls)
-      ? result.splitPageUrls
-      : [];
-
-    // Normalize entries (handle backward compatibility with string URLs)
-    const normalizedEntries = savedEntries.map((entry) => {
-      if (typeof entry === 'string') {
-        return { url: entry };
-      }
-      return entry;
-    });
-
-    // Find the existing entry for this URL
-    const existingEntry = normalizedEntries.find((entry) => entry.url === url);
-    const existingGroupName =
-      existingEntry && typeof existingEntry.groupName === 'string'
-        ? existingEntry.groupName
-        : null;
-
-    // Only update if the group name actually changed
-    if (existingGroupName === groupName) {
-      return; // No change needed
-    }
-
-    // Find and update the entry for this URL
-    const updatedEntries = normalizedEntries.map((entry) => {
-      if (entry.url === url) {
-        const updatedEntry = { url };
-        if (groupName) {
-          updatedEntry.groupName = groupName;
-        }
-        return updatedEntry;
-      }
-      return entry;
-    });
-
-    // Save updated entries
-    await chrome.storage.local.set({ splitPageUrls: updatedEntries });
-  } catch (error) {
-    console.warn('[background] Failed to update split page group info:', error);
-  }
-}
-
-/**
- * Find a tab group by name
- * @param {string} groupName - The name of the tab group to find
- * @returns {Promise<number | null>} The group ID if found, null otherwise
- */
-async function findTabGroupByName(groupName) {
-  if (!chrome.tabGroups || typeof chrome.tabGroups.get !== 'function') {
-    return null;
-  }
-
-  try {
-    // Get all tabs to find unique group IDs
-    const allTabs = await chrome.tabs.query({});
-    const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
-    const groupIds = new Set();
-
-    allTabs.forEach((tab) => {
-      if (typeof tab.groupId === 'number' && tab.groupId !== noneGroupId) {
-        groupIds.add(tab.groupId);
-      }
-    });
-
-    // Check each group to find one with matching name
-    for (const groupId of groupIds) {
-      try {
-        const group = await new Promise((resolve, reject) => {
-          chrome.tabGroups.get(groupId, (group) => {
-            const lastError = chrome.runtime.lastError;
-            if (lastError) {
-              reject(new Error(lastError.message));
-              return;
-            }
-            resolve(group);
-          });
-        });
-
-        if (
-          group &&
-          typeof group.title === 'string' &&
-          group.title.trim() === groupName.trim()
-        ) {
-          return groupId;
-        }
-      } catch (error) {
-        // Continue to next group if this one fails
-        continue;
-      }
-    }
-  } catch (error) {
-    console.warn('[background] Failed to find tab group by name:', error);
-  }
-
-  return null;
-}
-
-/**
- * Restore split pages from storage
- * Called on startup, extension reload, and when service worker initializes
- * Includes deduplication logic to prevent opening duplicate tabs
- * Restores tabs in their corresponding tab groups if the group exists
- */
-async function restoreSplitPages() {
-  // Prevent concurrent restoration
-  if (isRestoringSplitPages) {
-    return;
-  }
-
-  isRestoringSplitPages = true;
-
-  try {
-    const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-    const result = await chrome.storage.local.get(['splitPageUrls']);
-    const savedEntries = Array.isArray(result.splitPageUrls)
-      ? result.splitPageUrls
-      : [];
-
-    if (savedEntries.length === 0) {
-      return;
-    }
-
-    // Normalize entries (handle backward compatibility with string URLs)
-    const normalizedEntries = savedEntries.map((entry) => {
-      if (typeof entry === 'string') {
-        return { url: entry };
-      }
-      return entry;
-    });
-
-    // Step 1: De-duplicate entries by URL
-    const urlMap = new Map();
-    normalizedEntries.forEach((entry) => {
-      if (!urlMap.has(entry.url)) {
-        urlMap.set(entry.url, entry);
-      }
-    });
-    const uniqueEntries = Array.from(urlMap.values());
-
-    if (uniqueEntries.length !== normalizedEntries.length) {
-      // Update storage with de-duplicated entries
-      await chrome.storage.local.set({ splitPageUrls: uniqueEntries });
-    }
-
-    // Step 2: Check if there is already a tab with the same URL (any tab, not just split pages)
-    const allTabs = await chrome.tabs.query({});
-    const existingUrls = new Set(
-      allTabs
-        .filter((tab) => tab.url && typeof tab.url === 'string')
-        .map((tab) => String(tab.url)),
-    );
-
-    // Open split pages that aren't already open
-    const entriesToOpen = uniqueEntries.filter(
-      (entry) => !existingUrls.has(entry.url),
-    );
-
-    if (entriesToOpen.length === 0) {
-      return;
-    }
-
-    // ⚡ Bolt: Use Promise.all to restore tabs concurrently for faster startup.
-    await Promise.all(
-      entriesToOpen.map(async (entry) => {
-        try {
-          const url = entry.url;
-          // Double-check the tab wasn't opened between the query and now
-          const currentTabs = await chrome.tabs.query({ url });
-          if (currentTabs.length > 0) {
-            return;
-          }
-
-          // Create the tab
-          const tab = await chrome.tabs.create({ url, active: false });
-
-          // If entry has a group name, try to add it to that group
-          if (
-            entry.groupName &&
-            typeof entry.groupName === 'string' &&
-            tab.id
-          ) {
-            try {
-              const groupId = await findTabGroupByName(entry.groupName);
-
-              if (
-                groupId !== null &&
-                chrome.tabs &&
-                typeof chrome.tabs.group === 'function'
-              ) {
-                // Add tab to existing group
-                await new Promise((resolve, reject) => {
-                  chrome.tabs.group(
-                    { tabIds: tab.id, groupId },
-                    (resultGroupId) => {
-                      const lastError = chrome.runtime.lastError;
-                      if (lastError) {
-                        console.warn(
-                          `[background] Error adding tab to group: ${lastError.message}`,
-                        );
-                        reject(new Error(lastError.message));
-                        return;
-                      }
-                      resolve(resultGroupId);
-                    },
-                  );
-                });
-              }
-            } catch (error) {
-              console.warn(
-                `[background] Failed to add split page to group "${entry.groupName}":`,
-                error,
-              );
-            }
-          }
-        } catch (error) {
-          console.warn(
-            '[background] Failed to restore split page:',
-            entry.url,
-            error,
-          );
-        }
-      }),
-    );
-  } catch (error) {
-    console.warn('[background] Failed to restore split pages:', error);
-  } finally {
-    // Reset flag after a short delay to allow for any concurrent calls to complete
-    setTimeout(() => {
-      isRestoringSplitPages = false;
-    }, 1000);
-  }
-}
-
 chrome.runtime.onStartup.addListener(() => {
   handleLifecycleEvent('startup');
-  void (async () => {
-    await pruneClosedPersistedRenamedTabs();
-    // Restore split pages from storage
-    await restoreSplitPages();
-  })();
+  void pruneClosedPersistedRenamedTabs();
 });
 
 // Ensure backup service is initialized immediately when service worker starts
@@ -1598,46 +1818,6 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
     const tab = await chrome.tabs.get(activeInfo.tabId);
     if (tab) {
       void updateContextMenuVisibility(tab);
-
-      // Also check and update split page group info when tab is activated
-      // This helps catch group changes that might not trigger onUpdated reliably
-      if (tab.url && typeof tab.url === 'string') {
-        const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-        if (tab.url.startsWith(splitBaseUrl)) {
-          void (async () => {
-            try {
-              let groupName = null;
-              if (typeof tab.groupId === 'number') {
-                const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
-                if (tab.groupId !== noneGroupId && chrome.tabGroups?.get) {
-                  const group = await new Promise((resolve) => {
-                    chrome.tabGroups.get(tab.groupId, (group) => {
-                      const lastError = chrome.runtime.lastError;
-                      if (lastError) {
-                        resolve(null);
-                        return;
-                      }
-                      resolve(group || null);
-                    });
-                  });
-                  if (
-                    group &&
-                    typeof group.title === 'string' &&
-                    group.title.trim()
-                  ) {
-                    groupName = group.title.trim();
-                  }
-                }
-              }
-              if (typeof tab.url === 'string') {
-                await updateSplitPageGroupInfo(tab.url, groupName);
-              }
-            } catch (error) {
-              // Ignore errors - group info update is optional
-            }
-          })();
-        }
-      }
     }
   } catch (error) {
     console.warn('Failed to get tab for context menu update:', error);
@@ -1647,153 +1827,9 @@ chrome.tabs.onActivated.addListener(async (activeInfo) => {
 // Clean up when tabs close
 chrome.tabs.onRemoved.addListener(async (tabId) => {
   void removePersistedRenamedTabTitle(tabId);
-
-  // Remove split page URL from storage if this was a split page tab
-  // Since the tab is already removed when onRemoved fires, we check all open tabs
-  // and remove any URLs from storage that are no longer open
-  // Use a delay to avoid race conditions during extension reload
-  void (async () => {
-    try {
-      // Wait a bit to allow restoration to complete if extension just reloaded
-      await new Promise((resolve) => setTimeout(resolve, 500));
-
-      const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-      const result = await chrome.storage.local.get(['splitPageUrls']);
-      const savedEntries = Array.isArray(result.splitPageUrls)
-        ? result.splitPageUrls
-        : [];
-
-      if (savedEntries.length === 0) {
-        return;
-      }
-
-      // Normalize entries (handle backward compatibility with string URLs)
-      const normalizedEntries = savedEntries.map((entry) => {
-        if (typeof entry === 'string') {
-          return { url: entry };
-        }
-        return entry;
-      });
-
-      // Check all open tabs to see which split URLs are still open
-      const allTabs = await chrome.tabs.query({});
-      const openSplitUrls = new Set(
-        allTabs
-          .filter(
-            (tab) =>
-              tab.url &&
-              typeof tab.url === 'string' &&
-              tab.url.startsWith(splitBaseUrl),
-          )
-          .map((tab) => String(tab.url)),
-      );
-
-      // Remove entries that are no longer open
-      const updatedEntries = normalizedEntries.filter((entry) =>
-        openSplitUrls.has(entry.url),
-      );
-
-      if (updatedEntries.length !== normalizedEntries.length) {
-        await chrome.storage.local.set({ splitPageUrls: updatedEntries });
-      }
-    } catch (error) {
-      console.warn('[background] Failed to clean up split page URL:', error);
-    }
-  })();
 });
 
-// Intercept navigation to nenya.local split URLs early
-if (chrome.webNavigation) {
-  chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
-    if (
-      details.frameId === 0 && // Only main frame
-      details.url &&
-      details.url.startsWith('https://nenya.local/split')
-    ) {
-      const restoredUrl = convertSplitUrlForRestore(details.url);
-      if (restoredUrl !== details.url) {
-        try {
-          await chrome.tabs.update(details.tabId, { url: restoredUrl });
-        } catch (error) {
-          console.warn(
-            '[background] Failed to redirect nenya.local URL:',
-            error,
-          );
-        }
-      }
-    }
-  });
-}
-
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // Intercept nenya.local split URLs and convert them to extension URLs
-  // Check both changeInfo.url (when URL changes) and tab.url (current URL)
-  const urlToCheck = changeInfo.url || (tab ? tab.url : null);
-  if (
-    urlToCheck &&
-    typeof urlToCheck === 'string' &&
-    urlToCheck.startsWith('https://nenya.local/split')
-  ) {
-    const restoredUrl = convertSplitUrlForRestore(urlToCheck);
-    if (restoredUrl !== urlToCheck) {
-      try {
-        await chrome.tabs.update(tabId, { url: restoredUrl });
-        return; // Don't process further if we redirected
-      } catch (error) {
-        console.warn('[background] Failed to redirect nenya.local URL:', error);
-      }
-    }
-  }
-
-  // Update split page group info when tab group changes
-  // Check if this is a split page and update group info
-  if (tab && tab.url && typeof tab.url === 'string') {
-    const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-    if (tab.url.startsWith(splitBaseUrl)) {
-      // This is a split page tab - check and update group info
-      // Use a small delay to ensure groupId is updated after group changes
-      void (async () => {
-        try {
-          // Small delay to ensure groupId is updated
-          await new Promise((resolve) => setTimeout(resolve, 100));
-
-          // Re-fetch the tab to get the latest groupId
-          const updatedTab = await chrome.tabs.get(tabId);
-          if (!updatedTab || !updatedTab.url) {
-            return;
-          }
-
-          let groupName = null;
-          if (typeof updatedTab.groupId === 'number') {
-            const noneGroupId = chrome.tabGroups?.TAB_GROUP_ID_NONE ?? -1;
-            if (updatedTab.groupId !== noneGroupId && chrome.tabGroups?.get) {
-              const group = await new Promise((resolve) => {
-                chrome.tabGroups.get(updatedTab.groupId, (group) => {
-                  const lastError = chrome.runtime.lastError;
-                  if (lastError) {
-                    resolve(null);
-                    return;
-                  }
-                  resolve(group || null);
-                });
-              });
-              if (
-                group &&
-                typeof group.title === 'string' &&
-                group.title.trim()
-              ) {
-                groupName = group.title.trim();
-              }
-            }
-          }
-          await updateSplitPageGroupInfo(updatedTab.url, groupName);
-        } catch (error) {
-          // Ignore errors - group info update is optional
-        }
-      })();
-    }
-  }
-
   if (changeInfo.status === 'complete') {
     schedulePersistedRenamedTabTitleReapply(tabId);
     if (tab) {
@@ -3063,61 +3099,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'splitTabs') {
-    void (async () => {
-      try {
-        const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-
-        // Get all highlighted tabs
-        const highlightedTabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
-
-        // Check if any highlighted tab is a split.html page
-        const existingSplitTab = highlightedTabs.find(
-          (tab) => tab.url && tab.url.startsWith(splitBaseUrl),
-        );
-
-        if (existingSplitTab && highlightedTabs.length > 1) {
-          // If there are multiple highlighted tabs and one is split.html, activate it
-          if (existingSplitTab.id) {
-            await chrome.tabs.update(existingSplitTab.id, { active: true });
-          }
-          sendResponse({ success: true });
-          return;
-        }
-
-        // Get current active tab
-        const tabs = await chrome.tabs.query({
-          currentWindow: true,
-          active: true,
-        });
-        const currentTab = tabs && tabs[0];
-        if (!currentTab) {
-          sendResponse({ success: false, error: 'No active tab found' });
-          return;
-        }
-
-        const isSplitPage =
-          currentTab.url && currentTab.url.startsWith(splitBaseUrl);
-
-        if (isSplitPage) {
-          // Current tab is split.html - unsplit it
-          await handleUnsplitTabsContextMenu(currentTab);
-        } else {
-          // Current tab is NOT split.html - create split page
-          await handleSplitTabsContextMenu(currentTab);
-        }
-        sendResponse({ success: true });
-      } catch (error) {
-        console.error('[background] Failed to split/unsplit tabs:', error);
-        sendResponse({ success: false, error: error.message });
-      }
-    })();
-    return true;
-  }
-
   if (message.type === 'blockElement:addSelector') {
     const selector =
       typeof message.selector === 'string' ? message.selector : '';
@@ -3189,21 +3170,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: false, error: error.message });
       }
     })();
-    return true;
-  }
-
-  if (message.action === 'inject-iframe-monitor') {
-    // Handle iframe monitoring script injection for cross-origin frames
-    return handleIframeMonitorInjection(message, sender, sendResponse);
-  }
-
-  if (message.action === 'unsplit-tabs') {
-    // Handle keyboard shortcut for unsplitting
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs && tabs[0]) {
-        void handleUnsplitTabsContextMenu(tabs[0]);
-      }
-    });
     return true;
   }
 
@@ -3593,230 +3559,6 @@ async function launchElementPicker(tabId) {
   }
 }
 
-/**
- * Handle iframe monitor injection request from split page
- * @param {object} message - The message object
- * @param {chrome.runtime.MessageSender} sender - The message sender
- * @param {Function} sendResponse - Response callback
- * @returns {boolean} True to indicate async response
- */
-function handleIframeMonitorInjection(message, sender, sendResponse) {
-  const { frameName, url } = message;
-
-  if (!sender.tab || !sender.tab.id) {
-    sendResponse({ success: false, error: 'No tab ID' });
-    return false;
-  }
-
-  const tabId = sender.tab.id;
-
-  // Find the frame by matching the URL
-  // We'll inject the script into all frames and let it filter by name
-  chrome.scripting
-    .executeScript({
-      target: { tabId, allFrames: true },
-      func: (targetFrameName) => {
-        // Only run in the target iframe
-        if (window.name !== targetFrameName) {
-          return;
-        }
-
-        // This is the monitoring script (inline version)
-        (function () {
-          'use strict';
-
-          // Prevent double-injection
-          if (window['__nenyaIframeMonitorInstalled']) {
-            return;
-          }
-          window['__nenyaIframeMonitorInstalled'] = true;
-
-          let lastUrl = window.location.href;
-          let lastTitle = '';
-
-          function sendUpdate() {
-            const currentUrl = window.location.href;
-            // Get title, but prefer a non-empty title over falling back to URL
-            let currentTitle = document.title;
-            if (!currentTitle || currentTitle.trim() === '') {
-              // If title is empty, try to extract from meta tags
-              const ogTitle = document.querySelector(
-                'meta[property="og:title"]',
-              );
-              if (ogTitle && ogTitle instanceof HTMLMetaElement) {
-                currentTitle = ogTitle.content;
-              } else {
-                // Only use URL as last resort
-                currentTitle = currentUrl;
-              }
-            }
-
-            if (currentUrl !== lastUrl || currentTitle !== lastTitle) {
-              lastUrl = currentUrl;
-              lastTitle = currentTitle;
-
-              window.parent.postMessage(
-                {
-                  type: 'iframe-update',
-                  url: currentUrl,
-                  title: currentTitle,
-                  frameName: window.name,
-                },
-                '*',
-              );
-            }
-          }
-
-          function debounce(func, wait) {
-            let timeout;
-            return function executedFunction(...args) {
-              const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-              };
-              clearTimeout(timeout);
-              timeout = setTimeout(later, wait);
-            };
-          }
-
-          const debouncedUpdate = debounce(sendUpdate, 100);
-
-          // Monitor page load
-          if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', sendUpdate);
-          } else {
-            sendUpdate();
-          }
-
-          window.addEventListener('load', sendUpdate);
-
-          // Monitor SPA navigation
-          const originalPushState = history.pushState;
-          const originalReplaceState = history.replaceState;
-
-          history.pushState = function (...args) {
-            originalPushState.apply(this, args);
-            sendUpdate();
-          };
-
-          history.replaceState = function (...args) {
-            originalReplaceState.apply(this, args);
-            sendUpdate();
-          };
-
-          window.addEventListener('popstate', sendUpdate);
-          window.addEventListener('hashchange', sendUpdate);
-
-          // Monitor DOM mutations for title changes
-          const titleObserver = new MutationObserver(() => {
-            const newTitle = document.title;
-            if (newTitle !== lastTitle) {
-              debouncedUpdate();
-            }
-          });
-
-          titleObserver.observe(document.documentElement, {
-            childList: true,
-            characterData: true,
-            subtree: true,
-          });
-
-          // Send initial update with retries to catch the title as it loads
-          let retryCount = 0;
-          const maxRetries = 5;
-          const retryDelays = [50, 200, 500, 1000, 2000];
-
-          function sendInitialUpdate() {
-            const hadTitle = document.title && document.title.trim() !== '';
-            sendUpdate();
-
-            // If we still don't have a title and haven't exhausted retries, try again
-            if (!hadTitle && retryCount < maxRetries) {
-              setTimeout(sendInitialUpdate, retryDelays[retryCount]);
-              retryCount++;
-            }
-          }
-
-          // Start initial update sequence
-          setTimeout(sendInitialUpdate, 50);
-        })();
-      },
-      args: [frameName],
-    })
-    .then(() => {
-      sendResponse({ success: true });
-    })
-    .catch((error) => {
-      console.error('Failed to inject iframe monitor:', error);
-      sendResponse({ success: false, error: error.message });
-    });
-
-  // Return true to indicate we'll respond asynchronously
-  return true;
-}
-
-/**
- * Handle split tabs context menu click
- * @param {chrome.tabs.Tab} tab - The current tab
- * @returns {Promise<void>}
- */
-async function handleSplitTabsContextMenu(tab) {
-  try {
-    // Get highlighted tabs first, fallback to current tab
-    let tabs = await chrome.tabs.query({
-      currentWindow: true,
-      highlighted: true,
-    });
-    if (!tabs || tabs.length === 0) {
-      tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-    }
-
-    // Filter to http/https tabs, sort by tab index, take first 4
-    const httpTabs = tabs
-      .filter(
-        (t) =>
-          typeof t.url === 'string' &&
-          (t.url.startsWith('http://') || t.url.startsWith('https://')),
-      )
-      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
-      .slice(0, 4);
-
-    if (httpTabs.length < 1) {
-      return;
-    }
-
-    const state = {
-      urls: httpTabs.map((t) => String(t.url)),
-    };
-
-    const splitUrl = `${chrome.runtime.getURL(
-      'src/split/split.html',
-    )}?state=${encodeURIComponent(JSON.stringify(state))}`;
-
-    // Create new tab with split page
-    const newTab = await chrome.tabs.create({
-      url: splitUrl,
-      windowId: tab.windowId,
-    });
-
-    // Close the original tab(s) after creating split page
-    const tabIdsToClose = httpTabs
-      .map((t) => t.id)
-      .filter((id) => typeof id === 'number');
-
-    if (tabIdsToClose.length > 0) {
-      await chrome.tabs.remove(tabIdsToClose);
-    }
-  } catch (error) {
-    console.error('Failed to split tabs:', error);
-  }
-}
-
-/**
- * Handle unsplit tabs context menu click
- * @param {chrome.tabs.Tab} tab - The current tab (should be split page)
- * @returns {Promise<void>}
- */
 async function handleSaveToUnsortedRequest() {
   try {
     const tabs = await chrome.tabs.query({
@@ -3855,48 +3597,6 @@ async function handleSaveToUnsortedRequest() {
 }
 
 /**
- * Handle unsplit tabs context menu click
- * @param {chrome.tabs.Tab} tab - The current tab (should be split page)
- * @returns {Promise<void>}
- */
-async function handleUnsplitTabsContextMenu(tab) {
-  try {
-    if (!tab || typeof tab.id !== 'number') {
-      return;
-    }
-
-    // Request the current URLs from the split page
-    const response = await chrome.tabs.sendMessage(tab.id, {
-      action: 'get-current-urls',
-    });
-
-    const urls = (
-      response && Array.isArray(response.urls) ? response.urls : []
-    ).filter((url) => typeof url === 'string' && url.length > 0);
-
-    if (urls.length === 0) {
-      await chrome.tabs.remove(tab.id);
-      return;
-    }
-
-    // Create new tabs for each URL
-    const newTabs = await Promise.all(
-      urls.map((url) =>
-        chrome.tabs.create({
-          url: url,
-          windowId: tab.windowId,
-        }),
-      ),
-    );
-
-    // Close the split page tab
-    await chrome.tabs.remove(tab.id);
-  } catch (error) {
-    console.error('Failed to unsplit tabs:', error);
-  }
-}
-
-/**
  * Update context menu visibility based on current tab.
  * Uses the centralized context menu module for updates.
  * @param {chrome.tabs.Tab} tab - The current tab
@@ -3906,9 +3606,6 @@ async function updateContextMenuVisibility(tab) {
   if (!chrome.contextMenus) return;
 
   try {
-    // Update split/unsplit menu visibility
-    await updateSplitMenuVisibility(tab);
-
     // Update Run Code menu based on current URL
     if (tab && tab.url) {
       await updateRunCodeSubmenu(tab.url);
@@ -3973,8 +3670,7 @@ if (chrome.contextMenus) {
       if (!url) {
         return;
       }
-      const convertedUrl = convertSplitUrlForSave(url);
-      const normalizedUrl = normalizeHttpUrl(convertedUrl);
+      const normalizedUrl = normalizeHttpUrl(url);
       if (!normalizedUrl) {
         return;
       }
@@ -4065,22 +3761,6 @@ if (chrome.contextMenus) {
     // ========================================================================
     // NENYA MENU HANDLERS
     // ========================================================================
-
-    // Split tabs
-    if (menuItemId === NENYA_MENU_IDS.SPLIT_TABS) {
-      if (tab) {
-        void handleSplitTabsContextMenu(tab);
-      }
-      return;
-    }
-
-    // Unsplit tabs
-    if (menuItemId === NENYA_MENU_IDS.UNSPLIT_TABS) {
-      if (tab) {
-        void handleUnsplitTabsContextMenu(tab);
-      }
-      return;
-    }
 
     // Open in popup
     if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {

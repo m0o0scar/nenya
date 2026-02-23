@@ -41,7 +41,6 @@ const AVAILABLE_SHORTCUTS = [
     tooltip: 'Hide elements in page',
     key: 'h',
   },
-  { id: 'splitPage', emoji: '🈹', tooltip: 'Split page', key: 'i' },
   { id: 'autoReload', emoji: '🔁', tooltip: 'Auto reload this page', key: 'r' },
   {
     id: 'brightMode',

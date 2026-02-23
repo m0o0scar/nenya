@@ -105,12 +105,6 @@ const SHORTCUT_CONFIG = {
     handler: () => void handleCustomFilter(),
     key: 'h',
   },
-  splitPage: {
-    emoji: '🈹',
-    tooltip: 'Split page',
-    handler: () => void handleSplitPage(),
-    key: 'i',
-  },
   autoReload: {
     emoji: '🔁',
     tooltip: 'Auto reload this page',
@@ -254,7 +248,6 @@ let encryptSaveButton = null;
 let openOptionsButton = null;
 let customFilterButton = null;
 let importCustomCodeButton = null;
-let splitPageButton = null;
 let autoReloadButton = null;
 let brightModeButton = null;
 let darkModeButton = null;
@@ -377,7 +370,6 @@ async function loadAndRenderShortcuts() {
     openOptionsButton = null;
     customFilterButton = null;
     importCustomCodeButton = null;
-    splitPageButton = null;
     autoReloadButton = null;
     brightModeButton = null;
     darkModeButton = null;
@@ -439,9 +431,6 @@ async function loadAndRenderShortcuts() {
           break;
         case 'importCustomCode':
           importCustomCodeButton = button;
-          break;
-        case 'splitPage':
-          splitPageButton = button;
           break;
         case 'autoReload':
           autoReloadButton = button;
@@ -2409,33 +2398,6 @@ function handleGetMarkdown() {
   }
   // Navigate to the chat page within the same popup window
   window.location.href = 'chat.html';
-}
-
-/**
- * Handle split page functionality.
- * Triggers the split/unsplit page feature for the current tab(s).
- * @returns {Promise<void>}
- */
-async function handleSplitPage() {
-  try {
-    // Send message to background to trigger split/unsplit functionality
-    await chrome.runtime.sendMessage({
-      type: 'splitTabs',
-    });
-
-    // Close the popup
-    closeCurrentSurface();
-  } catch (error) {
-    console.error('[popup] Error triggering split/unsplit page:', error);
-    if (statusMessage) {
-      concludeStatus(
-        'Unable to trigger split/unsplit page.',
-        'error',
-        3000,
-        statusMessage,
-      );
-    }
-  }
 }
 
 /**
