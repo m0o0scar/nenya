@@ -273,6 +273,16 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'window-resize-left-half') {
+    void handleResizeCurrentWindowToHalfCommand('left');
+    return;
+  }
+
+  if (command === 'window-resize-right-half') {
+    void handleResizeCurrentWindowToHalfCommand('right');
+    return;
+  }
+
   if (command === 'block-element-picker') {
     void (async () => {
       try {
@@ -760,19 +770,8 @@ async function handleSplitScreenArrangeCommand() {
  */
 async function handleResizeCurrentWindowToFullscreenCommand() {
   try {
-    const activeTabs = await chrome.tabs.query({
-      currentWindow: true,
-      active: true,
-    });
-    const activeTab = activeTabs && activeTabs[0];
-    if (!activeTab || typeof activeTab.windowId !== 'number') {
-      return;
-    }
-
-    const currentWindow = await chrome.windows.get(activeTab.windowId, {
-      populate: false,
-    });
-    if (!currentWindow || typeof currentWindow.id !== 'number') {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow) {
       return;
     }
 
@@ -781,6 +780,78 @@ async function handleResizeCurrentWindowToFullscreenCommand() {
   } catch (error) {
     console.warn(
       '[commands] Resize current window to full screen failed:',
+      error,
+    );
+  }
+}
+
+/**
+ * Resolve the current active window for resize commands.
+ * @returns {Promise<chrome.windows.Window | null>}
+ */
+async function getCurrentActiveWindowForResize() {
+  const activeTabs = await chrome.tabs.query({
+    currentWindow: true,
+    active: true,
+  });
+  const activeTab = activeTabs && activeTabs[0];
+  if (!activeTab || typeof activeTab.windowId !== 'number') {
+    return null;
+  }
+
+  const currentWindow = await chrome.windows.get(activeTab.windowId, {
+    populate: false,
+  });
+  if (!currentWindow || typeof currentWindow.id !== 'number') {
+    return null;
+  }
+
+  return currentWindow;
+}
+
+/**
+ * Resize the current window to the left or right half of the display.
+ * @param {'left' | 'right'} side
+ * @returns {Promise<void>}
+ */
+async function handleResizeCurrentWindowToHalfCommand(side) {
+  try {
+    const currentWindow = await getCurrentActiveWindowForResize();
+    if (!currentWindow) {
+      return;
+    }
+
+    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+    const leftWidth = Math.floor(screenBounds.width / 2);
+    const rightWidth = screenBounds.width - leftWidth;
+
+    if (side === 'left') {
+      await setWindowLayout(
+        currentWindow.id,
+        {
+          left: screenBounds.left,
+          top: screenBounds.top,
+          width: leftWidth,
+          height: screenBounds.height,
+        },
+        true,
+      );
+      return;
+    }
+
+    await setWindowLayout(
+      currentWindow.id,
+      {
+        left: screenBounds.left + leftWidth,
+        top: screenBounds.top,
+        width: rightWidth,
+        height: screenBounds.height,
+      },
+      true,
+    );
+  } catch (error) {
+    console.warn(
+      `[commands] Resize current window to ${side} half failed:`,
       error,
     );
   }
