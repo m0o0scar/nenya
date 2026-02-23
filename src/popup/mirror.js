@@ -8,7 +8,6 @@ import {
   normalizeUrlForSave,
   collectSavableTabs,
 } from './shared.js';
-import { convertSplitUrlForSave } from '../shared/splitUrl.js';
 import { TOKEN_VALIDATION_MESSAGE } from '../shared/tokenRefresh.js';
 
 /**
@@ -418,8 +417,7 @@ export async function handleEncryptAndSaveActive(encryptButton, statusMessage) {
       return;
     }
 
-    const convertedUrl = convertSplitUrlForSave(rawUrl);
-    const normalizedUrl = normalizeUrlForSave(convertedUrl);
+    const normalizedUrl = normalizeUrlForSave(rawUrl);
     if (!normalizedUrl) {
       concludeStatus(
         'Active tab URL is not supported for saving.',
@@ -503,9 +501,7 @@ function buildSaveEntriesFromTabs(tabs) {
     if (!tab.url) {
       return;
     }
-    // Convert split page URLs to nenya.local format before normalizing
-    const convertedUrl = convertSplitUrlForSave(tab.url);
-    const normalizedUrl = normalizeUrlForSave(convertedUrl);
+    const normalizedUrl = normalizeUrlForSave(tab.url);
     if (!normalizedUrl || seen.has(normalizedUrl)) {
       return;
     }

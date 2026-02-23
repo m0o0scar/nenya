@@ -61,8 +61,6 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "src/split.html",
-        "src/split/*",
         "src/libs/*",
         "src/contentScript/epicker-ui.html",
         "src/contentScript/epicker-ui.js",
@@ -89,16 +87,6 @@
         "src/contentScript/custom-js-css.js"
       ],
       "run_at": "document_start"
-    },
-    {
-      "matches": [
-        "<all_urls>"
-      ],
-      "js": [
-        "src/split/iframe-monitor.js"
-      ],
-      "run_at": "document_end",
-      "all_frames": true
     },
     {
       "matches": [
@@ -172,9 +160,6 @@
     },
     "tabs-activate-right-tab": {
       "description": "🗂️ Activate right tab"
-    },
-    "split-screen-toggle": {
-      "description": "🖥️ Toggle split screen"
     },
     "block-element-picker": {
       "description": "🎯 Element Picker"

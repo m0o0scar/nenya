@@ -1341,7 +1341,6 @@ function normalizePinnedShortcuts(value) {
     'saveClipboardToUnsorted',
     'importCustomCode',
     'customFilter',
-    'splitPage',
     'autoReload',
     'brightMode',
     'darkMode',

@@ -56,8 +56,6 @@ export const NENYA_MENU_IDS = {
   DEVELOPER_PARENT: 'nenya-developer-parent',
 
   // Tools
-  SPLIT_TABS: 'nenya-split-tabs',
-  UNSPLIT_TABS: 'nenya-unsplit-tabs',
   OPEN_IN_POPUP: 'nenya-open-in-popup',
   RENAME_TAB: 'nenya-rename-tab',
   EMOJI_PICKER: 'nenya-emoji-picker',
@@ -79,8 +77,6 @@ export const NENYA_MENU_IDS = {
 
 // Deprecated export for backward compatibility during migration
 export const OTHER_MENU_IDS = {
-  SPLIT_TABS: NENYA_MENU_IDS.SPLIT_TABS,
-  UNSPLIT_TABS: NENYA_MENU_IDS.UNSPLIT_TABS,
   OPEN_IN_POPUP: NENYA_MENU_IDS.OPEN_IN_POPUP,
   TAKE_SCREENSHOT: NENYA_MENU_IDS.TAKE_SCREENSHOT,
 };
@@ -298,21 +294,6 @@ async function createRootMenus() {
     // No parentId -> Root level
     title: '🛠️ Tools',
     contexts: contexts,
-  });
-
-  await createMenuItem({
-    id: NENYA_MENU_IDS.SPLIT_TABS,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🈹 Split tabs',
-    contexts: contexts,
-  });
-
-  await createMenuItem({
-    id: NENYA_MENU_IDS.UNSPLIT_TABS,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🈹 Unsplit tabs',
-    contexts: contexts,
-    visible: false, // Initially hidden
   });
 
   await createMenuItem({
@@ -604,34 +585,6 @@ export async function updateRunCodeSubmenu(url) {
       title: title,
       contexts: ['page'],
     });
-  }
-}
-
-/**
- * Update split/unsplit menu visibility based on current tab.
- * @param {chrome.tabs.Tab} tab - The current tab
- * @returns {Promise<void>}
- */
-export async function updateSplitMenuVisibility(tab) {
-  if (!chrome.contextMenus) {
-    return;
-  }
-
-  const splitBaseUrl = chrome.runtime.getURL('src/split/split.html');
-  const isSplitPage = tab && tab.url && tab.url.startsWith(splitBaseUrl);
-
-  try {
-    await chrome.contextMenus.update(NENYA_MENU_IDS.SPLIT_TABS, {
-      visible: !isSplitPage,
-    });
-    await chrome.contextMenus.update(NENYA_MENU_IDS.UNSPLIT_TABS, {
-      visible: Boolean(isSplitPage),
-    });
-  } catch (error) {
-    console.warn(
-      '[contextMenu] Failed to update split menu visibility:',
-      error,
-    );
   }
 }
 

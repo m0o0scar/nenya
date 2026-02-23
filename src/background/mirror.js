@@ -141,10 +141,6 @@ export {
 };
 
 import { processUrl } from '../shared/urlProcessor.js';
-import {
-  convertSplitUrlForSave,
-  convertSplitUrlForRestore,
-} from '../shared/splitUrl.js';
 
 // ... (skipping some lines)
 
@@ -168,7 +164,7 @@ function unwrapInternalUrl(url) {
     }
   }
 
-  return convertSplitUrlForRestore(url);
+  return url;
 }
 
 /**
@@ -713,9 +709,7 @@ if (chrome && chrome.notifications) {
     }
 
     try {
-      // Convert nenya.local split URLs back to extension format
-      const restoredUrl = convertSplitUrlForRestore(targetUrl);
-      const maybePromise = chrome.tabs.create({ url: restoredUrl });
+      const maybePromise = chrome.tabs.create({ url: targetUrl });
       if (isPromiseLike(maybePromise)) {
         void maybePromise.catch((error) => {
           console.warn(
@@ -1364,7 +1358,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         ? await processUrl(normalizedUrl, 'save-to-raindrop')
         : normalizedUrl;
 
-      const finalUrl = convertSplitUrlForSave(processedUrl);
+      const finalUrl = processedUrl;
 
       if (seenUrls.has(finalUrl)) {
         summary.skipped += 1;
