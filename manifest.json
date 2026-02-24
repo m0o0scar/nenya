@@ -203,6 +203,21 @@
     },
     "screen-recording-start": {
       "description": "⏺️ Start screen recording"
+    },
+    "open-pinned-shortcut-1": {
+      "description": "📌 Open 1st pinned shortcut in new tab"
+    },
+    "open-pinned-shortcut-2": {
+      "description": "📌 Open 2nd pinned shortcut in new tab"
+    },
+    "open-pinned-shortcut-3": {
+      "description": "📌 Open 3rd pinned shortcut in new tab"
+    },
+    "open-pinned-shortcut-4": {
+      "description": "📌 Open 4th pinned shortcut in new tab"
+    },
+    "open-pinned-shortcut-5": {
+      "description": "📌 Open 5th pinned shortcut in new tab"
     }
   }
 }

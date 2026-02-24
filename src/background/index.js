@@ -101,6 +101,59 @@ const CLOSE_LLM_TABS_MESSAGE = 'close-llm-tabs';
 const SWITCH_LLM_PROVIDER_MESSAGE = 'switch-llm-provider';
 const ENCRYPT_SERVICE_URL = 'https://oh-auth.vercel.app/secret/encrypt';
 const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
+const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
+const OPEN_PINNED_SHORTCUT_COMMAND_PREFIX = 'open-pinned-shortcut-';
+const MAX_PINNED_SHORTCUT_COMMAND_POSITION = 5;
+
+/**
+ * Resolve 0-based pinned shortcut index for command-based shortcut open.
+ * @param {string} command
+ * @returns {number | null}
+ */
+function getPinnedShortcutIndexFromCommand(command) {
+  if (!command.startsWith(OPEN_PINNED_SHORTCUT_COMMAND_PREFIX)) {
+    return null;
+  }
+
+  const rawPosition = command.slice(OPEN_PINNED_SHORTCUT_COMMAND_PREFIX.length);
+  const position = Number.parseInt(rawPosition, 10);
+  if (!Number.isInteger(position)) {
+    return null;
+  }
+  if (position < 1 || position > MAX_PINNED_SHORTCUT_COMMAND_POSITION) {
+    return null;
+  }
+
+  return position - 1;
+}
+
+/**
+ * Open a pinned search item in a new tab by 0-based index.
+ * @param {number} pinnedIndex
+ * @returns {Promise<void>}
+ */
+async function handleOpenPinnedShortcutCommand(pinnedIndex) {
+  try {
+    const stored = await chrome.storage.local.get(PINNED_SEARCH_RESULTS_STORAGE_KEY);
+    const pinnedItems = Array.isArray(stored?.[PINNED_SEARCH_RESULTS_STORAGE_KEY])
+      ? stored[PINNED_SEARCH_RESULTS_STORAGE_KEY]
+      : [];
+
+    if (pinnedIndex < 0 || pinnedIndex >= pinnedItems.length) {
+      return;
+    }
+
+    const pinnedItem = pinnedItems[pinnedIndex];
+    const url = typeof pinnedItem?.url === 'string' ? pinnedItem.url.trim() : '';
+    if (!url) {
+      return;
+    }
+
+    await chrome.tabs.create({ url });
+  } catch (error) {
+    console.warn('[commands] Open pinned shortcut failed:', error);
+  }
+}
 
 // ============================================================================
 // KEYBOARD SHORTCUTS (COMMANDS)
@@ -116,6 +169,12 @@ const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
  * @returns {void}
  */
 chrome.commands.onCommand.addListener((command) => {
+  const pinnedShortcutIndex = getPinnedShortcutIndexFromCommand(command);
+  if (pinnedShortcutIndex !== null) {
+    void handleOpenPinnedShortcutCommand(pinnedShortcutIndex);
+    return;
+  }
+
   if (
     command === 'tabs-activate-left-tab' ||
     command === 'tabs-activate-right-tab'
