@@ -9,6 +9,7 @@ This repository has two release workflows:
 
 2. `.github/workflows/chrome-store-publish.yml`
 - Trigger: push tag `v*`
+- Trigger: `workflow_run` when `Version Management` completes successfully on `main`
 - Also supports manual run (`workflow_dispatch`) with a tag input.
 - Action: verify tag commit belongs to `main`, build zip, upload + publish to Chrome Web Store
 
@@ -20,7 +21,8 @@ Set these in repository settings:
   - Chrome extension ID from the Chrome Web Store item URL.
 - `RELEASE_PUSH_TOKEN`
   - GitHub PAT used by `version-management.yml` to push version commits and tags.
-  - Required if you want the tag push to trigger `chrome-store-publish.yml`.
+  - Optional for this setup (publish also runs via `workflow_run`).
+  - Useful if you want the tag push event itself to trigger other workflows.
   - Recommended scopes: `repo` and `workflow`.
 - `CWS_CLIENT_ID`
   - OAuth 2.0 client ID from Google Cloud project.

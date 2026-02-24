@@ -4,6 +4,11 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_run:
+    workflows:
+      - Version Management
+    types:
+      - completed
   workflow_dispatch:
     inputs:
       tag:
@@ -15,12 +20,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: chrome-store-publish-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  group: chrome-store-publish-${{ github.event_name }}-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.event_name == 'push' && github.ref_name || github.event.workflow_run.id }}
   cancel-in-progress: false
 
 jobs:
   publish-to-chrome-store:
     runs-on: ubuntu-latest
+    if: |
+      github.event_name != 'workflow_run' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_branch == 'main')
 
     steps:
     - name: Checkout code
@@ -31,6 +40,8 @@ jobs:
     - name: Resolve release tag
       id: release_meta
       run: |
+        skip_publish='false'
+
         if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
           release_tag="${{ github.event.inputs.tag }}"
           git fetch --tags --force
@@ -40,6 +51,16 @@ jobs:
           fi
           release_sha="$(git rev-list -n 1 "refs/tags/${release_tag}")"
           git checkout --detach "${release_sha}"
+        elif [ "${{ github.event_name }}" = "workflow_run" ]; then
+          release_sha="${{ github.event.workflow_run.head_sha }}"
+          git fetch --tags --force
+          release_tag="$(git tag --points-at "${release_sha}" | grep '^v' | head -n 1 || true)"
+          if [ -z "${release_tag}" ]; then
+            echo "No v* tag found at workflow head SHA ${release_sha}; skipping publish."
+            skip_publish='true'
+          else
+            git checkout --detach "${release_sha}"
+          fi
         else
           release_tag="${GITHUB_REF_NAME}"
           release_sha="${GITHUB_SHA}"
@@ -47,8 +68,14 @@ jobs:
 
         echo "tag=${release_tag}" >> "$GITHUB_OUTPUT"
         echo "sha=${release_sha}" >> "$GITHUB_OUTPUT"
+        echo "skip=${skip_publish}" >> "$GITHUB_OUTPUT"
+
+    - name: Skip notice
+      if: steps.release_meta.outputs.skip == 'true'
+      run: echo "No new release tag detected for this workflow_run event."
 
     - name: Ensure tag commit is on main
+      if: steps.release_meta.outputs.skip != 'true'
       run: |
         git fetch origin main --depth=1
         if ! git merge-base --is-ancestor "${{ steps.release_meta.outputs.sha }}" "origin/main"; then
@@ -57,9 +84,11 @@ jobs:
         fi
 
     - name: Build extension package
+      if: steps.release_meta.outputs.skip != 'true'
       run: ./.github/scripts/build-extension.sh dist "nenya-${{ steps.release_meta.outputs.tag }}.zip"
 
     - name: Publish to Chrome Web Store
+      if: steps.release_meta.outputs.skip != 'true'
       env:
         CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
         CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
