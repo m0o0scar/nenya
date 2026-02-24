@@ -20,8 +20,13 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        token: ${{ secrets.GITHUB_TOKEN }}
+        token: ${{ secrets.RELEASE_PUSH_TOKEN != '' && secrets.RELEASE_PUSH_TOKEN || github.token }}
         fetch-depth: 0
+
+    - name: Warn when release PAT is missing
+      if: ${{ secrets.RELEASE_PUSH_TOKEN == '' }}
+      run: |
+        echo "::warning::RELEASE_PUSH_TOKEN is not set. Tags pushed by GITHUB_TOKEN do not trigger other workflows."
     
     - name: Setup Node.js
       uses: actions/setup-node@v4

@@ -5,9 +5,11 @@ This repository has two release workflows:
 1. `.github/workflows/version-management.yml`
 - Trigger: push to `main`
 - Action: bump `manifest.json` + `package.json` minor version, commit, tag `v<version>`
+- Note: set `RELEASE_PUSH_TOKEN` so tag pushes can trigger downstream workflows.
 
 2. `.github/workflows/chrome-store-publish.yml`
 - Trigger: push tag `v*`
+- Also supports manual run (`workflow_dispatch`) with a tag input.
 - Action: verify tag commit belongs to `main`, build zip, upload + publish to Chrome Web Store
 
 ## Required GitHub Secrets
@@ -16,6 +18,10 @@ Set these in repository settings:
 
 - `CWS_EXTENSION_ID`
   - Chrome extension ID from the Chrome Web Store item URL.
+- `RELEASE_PUSH_TOKEN`
+  - GitHub PAT used by `version-management.yml` to push version commits and tags.
+  - Required if you want the tag push to trigger `chrome-store-publish.yml`.
+  - Recommended scopes: `repo` and `workflow`.
 - `CWS_CLIENT_ID`
   - OAuth 2.0 client ID from Google Cloud project.
 - `CWS_CLIENT_SECRET`
