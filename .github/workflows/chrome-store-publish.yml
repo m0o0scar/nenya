@@ -52,14 +52,28 @@ jobs:
           release_sha="$(git rev-list -n 1 "refs/tags/${release_tag}")"
           git checkout --detach "${release_sha}"
         elif [ "${{ github.event_name }}" = "workflow_run" ]; then
-          release_sha="${{ github.event.workflow_run.head_sha }}"
-          git fetch --tags --force
-          release_tag="$(git tag --points-at "${release_sha}" | grep '^v' | head -n 1 || true)"
-          if [ -z "${release_tag}" ]; then
-            echo "No v* tag found at workflow head SHA ${release_sha}; skipping publish."
+          trigger_sha="${{ github.event.workflow_run.head_sha }}"
+          git fetch origin main --tags --force
+
+          # Version Management creates the release commit/tag after trigger_sha.
+          release_sha="$(
+            git log "${trigger_sha}..origin/main" --format='%H%x09%s' \
+              | grep -E $'\tchore\\(release\\): bump version to v[0-9]+\\.[0-9]+\\.[0-9]+ \\[no-cli\\]$' \
+              | head -n 1 \
+              | cut -f1 || true
+          )"
+
+          if [ -z "${release_sha}" ]; then
+            echo "No release bump commit found after workflow head SHA ${trigger_sha}; skipping publish."
             skip_publish='true'
           else
-            git checkout --detach "${release_sha}"
+            release_tag="$(git tag --points-at "${release_sha}" | grep '^v' | head -n 1 || true)"
+            if [ -z "${release_tag}" ]; then
+              echo "No v* tag points at detected release commit ${release_sha}; skipping publish."
+              skip_publish='true'
+            else
+              git checkout --detach "${release_sha}"
+            fi
           fi
         else
           release_tag="${GITHUB_REF_NAME}"
