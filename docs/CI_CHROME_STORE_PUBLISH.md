@@ -39,8 +39,10 @@ Set these in repository settings:
 1. Create a Google Cloud project (or use an existing one owned by the publisher account).
 2. Enable the Chrome Web Store API.
 3. Create OAuth client credentials (`Web application` recommended for CI).
+   - Add `https://developers.google.com/oauthplayground` to Authorized redirect URIs.
 4. Generate a refresh token with scope:
    - `https://www.googleapis.com/auth/chromewebstore`
+   - In OAuth Playground, enable `Use your own OAuth credentials` and use this same client ID/secret.
 5. Add all values as GitHub secrets.
 
 ## Troubleshooting OAuth Errors

@@ -38,32 +38,19 @@ CWS_REFRESH_TOKEN="$(trim_secret "${CWS_REFRESH_TOKEN}")"
 PUBLISH_TARGET="$(trim_secret "${PUBLISH_TARGET}")"
 
 request_oauth_token() {
-  local include_secret="$1"
   local token_body_file
 
   token_body_file="$(mktemp)"
-  if [ "${include_secret}" = 'yes' ]; then
-    OAUTH_TOKEN_STATUS="$(curl --silent --show-error \
-      --output "${token_body_file}" \
-      --write-out '%{http_code}' \
-      --request POST \
-      --url 'https://oauth2.googleapis.com/token' \
-      --header 'Content-Type: application/x-www-form-urlencoded' \
-      --data-urlencode "client_id=${CWS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${CWS_CLIENT_SECRET}" \
-      --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
-      --data-urlencode 'grant_type=refresh_token')"
-  else
-    OAUTH_TOKEN_STATUS="$(curl --silent --show-error \
-      --output "${token_body_file}" \
-      --write-out '%{http_code}' \
-      --request POST \
-      --url 'https://oauth2.googleapis.com/token' \
-      --header 'Content-Type: application/x-www-form-urlencoded' \
-      --data-urlencode "client_id=${CWS_CLIENT_ID}" \
-      --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
-      --data-urlencode 'grant_type=refresh_token')"
-  fi
+  OAUTH_TOKEN_STATUS="$(curl --silent --show-error \
+    --output "${token_body_file}" \
+    --write-out '%{http_code}' \
+    --request POST \
+    --url 'https://oauth2.googleapis.com/token' \
+    --header 'Content-Type: application/x-www-form-urlencoded' \
+    --data-urlencode "client_id=${CWS_CLIENT_ID}" \
+    --data-urlencode "client_secret=${CWS_CLIENT_SECRET}" \
+    --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
+    --data-urlencode 'grant_type=refresh_token')"
 
   OAUTH_TOKEN_RESPONSE="$(cat "${token_body_file}")"
   rm -f "${token_body_file}"
@@ -81,7 +68,7 @@ parse_oauth_error() {
 }
 
 echo "Requesting OAuth access token..."
-request_oauth_token 'yes'
+request_oauth_token
 token_status="${OAUTH_TOKEN_STATUS}"
 token_response="${OAUTH_TOKEN_RESPONSE}"
 
@@ -89,18 +76,6 @@ if [ "${token_status}" != '200' ]; then
   oauth_error="$(parse_oauth_error "${token_response}")"
   oauth_error_code="${oauth_error%%|*}"
   oauth_error_description="${oauth_error#*|}"
-
-  if [ "${oauth_error_code}" = 'unauthorized_client' ]; then
-    echo "OAuth returned unauthorized_client. Retrying token request without client_secret..."
-    request_oauth_token 'no'
-    token_status="${OAUTH_TOKEN_STATUS}"
-    token_response="${OAUTH_TOKEN_RESPONSE}"
-    if [ "${token_status}" != '200' ]; then
-      oauth_error="$(parse_oauth_error "${token_response}")"
-      oauth_error_code="${oauth_error%%|*}"
-      oauth_error_description="${oauth_error#*|}"
-    fi
-  fi
 fi
 
 if [ "${token_status}" != '200' ]; then
@@ -122,7 +97,10 @@ if [ "${token_status}" != '200' ]; then
   fi
   if [ "${oauth_error_code}" = 'unauthorized_client' ]; then
     echo "Hint: this OAuth client is not allowed for this token flow."
-    echo "Hint: use OAuth client type 'Web application' in Google Cloud, and generate a refresh token for that same client."
+    echo "Hint: use OAuth client type 'Web application' in Google Cloud."
+    echo "Hint: your refresh token must be minted with this exact client ID and secret."
+    echo "Hint: when using OAuth Playground, enable 'Use your own OAuth credentials' and enter this same client ID/secret."
+    echo "Hint: add https://developers.google.com/oauthplayground to Authorized redirect URIs for this OAuth client."
     echo "Hint: ensure the account that created the refresh token can access the Chrome Web Store publisher/extension."
   fi
 
