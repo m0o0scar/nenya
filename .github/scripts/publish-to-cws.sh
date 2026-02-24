@@ -23,8 +23,25 @@ for var_name in "${required_vars[@]}"; do
   fi
 done
 
+trim_secret() {
+  local value="$1"
+  value="$(printf '%s' "${value}" | tr -d '\r')"
+  # shellcheck disable=SC2001
+  value="$(printf '%s' "${value}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+  printf '%s' "${value}"
+}
+
+CWS_EXTENSION_ID="$(trim_secret "${CWS_EXTENSION_ID}")"
+CWS_CLIENT_ID="$(trim_secret "${CWS_CLIENT_ID}")"
+CWS_CLIENT_SECRET="$(trim_secret "${CWS_CLIENT_SECRET}")"
+CWS_REFRESH_TOKEN="$(trim_secret "${CWS_REFRESH_TOKEN}")"
+PUBLISH_TARGET="$(trim_secret "${PUBLISH_TARGET}")"
+
 echo "Requesting OAuth access token..."
-token_response="$(curl --silent --show-error --fail \
+token_body_file="$(mktemp)"
+token_status="$(curl --silent --show-error \
+  --output "${token_body_file}" \
+  --write-out '%{http_code}' \
   --request POST \
   --url 'https://oauth2.googleapis.com/token' \
   --header 'Content-Type: application/x-www-form-urlencoded' \
@@ -32,6 +49,42 @@ token_response="$(curl --silent --show-error --fail \
   --data-urlencode "client_secret=${CWS_CLIENT_SECRET}" \
   --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
   --data-urlencode 'grant_type=refresh_token')"
+
+token_response="$(cat "${token_body_file}")"
+rm -f "${token_body_file}"
+
+if [ "${token_status}" != '200' ]; then
+  oauth_error="$(
+    TOKEN_RESPONSE="${token_response}" node -e "
+      let body = {};
+      try { body = JSON.parse(process.env.TOKEN_RESPONSE || '{}'); } catch (_) {}
+      const code = body.error || '';
+      const description = body.error_description || '';
+      process.stdout.write(code + '|' + description);
+    "
+  )"
+  oauth_error_code="${oauth_error%%|*}"
+  oauth_error_description="${oauth_error#*|}"
+
+  echo "OAuth token request failed with HTTP ${token_status}."
+  if [ -n "${oauth_error_code}" ]; then
+    echo "OAuth error: ${oauth_error_code}"
+  fi
+  if [ -n "${oauth_error_description}" ]; then
+    echo "OAuth description: ${oauth_error_description}"
+  fi
+
+  if [ "${oauth_error_code}" = 'invalid_client' ]; then
+    echo "Hint: CWS_CLIENT_ID/CWS_CLIENT_SECRET pair is invalid or malformed."
+    echo "Hint: ensure both values come from the same Google OAuth client and contain no extra spaces/newlines."
+  fi
+  if [ "${oauth_error_code}" = 'invalid_grant' ]; then
+    echo "Hint: refresh token is invalid/revoked, or it was minted for a different OAuth client."
+    echo "Hint: regenerate refresh token with scope https://www.googleapis.com/auth/chromewebstore using this same client ID."
+  fi
+
+  exit 1
+fi
 
 access_token="$(TOKEN_RESPONSE="${token_response}" node -e "
   const response = JSON.parse(process.env.TOKEN_RESPONSE || '{}');
@@ -43,13 +96,26 @@ access_token="$(TOKEN_RESPONSE="${token_response}" node -e "
 ")"
 
 echo "Uploading package for extension ${CWS_EXTENSION_ID}..."
-upload_response="$(curl --silent --show-error --fail \
+upload_body_file="$(mktemp)"
+upload_status="$(curl --silent --show-error \
+  --output "${upload_body_file}" \
+  --write-out '%{http_code}' \
   --request PUT \
   --url "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}" \
   --header "Authorization: Bearer ${access_token}" \
   --header 'x-goog-api-version: 2' \
   --header 'Content-Type: application/zip' \
   --data-binary "@${ARCHIVE_PATH}")"
+
+upload_response="$(cat "${upload_body_file}")"
+rm -f "${upload_body_file}"
+
+if [ "${upload_status}" -lt 200 ] || [ "${upload_status}" -ge 300 ]; then
+  echo "Upload request failed with HTTP ${upload_status}."
+  echo "Response:"
+  echo "${upload_response}"
+  exit 1
+fi
 
 upload_state="$(UPLOAD_RESPONSE="${upload_response}" node -e "
   const response = JSON.parse(process.env.UPLOAD_RESPONSE || '{}');
@@ -63,11 +129,24 @@ if [ "${upload_state}" != 'SUCCESS' ]; then
 fi
 
 echo "Publishing extension with publishTarget=${PUBLISH_TARGET}..."
-publish_response="$(curl --silent --show-error --fail \
+publish_body_file="$(mktemp)"
+publish_status_code="$(curl --silent --show-error \
+  --output "${publish_body_file}" \
+  --write-out '%{http_code}' \
   --request POST \
   --url "https://www.googleapis.com/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}/publish?publishTarget=${PUBLISH_TARGET}" \
   --header "Authorization: Bearer ${access_token}" \
   --header 'x-goog-api-version: 2')"
+
+publish_response="$(cat "${publish_body_file}")"
+rm -f "${publish_body_file}"
+
+if [ "${publish_status_code}" -lt 200 ] || [ "${publish_status_code}" -ge 300 ]; then
+  echo "Publish request failed with HTTP ${publish_status_code}."
+  echo "Response:"
+  echo "${publish_response}"
+  exit 1
+fi
 
 publish_status="$(PUBLISH_RESPONSE="${publish_response}" node -e "
   const response = JSON.parse(process.env.PUBLISH_RESPONSE || '{}');
