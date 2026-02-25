@@ -943,6 +943,8 @@ class Editor {
         this.ocrButtonLabel = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-button-label'));
         /** @type {HTMLSpanElement | null} */
         this.ocrStatus = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-status'));
+        /** @type {Record<string, number>} */
+        this.actionFeedbackTimers = {};
 
         this.init();
     }
@@ -969,6 +971,10 @@ class Editor {
             if (this.ocrLayoutTimer !== null) {
                 window.clearTimeout(this.ocrLayoutTimer);
             }
+            Object.values(this.actionFeedbackTimers).forEach((timerId) => {
+                window.clearTimeout(timerId);
+            });
+            this.actionFeedbackTimers = {};
             this.disposeOcrWorker();
         });
     }
@@ -2709,10 +2715,43 @@ class Editor {
         link.download = `screenshot-${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.jpg`;
         link.href = canvas.toDataURL('image/jpeg', 0.9);
         link.click();
+        this.showActionSuccessIcon('action-save');
 
         if (this.closeAfterAction) {
             setTimeout(() => window.close(), 500);
         }
+    }
+
+    /**
+     * @returns {string}
+     */
+    getSuccessIconSvg() {
+        return '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+    }
+
+    /**
+     * @param {string} buttonId
+     */
+    showActionSuccessIcon(buttonId) {
+        const btn = /** @type {HTMLButtonElement | null} */ (document.getElementById(buttonId));
+        if (!btn) return;
+
+        if (!btn.dataset.originalIconHtml) {
+            btn.dataset.originalIconHtml = btn.innerHTML;
+        }
+
+        const existingTimer = this.actionFeedbackTimers[buttonId];
+        if (existingTimer) {
+            window.clearTimeout(existingTimer);
+        }
+
+        btn.innerHTML = this.getSuccessIconSvg();
+        this.actionFeedbackTimers[buttonId] = window.setTimeout(() => {
+            if (btn.dataset.originalIconHtml) {
+                btn.innerHTML = btn.dataset.originalIconHtml;
+            }
+            delete this.actionFeedbackTimers[buttonId];
+        }, 2000);
     }
 
     async copyToClipboard() {
@@ -2726,15 +2765,7 @@ class Editor {
             await navigator.clipboard.write([
                 new ClipboardItem({ 'image/png': blob })
             ]);
-
-            const btn = document.getElementById('action-copy');
-            if (btn) {
-                const originalText = btn.innerHTML;
-                btn.innerHTML = '✅ Copied!';
-                setTimeout(() => {
-                    if (btn) btn.innerHTML = originalText;
-                }, 2000);
-            }
+            this.showActionSuccessIcon('action-copy');
 
             if (this.closeAfterAction) {
                 setTimeout(() => window.close(), 500);
