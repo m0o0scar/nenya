@@ -162,6 +162,12 @@
     "tabs-activate-right-tab": {
       "description": "🗂️ Activate right tab"
     },
+    "tabs-new-tab": {
+      "description": "🗂️ New tab (to the right)"
+    },
+    "tabs-close-tab": {
+      "description": "🗂️ Close active or highlighted tabs"
+    },
     "split-screen-arrange": {
       "description": "🖥️ Arrange windows for split screen"
     },
