@@ -130,7 +130,7 @@ function getPinnedShortcutIndexFromCommand(command) {
 /**
  * Create a tab immediately to the right of the active tab in the last focused window.
  * If the active tab is in a group, the new tab is moved into that same group.
- * @param {{url: string, pinned?: boolean, active?: boolean}} tabCreateProperties
+ * @param {{url?: string, pinned?: boolean, active?: boolean}} tabCreateProperties
  * @returns {Promise<chrome.tabs.Tab>}
  */
 async function createTabNextToActive(tabCreateProperties) {
@@ -170,6 +170,34 @@ async function createTabNextToActive(tabCreateProperties) {
   }
 
   return newTab;
+}
+
+/**
+ * Close highlighted tabs in current window, or fall back to the active tab.
+ * @returns {Promise<void>}
+ */
+async function closeHighlightedOrActiveTabs() {
+  const highlightedTabs = await chrome.tabs.query({
+    currentWindow: true,
+    highlighted: true,
+  });
+  const highlightedTabIds = (highlightedTabs || [])
+    .map((tab) => tab.id)
+    .filter((tabId) => typeof tabId === 'number');
+
+  if (highlightedTabIds.length > 0) {
+    await chrome.tabs.remove(highlightedTabIds);
+    return;
+  }
+
+  const activeTabs = await chrome.tabs.query({
+    currentWindow: true,
+    active: true,
+  });
+  const activeTabId = activeTabs[0]?.id;
+  if (typeof activeTabId === 'number') {
+    await chrome.tabs.remove(activeTabId);
+  }
 }
 
 /**
@@ -255,6 +283,28 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
+  if (command === 'tabs-new-tab') {
+    void (async () => {
+      try {
+        await createTabNextToActive({ active: true });
+      } catch (error) {
+        console.warn('[commands] New tab failed:', error);
+      }
+    })();
+    return;
+  }
+
+  if (command === 'tabs-close-tab') {
+    void (async () => {
+      try {
+        await closeHighlightedOrActiveTabs();
+      } catch (error) {
+        console.warn('[commands] Close tab failed:', error);
+      }
+    })();
+    return;
+  }
+
   if (command === 'bookmarks-save-to-unsorted-encrypted') {
     void (async () => {
       try {
@@ -317,8 +367,6 @@ chrome.commands.onCommand.addListener((command) => {
     })();
     return;
   }
-
-
 
   if (command === 'pip-quit') {
     void (async () => {
