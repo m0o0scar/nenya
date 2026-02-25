@@ -1175,7 +1175,8 @@ async function promptForTitle(tabId, prefillTitle) {
         return userTitle;
       },
       args: [prefillTitle],
-      world: 'MAIN',
+      // Use isolated world so pages cannot override prompt behavior.
+      world: 'ISOLATED',
     });
 
     const value =
@@ -1328,7 +1329,7 @@ async function reapplyPersistedRenamedTabTitle(tabId) {
         document.title = nextTitle;
       },
       args: [title],
-      world: 'MAIN',
+      world: 'ISOLATED',
     });
   } catch (error) {
     // Restricted pages may not support script injection.
@@ -1418,7 +1419,8 @@ async function promptAndRenameTab(tabId) {
         document.title = nextTitle;
         return { success: true, title: nextTitle };
       },
-      world: 'MAIN',
+      // Use isolated world so pages cannot hijack prompt and return bogus values.
+      world: 'ISOLATED',
     });
 
     const value =
@@ -1549,7 +1551,8 @@ async function promptForEncryptionPassword(tabId) {
         );
         return input === null ? null : String(input);
       },
-      world: 'MAIN',
+      // Use isolated world so pages cannot override prompt behavior.
+      world: 'ISOLATED',
     });
     const value =
       Array.isArray(results) && results[0] ? results[0].result : null;
