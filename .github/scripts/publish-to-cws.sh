@@ -36,6 +36,9 @@ CWS_CLIENT_ID="$(trim_secret "${CWS_CLIENT_ID}")"
 CWS_CLIENT_SECRET="$(trim_secret "${CWS_CLIENT_SECRET}")"
 CWS_REFRESH_TOKEN="$(trim_secret "${CWS_REFRESH_TOKEN}")"
 PUBLISH_TARGET="$(trim_secret "${PUBLISH_TARGET}")"
+if [ -n "${CWS_PUBLISHER_ID:-}" ]; then
+  CWS_PUBLISHER_ID="$(trim_secret "${CWS_PUBLISHER_ID}")"
+fi
 
 request_oauth_token() {
   local token_body_file
@@ -65,6 +68,79 @@ parse_oauth_error() {
     const description = body.error_description || '';
     process.stdout.write(code + '|' + description);
   " "${response}"
+}
+
+parse_upload_state() {
+  local response="$1"
+  UPLOAD_RESPONSE="${response}" node -e "
+    const response = JSON.parse(process.env.UPLOAD_RESPONSE || '{}');
+    process.stdout.write(String(response.uploadState || ''));
+  "
+}
+
+upload_has_error_code() {
+  local response="$1"
+  local expected_code="$2"
+  UPLOAD_RESPONSE="${response}" EXPECTED_CODE="${expected_code}" node -e "
+    let response = {};
+    try { response = JSON.parse(process.env.UPLOAD_RESPONSE || '{}'); } catch (_) {}
+    const errors = Array.isArray(response.itemError) ? response.itemError : [];
+    const expectedCode = process.env.EXPECTED_CODE || '';
+    const found = errors.some((itemError) => String(itemError.error_code || '') === expectedCode);
+    process.stdout.write(found ? 'true' : 'false');
+  "
+}
+
+request_upload() {
+  local upload_body_file
+  upload_body_file="$(mktemp)"
+  UPLOAD_STATUS="$(curl --silent --show-error \
+    --output "${upload_body_file}" \
+    --write-out '%{http_code}' \
+    --request PUT \
+    --url "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}" \
+    --header "Authorization: Bearer ${access_token}" \
+    --header 'x-goog-api-version: 2' \
+    --header 'Content-Type: application/zip' \
+    --data-binary "@${ARCHIVE_PATH}")"
+
+  UPLOAD_RESPONSE="$(cat "${upload_body_file}")"
+  rm -f "${upload_body_file}"
+}
+
+cancel_pending_submission() {
+  local cancel_body_file cancel_status cancel_response
+
+  if [ -z "${CWS_PUBLISHER_ID:-}" ]; then
+    echo "Upload blocked by ITEM_NOT_UPDATABLE."
+    echo "Set CWS_PUBLISHER_ID to enable automatic cancellation of pending review."
+    return 1
+  fi
+
+  cancel_body_file="$(mktemp)"
+  cancel_status="$(curl --silent --show-error \
+    --output "${cancel_body_file}" \
+    --write-out '%{http_code}' \
+    --request POST \
+    --url "https://chromewebstore.googleapis.com/v2/publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}:cancelSubmission" \
+    --header "Authorization: Bearer ${access_token}")"
+
+  cancel_response="$(cat "${cancel_body_file}")"
+  rm -f "${cancel_body_file}"
+
+  if [ "${cancel_status}" -lt 200 ] || [ "${cancel_status}" -ge 300 ]; then
+    echo "Cancel submission failed with HTTP ${cancel_status}."
+    if [ -n "${cancel_response}" ]; then
+      echo "Response:"
+      echo "${cancel_response}"
+    fi
+    return 1
+  fi
+
+  # Give CWS a moment to release the previous review lock.
+  sleep 5
+
+  return 0
 }
 
 echo "Requesting OAuth access token..."
@@ -117,19 +193,9 @@ access_token="$(TOKEN_RESPONSE="${token_response}" node -e "
 ")"
 
 echo "Uploading package for extension ${CWS_EXTENSION_ID}..."
-upload_body_file="$(mktemp)"
-upload_status="$(curl --silent --show-error \
-  --output "${upload_body_file}" \
-  --write-out '%{http_code}' \
-  --request PUT \
-  --url "https://www.googleapis.com/upload/chromewebstore/v1.1/items/${CWS_EXTENSION_ID}" \
-  --header "Authorization: Bearer ${access_token}" \
-  --header 'x-goog-api-version: 2' \
-  --header 'Content-Type: application/zip' \
-  --data-binary "@${ARCHIVE_PATH}")"
-
-upload_response="$(cat "${upload_body_file}")"
-rm -f "${upload_body_file}"
+request_upload
+upload_status="${UPLOAD_STATUS}"
+upload_response="${UPLOAD_RESPONSE}"
 
 if [ "${upload_status}" -lt 200 ] || [ "${upload_status}" -ge 300 ]; then
   echo "Upload request failed with HTTP ${upload_status}."
@@ -138,10 +204,33 @@ if [ "${upload_status}" -lt 200 ] || [ "${upload_status}" -ge 300 ]; then
   exit 1
 fi
 
-upload_state="$(UPLOAD_RESPONSE="${upload_response}" node -e "
-  const response = JSON.parse(process.env.UPLOAD_RESPONSE || '{}');
-  process.stdout.write(String(response.uploadState || ''));
-")"
+upload_state="$(parse_upload_state "${upload_response}")"
+
+if [ "${upload_state}" != 'SUCCESS' ]; then
+  if [ "$(upload_has_error_code "${upload_response}" 'ITEM_NOT_UPDATABLE')" = 'true' ]; then
+    echo "Upload failed with ITEM_NOT_UPDATABLE. Attempting to cancel pending submission..."
+
+    if ! cancel_pending_submission; then
+      echo "Upload did not succeed. Response:"
+      echo "${upload_response}"
+      exit 1
+    fi
+
+    echo "Retrying upload after cancelSubmission..."
+    request_upload
+    upload_status="${UPLOAD_STATUS}"
+    upload_response="${UPLOAD_RESPONSE}"
+
+    if [ "${upload_status}" -lt 200 ] || [ "${upload_status}" -ge 300 ]; then
+      echo "Upload retry failed with HTTP ${upload_status}."
+      echo "Response:"
+      echo "${upload_response}"
+      exit 1
+    fi
+
+    upload_state="$(parse_upload_state "${upload_response}")"
+  fi
+fi
 
 if [ "${upload_state}" != 'SUCCESS' ]; then
   echo "Upload did not succeed. Response:"
