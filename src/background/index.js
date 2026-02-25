@@ -2168,29 +2168,229 @@ const tabIdToSessionId = new Map();
  */
 const sessionsWithSentContent = new Set();
 
+const LLM_SESSION_TABS_STORAGE_KEY = 'llmSessionTabs';
+
+let llmTabStateLoaded = false;
+
+/**
+ * Serialize the in-memory LLM tab session map into a plain object for storage.
+ * @returns {Object.<string, Object.<string, number>>}
+ */
+function serializeLLMTabSessionMap() {
+  /** @type {Object.<string, Object.<string, number>>} */
+  const serialized = {};
+
+  for (const [sessionId, providerTabs] of sessionToLLMTabs.entries()) {
+    /** @type {Object.<string, number>} */
+    const providerToTabId = {};
+
+    for (const [providerId, tabId] of providerTabs.entries()) {
+      if (typeof tabId === 'number') {
+        providerToTabId[providerId] = tabId;
+      }
+    }
+
+    if (Object.keys(providerToTabId).length > 0) {
+      serialized[sessionId] = providerToTabId;
+    }
+  }
+
+  return serialized;
+}
+
+/**
+ * Persist LLM tab session mapping so it survives MV3 service worker restarts.
+ * @returns {Promise<void>}
+ */
+async function persistLLMTabSessionMap() {
+  try {
+    if (!chrome.storage.session) {
+      return;
+    }
+
+    await chrome.storage.session.set({
+      [LLM_SESSION_TABS_STORAGE_KEY]: serializeLLMTabSessionMap(),
+    });
+  } catch (error) {
+    console.warn('[background] Failed to persist LLM tab session map:', error);
+  }
+}
+
+/**
+ * Load LLM tab session mapping from storage once per service worker lifecycle.
+ * @returns {Promise<void>}
+ */
+async function ensureLLMTabSessionMapLoaded() {
+  if (llmTabStateLoaded) {
+    return;
+  }
+  llmTabStateLoaded = true;
+
+  try {
+    if (!chrome.storage.session) {
+      return;
+    }
+
+    const result = await chrome.storage.session.get(LLM_SESSION_TABS_STORAGE_KEY);
+    const storedSessionTabs = result[LLM_SESSION_TABS_STORAGE_KEY];
+    if (!storedSessionTabs || typeof storedSessionTabs !== 'object') {
+      return;
+    }
+
+    for (const [sessionId, storedProviderTabs] of Object.entries(
+      storedSessionTabs,
+    )) {
+      if (!storedProviderTabs || typeof storedProviderTabs !== 'object') {
+        continue;
+      }
+
+      const providerTabs = new Map();
+      for (const [providerId, tabId] of Object.entries(storedProviderTabs)) {
+        if (typeof tabId === 'number') {
+          providerTabs.set(providerId, tabId);
+        }
+      }
+
+      if (providerTabs.size > 0) {
+        sessionToLLMTabs.set(sessionId, providerTabs);
+      }
+    }
+  } catch (error) {
+    console.warn('[background] Failed to restore LLM tab session map:', error);
+  }
+}
+
+/**
+ * Calculate sort priority for LLM tab recovery candidates.
+ * Higher score means better candidate.
+ * @param {chrome.tabs.Tab} tab
+ * @param {number | null} activeWindowId
+ * @returns {number}
+ */
+function getLLMTabCandidateScore(tab, activeWindowId) {
+  let score = 0;
+  if (typeof activeWindowId === 'number' && tab.windowId === activeWindowId) {
+    score += 10;
+  }
+  if (tab.active) {
+    score += 3;
+  }
+  if (tab.pinned) {
+    score -= 1;
+  }
+  if (typeof tab.id === 'number') {
+    score += tab.id / 1000000;
+  }
+  return score;
+}
+
+/**
+ * Recover a session mapping by binding selected providers to existing open LLM tabs.
+ * This is used when in-memory state is missing after MV3 service worker restart.
+ * @param {string} sessionId
+ * @param {string[]} selectedLLMProviders
+ * @returns {Promise<Map<string, number> | null>}
+ */
+async function recoverSessionLLMTabs(sessionId, selectedLLMProviders) {
+  try {
+    const activeTabs = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    const activeWindowId =
+      activeTabs[0] && typeof activeTabs[0].windowId === 'number'
+        ? activeTabs[0].windowId
+        : null;
+
+    const allTabs = await chrome.tabs.query({});
+    /** @type {Map<string, chrome.tabs.Tab[]>} */
+    const tabsByProvider = new Map();
+
+    for (const tab of allTabs) {
+      if (typeof tab.id !== 'number' || typeof tab.url !== 'string') {
+        continue;
+      }
+
+      const providerId = getLLMProviderFromURL(tab.url);
+      if (!providerId) {
+        continue;
+      }
+
+      if (!tabsByProvider.has(providerId)) {
+        tabsByProvider.set(providerId, []);
+      }
+      const providerTabs = tabsByProvider.get(providerId);
+      if (providerTabs) {
+        providerTabs.push(tab);
+      }
+    }
+
+    for (const providerTabs of tabsByProvider.values()) {
+      providerTabs.sort((a, b) => {
+        return (
+          getLLMTabCandidateScore(b, activeWindowId) -
+          getLLMTabCandidateScore(a, activeWindowId)
+        );
+      });
+    }
+
+    const recoveredTabs = new Map();
+    const usedTabIds = new Set();
+
+    for (const providerId of selectedLLMProviders) {
+      const providerTabs = tabsByProvider.get(providerId) || [];
+      const candidateTab = providerTabs.find((tab) => {
+        return typeof tab.id === 'number' && !usedTabIds.has(tab.id);
+      });
+
+      if (candidateTab && typeof candidateTab.id === 'number') {
+        recoveredTabs.set(providerId, candidateTab.id);
+        usedTabIds.add(candidateTab.id);
+      }
+    }
+
+    if (recoveredTabs.size === 0) {
+      return null;
+    }
+
+    sessionToLLMTabs.set(sessionId, recoveredTabs);
+    await persistLLMTabSessionMap();
+    console.log('[background] Recovered LLM tabs for session:', sessionId);
+    return recoveredTabs;
+  } catch (error) {
+    console.warn('[background] Failed to recover LLM tabs for session:', error);
+    return null;
+  }
+}
+
 /**
  * Track when chat pages are closed to cleanup their LLM tabs
  */
 chrome.tabs.onRemoved.addListener((tabId) => {
-  const sessionId = tabIdToSessionId.get(tabId);
-  if (sessionId) {
-    // Chat page tab was closed, cleanup its LLM tabs only if content wasn't sent
-    if (!sessionsWithSentContent.has(sessionId)) {
-      const llmTabs = sessionToLLMTabs.get(sessionId);
-      if (llmTabs) {
-        for (const llmTabId of llmTabs.values()) {
-          chrome.tabs.remove(llmTabId).catch(() => {
-            // Tab might already be closed
-          });
+  void (async () => {
+    await ensureLLMTabSessionMapLoaded();
+
+    const sessionId = tabIdToSessionId.get(tabId);
+    if (sessionId) {
+      // Chat page tab was closed, cleanup its LLM tabs only if content wasn't sent
+      if (!sessionsWithSentContent.has(sessionId)) {
+        const llmTabs = sessionToLLMTabs.get(sessionId);
+        if (llmTabs) {
+          for (const llmTabId of llmTabs.values()) {
+            chrome.tabs.remove(llmTabId).catch(() => {
+              // Tab might already be closed
+            });
+          }
         }
+        sessionToLLMTabs.delete(sessionId);
+        await persistLLMTabSessionMap();
+      } else {
+        // Clean up the sent content flag as it's no longer needed
+        sessionsWithSentContent.delete(sessionId);
       }
-      sessionToLLMTabs.delete(sessionId);
-    } else {
-      // Clean up the sent content flag as it's no longer needed
-      sessionsWithSentContent.delete(sessionId);
+      tabIdToSessionId.delete(tabId);
     }
-    tabIdToSessionId.delete(tabId);
-  }
+  })();
 });
 
 /**
@@ -2202,29 +2402,34 @@ chrome.runtime.onConnect.addListener((port) => {
     const sessionId = port.name.substring(5); // Remove 'chat-' prefix
 
     port.onDisconnect.addListener(() => {
-      // Only clean up LLM tabs if content hasn't been sent yet
-      // If content was sent, keep the LLM tabs open for the user to continue
-      if (!sessionsWithSentContent.has(sessionId)) {
-        const llmTabs = sessionToLLMTabs.get(sessionId);
-        if (llmTabs) {
-          for (const llmTabId of llmTabs.values()) {
-            chrome.tabs.remove(llmTabId).catch(() => {
-              // Tab might already be closed
-            });
-          }
-          sessionToLLMTabs.delete(sessionId);
-        }
-      } else {
-        // Clean up the sent content flag as it's no longer needed
-        sessionsWithSentContent.delete(sessionId);
-      }
+      void (async () => {
+        await ensureLLMTabSessionMapLoaded();
 
-      // Clean up tab ID mapping
-      for (const [tabId, sid] of tabIdToSessionId.entries()) {
-        if (sid === sessionId) {
-          tabIdToSessionId.delete(tabId);
+        // Only clean up LLM tabs if content hasn't been sent yet
+        // If content was sent, keep the LLM tabs open for the user to continue
+        if (!sessionsWithSentContent.has(sessionId)) {
+          const llmTabs = sessionToLLMTabs.get(sessionId);
+          if (llmTabs) {
+            for (const llmTabId of llmTabs.values()) {
+              chrome.tabs.remove(llmTabId).catch(() => {
+                // Tab might already be closed
+              });
+            }
+            sessionToLLMTabs.delete(sessionId);
+            await persistLLMTabSessionMap();
+          }
+        } else {
+          // Clean up the sent content flag as it's no longer needed
+          sessionsWithSentContent.delete(sessionId);
         }
-      }
+
+        // Clean up tab ID mapping
+        for (const [tabId, sid] of tabIdToSessionId.entries()) {
+          if (sid === sessionId) {
+            tabIdToSessionId.delete(tabId);
+          }
+        }
+      })();
     });
   }
 });
@@ -2310,6 +2515,8 @@ async function openLLMTabs(
   currentTabIndex,
 ) {
   try {
+    await ensureLLMTabSessionMapLoaded();
+
     if (!sessionId) {
       return { success: false, error: 'Session ID is required' };
     }
@@ -2337,7 +2544,18 @@ async function openLLMTabs(
 
       // Check if we already have a tab for this provider
       if (llmTabsMap.has(providerId)) {
-        return;
+        const existingTabId = llmTabsMap.get(providerId);
+        if (typeof existingTabId === 'number') {
+          try {
+            await chrome.tabs.get(existingTabId);
+            return;
+          } catch (error) {
+            // Existing tab mapping is stale (tab was closed), recreate it.
+            llmTabsMap.delete(providerId);
+          }
+        } else {
+          llmTabsMap.delete(providerId);
+        }
       }
 
       // Create new tab positioned right next to current tab
@@ -2355,6 +2573,7 @@ async function openLLMTabs(
     });
 
     await Promise.all(tabPromises);
+    await persistLLMTabSessionMap();
 
     return { success: true };
   } catch (error) {
@@ -2370,6 +2589,8 @@ async function openLLMTabs(
  */
 async function closeLLMTabs(sessionId) {
   try {
+    await ensureLLMTabSessionMapLoaded();
+
     if (!sessionId) {
       return { success: false, error: 'Session ID is required' };
     }
@@ -2382,6 +2603,7 @@ async function closeLLMTabs(sessionId) {
         });
       }
       sessionToLLMTabs.delete(sessionId);
+      await persistLLMTabSessionMap();
 
       // Clean up tab ID mapping
       for (const [tabId, sid] of tabIdToSessionId.entries()) {
@@ -2410,6 +2632,8 @@ async function closeLLMTabs(sessionId) {
  */
 async function switchLLMProvider(sessionId, oldProviderId, newProviderId) {
   try {
+    await ensureLLMTabSessionMapLoaded();
+
     if (!sessionId) {
       return { success: false, error: 'Session ID is required' };
     }
@@ -2438,6 +2662,7 @@ async function switchLLMProvider(sessionId, oldProviderId, newProviderId) {
     // Update the mapping
     llmTabs.delete(oldProviderId);
     llmTabs.set(newProviderId, oldTabId);
+    await persistLLMTabSessionMap();
 
     return { success: true };
   } catch (error) {
@@ -2455,6 +2680,8 @@ async function switchLLMProvider(sessionId, oldProviderId, newProviderId) {
  */
 async function reuseLLMTabs(sessionId, selectedLLMProviders, contents) {
   try {
+    await ensureLLMTabSessionMapLoaded();
+
     if (!sessionId) {
       return { success: false, error: 'Session ID is required' };
     }
@@ -2463,7 +2690,10 @@ async function reuseLLMTabs(sessionId, selectedLLMProviders, contents) {
     // This prevents auto-cleanup if the popup closes while we're processing
     sessionsWithSentContent.add(sessionId);
 
-    const llmTabs = sessionToLLMTabs.get(sessionId);
+    let llmTabs = sessionToLLMTabs.get(sessionId);
+    if (!llmTabs) {
+      llmTabs = await recoverSessionLLMTabs(sessionId, selectedLLMProviders);
+    }
     if (!llmTabs) {
       sessionsWithSentContent.delete(sessionId); // Clean up if we're failing
       return {
@@ -2486,6 +2716,33 @@ async function reuseLLMTabs(sessionId, selectedLLMProviders, contents) {
           llmTabs.delete(providerId);
         }
       }
+    }
+
+    if (!firstTabId) {
+      llmTabs = await recoverSessionLLMTabs(sessionId, selectedLLMProviders);
+      if (llmTabs) {
+        for (const providerId of selectedLLMProviders) {
+          const recoveredTabId = llmTabs.get(providerId);
+          if (recoveredTabId) {
+            try {
+              await chrome.tabs.get(recoveredTabId);
+              firstTabId = recoveredTabId;
+              break;
+            } catch (error) {
+              llmTabs.delete(providerId);
+            }
+          }
+        }
+      }
+    }
+
+    if (!firstTabId) {
+      sessionsWithSentContent.delete(sessionId);
+      await persistLLMTabSessionMap();
+      return {
+        success: false,
+        error: 'No available LLM tabs found for this chat session',
+      };
     }
 
     // Activate the first tab immediately so user sees it right away
@@ -2529,6 +2786,7 @@ async function reuseLLMTabs(sessionId, selectedLLMProviders, contents) {
 
     // Wait for all injections to complete
     await Promise.all(injectionPromises);
+    await persistLLMTabSessionMap();
 
     return { success: true };
   } catch (error) {
