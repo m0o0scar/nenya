@@ -128,6 +128,51 @@ function getPinnedShortcutIndexFromCommand(command) {
 }
 
 /**
+ * Create a tab immediately to the right of the active tab in the last focused window.
+ * If the active tab is in a group, the new tab is moved into that same group.
+ * @param {{url: string, pinned?: boolean, active?: boolean}} tabCreateProperties
+ * @returns {Promise<chrome.tabs.Tab>}
+ */
+async function createTabNextToActive(tabCreateProperties) {
+  const tabs = await chrome.tabs.query({
+    active: true,
+    lastFocusedWindow: true,
+  });
+  const activeTab = tabs[0] || null;
+
+  const createProperties = { ...tabCreateProperties };
+  let activeGroupId = -1;
+
+  if (activeTab && typeof activeTab.windowId === 'number') {
+    createProperties.windowId = activeTab.windowId;
+  }
+  if (activeTab && typeof activeTab.index === 'number') {
+    createProperties.index = activeTab.index + 1;
+  }
+  if (
+    activeTab &&
+    typeof activeTab.groupId === 'number' &&
+    activeTab.groupId >= 0
+  ) {
+    activeGroupId = activeTab.groupId;
+  }
+
+  const newTab = await chrome.tabs.create(createProperties);
+  if (activeGroupId >= 0 && typeof newTab?.id === 'number') {
+    try {
+      await chrome.tabs.group({
+        groupId: activeGroupId,
+        tabIds: newTab.id,
+      });
+    } catch (error) {
+      console.warn('[tabs] Failed to place tab in active group:', error);
+    }
+  }
+
+  return newTab;
+}
+
+/**
  * Open a pinned search item in a new tab by 0-based index.
  * @param {number} pinnedIndex
  * @returns {Promise<void>}
@@ -149,7 +194,7 @@ async function handleOpenPinnedShortcutCommand(pinnedIndex) {
       return;
     }
 
-    await chrome.tabs.create({ url });
+    await createTabNextToActive({ url, active: true });
   } catch (error) {
     console.warn('[commands] Open pinned shortcut failed:', error);
   }
@@ -3016,7 +3061,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const { url, pinned } = message;
     void (async () => {
       try {
-        await chrome.tabs.create({ url, pinned, active: true });
+        await createTabNextToActive({ url, pinned, active: true });
         sendResponse({ ok: true });
       } catch (error) {
         console.error('[background] Restore tab failed:', error);
