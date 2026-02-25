@@ -33,6 +33,9 @@ Set these in repository settings:
 - `CWS_PUBLISH_TARGET` (optional)
   - `default` (public) or `trustedTesters`.
   - If omitted, workflow defaults to `default`.
+- `CWS_PUBLISHER_ID` (optional but recommended)
+  - Required only for auto-canceling a pending review when upload returns `ITEM_NOT_UPDATABLE`.
+  - Value is your Chrome Web Store publisher ID used by Chrome Web Store API v2.
 
 ## One-Time Credential Setup (OAuth Refresh Token)
 
@@ -55,6 +58,9 @@ Set these in repository settings:
   - `CWS_CLIENT_ID` and `CWS_CLIENT_SECRET` do not match, are wrong, or include hidden whitespace.
 - `invalid_grant`
   - Refresh token is revoked/expired, or created for a different OAuth client.
+- `ITEM_NOT_UPDATABLE`
+  - Extension has an active pending review/ready-to-publish state and cannot accept a new upload yet.
+  - Set `CWS_PUBLISHER_ID` so CI can call `cancelSubmission` and retry upload automatically.
 
 ## Service Account Option
 

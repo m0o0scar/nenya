@@ -109,4 +109,5 @@ jobs:
         CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
         CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
         CWS_PUBLISH_TARGET: ${{ secrets.CWS_PUBLISH_TARGET }}
+        CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
       run: ./.github/scripts/publish-to-cws.sh "dist/nenya-${{ steps.release_meta.outputs.tag }}.zip"
