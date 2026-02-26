@@ -67,8 +67,14 @@
     <!-- bookmarks search -->
     <article class="w-full p-4 bg-base-100" aria-labelledby="bookmarks-search-heading">
       <div class="space-y-2">
-        <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
-          class="input input-bordered w-full" autofocus />
+        <div class="relative">
+          <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
+            class="input input-bordered w-full" autofocus />
+          <div id="customSearchSuggestions"
+            class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-base-100 border border-base-300 rounded-md shadow-md max-h-56 overflow-y-auto"
+            role="listbox" aria-label="Custom search engines">
+          </div>
+        </div>
         <div id="pinnedItemsContainer" class="flex flex-wrap gap-2 mt-2 empty:mt-0"></div>
         <div id="bookmarksSearchResults" class="space-y-2" role="list"></div>
       </div>
