@@ -274,6 +274,9 @@ const bookmarksSearchInput = /** @type {HTMLInputElement | null} */ (
 const bookmarksSearchResults = /** @type {HTMLDivElement | null} */ (
   document.getElementById('bookmarksSearchResults')
 );
+const customSearchSuggestions = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('customSearchSuggestions')
+);
 const mirrorSection = /** @type {HTMLElement | null} */ (
   document.querySelector('article[aria-labelledby="mirror-heading"]')
 );
@@ -510,8 +513,12 @@ async function loadAndRenderShortcuts() {
 
 
 // Initialize bookmarks search functionality
-if (bookmarksSearchInput && bookmarksSearchResults) {
-  void initializeBookmarksSearch(bookmarksSearchInput, bookmarksSearchResults);
+if (bookmarksSearchInput && bookmarksSearchResults && customSearchSuggestions) {
+  void initializeBookmarksSearch(
+    bookmarksSearchInput,
+    bookmarksSearchResults,
+    customSearchSuggestions,
+  );
 }
 
 if (!statusMessage) {
@@ -3066,8 +3073,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * Initializes the bookmark search functionality.
  * @param {HTMLInputElement} inputElement
  * @param {HTMLDivElement} resultsElement
+ * @param {HTMLDivElement} customSearchSuggestionsElement
  */
-async function initializeBookmarksSearch(inputElement, resultsElement) {
+async function initializeBookmarksSearch(
+  inputElement,
+  resultsElement,
+  customSearchSuggestionsElement,
+) {
   /**
    * Increments the weight of a search result URL in local storage.
    * @param {string} url
@@ -3090,6 +3102,10 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
   let highlightedIndex = -1;
   /** @type {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} */
   let currentResults = [];
+  /** @type {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} */
+  let filteredCustomSearchEngines = [];
+  /** @type {number} */
+  let highlightedCustomSearchIndex = -1;
 
   // Initial render of pinned items
   void renderPinnedItems();
@@ -3100,6 +3116,117 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     customSearchEngines = await getCustomSearchEngines();
   } catch (error) {
     console.error('[popup] Failed to load custom search engines:', error);
+  }
+
+  /**
+   * Hides custom search suggestions and resets related state.
+   * @returns {void}
+   */
+  function hideCustomSearchSuggestions() {
+    filteredCustomSearchEngines = [];
+    highlightedCustomSearchIndex = -1;
+    customSearchSuggestionsElement.innerHTML = '';
+    customSearchSuggestionsElement.classList.add('hidden');
+  }
+
+  /**
+   * Updates custom-search suggestion item highlight.
+   * @returns {void}
+   */
+  function updateCustomSearchHighlight() {
+    const items = customSearchSuggestionsElement.querySelectorAll(
+      '[data-custom-search-index]',
+    );
+    items.forEach((item, index) => {
+      if (!(item instanceof HTMLDivElement)) {
+        return;
+      }
+      if (index === highlightedCustomSearchIndex) {
+        item.classList.add('bg-base-200');
+        item.scrollIntoView({ block: 'nearest' });
+      } else {
+        item.classList.remove('bg-base-200');
+      }
+    });
+  }
+
+  /**
+   * Inserts custom search shortcut into the search input.
+   * @param {{id: string, name: string, shortcut: string, searchUrl: string}} engine
+   * @returns {void}
+   */
+  function applyCustomSearchShortcut(engine) {
+    inputElement.value = `/${engine.shortcut} `;
+    hideCustomSearchSuggestions();
+    inputElement.focus();
+    const cursorPos = inputElement.value.length;
+    inputElement.setSelectionRange(cursorPos, cursorPos);
+  }
+
+  /**
+   * Renders custom search suggestions with first item highlighted by default.
+   * @returns {void}
+   */
+  function renderCustomSearchSuggestions() {
+    customSearchSuggestionsElement.innerHTML = '';
+
+    if (filteredCustomSearchEngines.length === 0) {
+      customSearchSuggestionsElement.classList.add('hidden');
+      highlightedCustomSearchIndex = -1;
+      return;
+    }
+
+    filteredCustomSearchEngines.forEach((engine, index) => {
+      const item = document.createElement('div');
+      item.className =
+        'px-3 py-2 cursor-pointer hover:bg-base-200 flex items-center justify-between gap-2';
+      item.dataset.customSearchIndex = String(index);
+
+      const shortcutSpan = document.createElement('span');
+      shortcutSpan.className = 'font-mono text-sm';
+      shortcutSpan.textContent = `/${engine.shortcut}`;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'text-xs text-base-content/70 truncate';
+      nameSpan.textContent = engine.name;
+
+      item.appendChild(shortcutSpan);
+      item.appendChild(nameSpan);
+      item.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      item.addEventListener('click', () => {
+        applyCustomSearchShortcut(engine);
+      });
+
+      customSearchSuggestionsElement.appendChild(item);
+    });
+
+    highlightedCustomSearchIndex = 0;
+    updateCustomSearchHighlight();
+    customSearchSuggestionsElement.classList.remove('hidden');
+  }
+
+  /**
+   * Updates custom search suggestions based on current query.
+   * @param {string} query
+   * @returns {void}
+   */
+  function updateCustomSearchSuggestions(query) {
+    const slashCommandMatch = query.match(/^\/([^\s]*)$/);
+    if (!slashCommandMatch) {
+      hideCustomSearchSuggestions();
+      return;
+    }
+
+    const shortcutPrefix = slashCommandMatch[1].toLowerCase();
+    filteredCustomSearchEngines = customSearchEngines
+      .filter((engine) =>
+        engine.shortcut.toLowerCase().startsWith(shortcutPrefix),
+      )
+      .sort((a, b) => a.shortcut.localeCompare(b.shortcut));
+
+    renderCustomSearchSuggestions();
   }
 
 
@@ -3601,11 +3728,11 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     const query = target.value;
     highlightedIndex = -1; // Reset highlight when query changes
 
-    const isCustomSearch = customSearchEngines.some((engine) =>
-      query.toLowerCase().startsWith(engine.shortcut.toLowerCase() + ' '),
-    );
+    updateCustomSearchSuggestions(query);
 
-    if (query.length >= 4 && !isCustomSearch) {
+    const isSlashCommandQuery = query.trim().startsWith('/');
+
+    if (query.length >= 4 && !isSlashCommandQuery) {
       debouncedSearch(query);
     } else {
       resultsElement.innerHTML = '';
@@ -3613,7 +3740,65 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
     }
   });
 
+  document.addEventListener('click', (event) => {
+    const target = /** @type {HTMLElement | null} */ (event.target);
+    if (!target) {
+      return;
+    }
+    if (
+      target !== inputElement &&
+      !customSearchSuggestionsElement.contains(target)
+    ) {
+      hideCustomSearchSuggestions();
+    }
+  });
+
   inputElement.addEventListener('keydown', async (event) => {
+    const suggestionsVisible = !customSearchSuggestionsElement.classList.contains('hidden');
+
+    if (suggestionsVisible && event.key === 'Tab') {
+      if (
+        highlightedCustomSearchIndex >= 0 &&
+        highlightedCustomSearchIndex < filteredCustomSearchEngines.length
+      ) {
+        event.preventDefault();
+        applyCustomSearchShortcut(
+          filteredCustomSearchEngines[highlightedCustomSearchIndex],
+        );
+      }
+      return;
+    }
+
+    if (suggestionsVisible && event.key === 'ArrowDown') {
+      event.preventDefault();
+      if (filteredCustomSearchEngines.length > 0) {
+        highlightedCustomSearchIndex =
+          highlightedCustomSearchIndex < filteredCustomSearchEngines.length - 1
+            ? highlightedCustomSearchIndex + 1
+            : 0;
+        updateCustomSearchHighlight();
+      }
+      return;
+    }
+
+    if (suggestionsVisible && event.key === 'ArrowUp') {
+      event.preventDefault();
+      if (filteredCustomSearchEngines.length > 0) {
+        highlightedCustomSearchIndex =
+          highlightedCustomSearchIndex > 0
+            ? highlightedCustomSearchIndex - 1
+            : filteredCustomSearchEngines.length - 1;
+        updateCustomSearchHighlight();
+      }
+      return;
+    }
+
+    if (suggestionsVisible && event.key === 'Escape') {
+      event.preventDefault();
+      hideCustomSearchSuggestions();
+      return;
+    }
+
     if (event.key === 'Enter') {
       event.preventDefault();
       const query = inputElement.value.trim();
@@ -3641,38 +3826,21 @@ async function initializeBookmarksSearch(inputElement, resultsElement) {
       if (query) {
         try {
           const engines = await getCustomSearchEngines();
-          let engineFound = false;
+          const commandMatch = query.match(/^\/([^\s]+)\s+(.+)$/);
+          const shortcut = commandMatch?.[1]?.toLowerCase() || '';
+          const searchQuery = commandMatch?.[2]?.trim() || '';
+          const matchedEngine = engines.find(
+            (engine) => engine.shortcut.toLowerCase() === shortcut,
+          );
 
-          for (const engine of engines) {
-            const shortcut = engine.shortcut;
-            const lowerCaseQuery = query.toLowerCase();
-            const lowerCaseShortcut = shortcut.toLowerCase();
-            let searchQuery = '';
-
-            // Prefix: "ss query"
-            if (lowerCaseQuery.startsWith(lowerCaseShortcut + ' ')) {
-              searchQuery = query.substring(shortcut.length + 1).trim();
-            }
-            // Suffix: "query ss"
-            else if (lowerCaseQuery.endsWith(' ' + lowerCaseShortcut)) {
-              searchQuery = query
-                .substring(0, query.length - shortcut.length - 1)
-                .trim();
-            }
-
-            if (searchQuery) {
-              const searchUrl = engine.searchUrl.replace(
-                '%s',
-                encodeURIComponent(searchQuery),
-              );
-              chrome.tabs.create({ url: searchUrl });
-              closeCurrentSurface();
-              engineFound = true;
-              break;
-            }
-          }
-
-          if (!engineFound) {
+          if (matchedEngine && searchQuery) {
+            const searchUrl = matchedEngine.searchUrl.replace(
+              '%s',
+              encodeURIComponent(searchQuery),
+            );
+            chrome.tabs.create({ url: searchUrl });
+            closeCurrentSurface();
+          } else {
             // Fall back to Google search
             const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
               query,
