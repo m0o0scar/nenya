@@ -11,7 +11,7 @@ This repository has two release workflows:
 - Trigger: push tag `v*`
 - Trigger: `workflow_run` when `Version Management` completes successfully on `main`
 - Also supports manual run (`workflow_dispatch`) with a tag input.
-- Action: verify tag commit belongs to `main`, build zip, upload + publish to Chrome Web Store
+- Action: verify tag commit belongs to `main`, build zip, mint a short-lived access token from Google service account credentials, then upload + publish to Chrome Web Store
 
 ## Required GitHub Secrets
 
@@ -24,12 +24,9 @@ Set these in repository settings:
   - Optional for this setup (publish also runs via `workflow_run`).
   - Useful if you want the tag push event itself to trigger other workflows.
   - Recommended scopes: `repo` and `workflow`.
-- `CWS_CLIENT_ID`
-  - OAuth 2.0 client ID from Google Cloud project.
-- `CWS_CLIENT_SECRET`
-  - OAuth 2.0 client secret for the same client ID.
-- `CWS_REFRESH_TOKEN`
-  - Refresh token issued with scope `https://www.googleapis.com/auth/chromewebstore`.
+- `GCP_SERVICE_ACCOUNT_KEY`
+  - Full JSON key content for the Google service account used by CI.
+  - The workflow uses this secret with `google-github-actions/auth` and requests scope `https://www.googleapis.com/auth/chromewebstore`.
 - `CWS_PUBLISH_TARGET` (optional)
   - `default` (public) or `trustedTesters`.
   - If omitted, workflow defaults to `default`.
@@ -37,31 +34,34 @@ Set these in repository settings:
   - Required only for auto-canceling a pending review when upload returns `ITEM_NOT_UPDATABLE`.
   - Value is your Chrome Web Store publisher ID used by Chrome Web Store API v2.
 
-## One-Time Credential Setup (OAuth Refresh Token)
+## One-Time Credential Setup (Service Account)
 
 1. Create a Google Cloud project (or use an existing one owned by the publisher account).
 2. Enable the Chrome Web Store API.
-3. Create OAuth client credentials (`Web application` recommended for CI).
-   - Add `https://developers.google.com/oauthplayground` to Authorized redirect URIs.
-4. Generate a refresh token with scope:
-   - `https://www.googleapis.com/auth/chromewebstore`
-   - In OAuth Playground, enable `Use your own OAuth credentials` and use this same client ID/secret.
-5. Add all values as GitHub secrets.
+3. Create a service account in that project.
+   - In the creation wizard:
+   - Step 2 (`Grant this service account access to project`): leave role empty.
+   - Step 3 (`Grant users access to this service account`): leave empty unless you intentionally want additional admins/users.
+4. Create a JSON key for that service account.
+5. In Chrome Web Store Developer Dashboard, add this service account email under API/service-account access for your publisher.
+   - Ensure it can manage the target extension.
+6. Save the JSON key content as GitHub secret `GCP_SERVICE_ACCOUNT_KEY`.
+7. Add/update `CWS_EXTENSION_ID` and optionally `CWS_PUBLISH_TARGET` and `CWS_PUBLISHER_ID`.
 
-## Troubleshooting OAuth Errors
+## Troubleshooting Service Account Errors
 
-- `unauthorized_client`
-  - Use a `Web application` OAuth client in Google Cloud.
-  - Ensure `CWS_REFRESH_TOKEN` was minted using the exact same `CWS_CLIENT_ID`.
-  - Ensure the Google account used to mint the refresh token has permission to manage the target extension in Chrome Web Store.
-- `invalid_client`
-  - `CWS_CLIENT_ID` and `CWS_CLIENT_SECRET` do not match, are wrong, or include hidden whitespace.
-- `invalid_grant`
-  - Refresh token is revoked/expired, or created for a different OAuth client.
+- `google-github-actions/auth` fails before publish
+  - `GCP_SERVICE_ACCOUNT_KEY` is missing, malformed, or not valid JSON.
+- Upload/publish returns `401`/`403`
+  - Service account is not linked in Chrome Web Store API access.
+  - Service account lacks permission for the target extension/publisher.
 - `ITEM_NOT_UPDATABLE`
   - Extension has an active pending review/ready-to-publish state and cannot accept a new upload yet.
   - Set `CWS_PUBLISHER_ID` so CI can call `cancelSubmission` and retry upload automatically.
+- Publish fails after key rotation/revocation
+  - Generate a new JSON key and update `GCP_SERVICE_ACCOUNT_KEY`.
 
-## Service Account Option
+## Notes
 
-Chrome Web Store API v2 also supports service accounts. You can switch to that flow later, but the current workflow uses OAuth refresh token credentials.
+- This workflow no longer requires `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`, or `CWS_REFRESH_TOKEN`.
+- Service accounts avoid refresh-token revocation/expiration issues (`invalid_grant` from refresh-token OAuth flow).

@@ -101,13 +101,20 @@ jobs:
       if: steps.release_meta.outputs.skip != 'true'
       run: ./.github/scripts/build-extension.sh dist "nenya-${{ steps.release_meta.outputs.tag }}.zip"
 
+    - name: Authenticate Google service account
+      if: steps.release_meta.outputs.skip != 'true'
+      id: google_auth
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: '${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}'
+        token_format: access_token
+        access_token_scopes: https://www.googleapis.com/auth/chromewebstore
+
     - name: Publish to Chrome Web Store
       if: steps.release_meta.outputs.skip != 'true'
       env:
         CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
-        CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
-        CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
-        CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        CWS_ACCESS_TOKEN: ${{ steps.google_auth.outputs.access_token }}
         CWS_PUBLISH_TARGET: ${{ secrets.CWS_PUBLISH_TARGET }}
         CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
       run: ./.github/scripts/publish-to-cws.sh "dist/nenya-${{ steps.release_meta.outputs.tag }}.zip"
