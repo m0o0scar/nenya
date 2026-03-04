@@ -69,6 +69,12 @@ const LLM_PROVIDERS = [
 ];
 
 const STORAGE_KEY_SELECTED_PROVIDERS = 'chatLLMSelectedProviders';
+const TAB_CONTENT_MODE_PAGE = 'page-content';
+const TAB_CONTENT_MODE_HTML = 'html-source';
+
+/**
+ * @typedef {'page-content' | 'html-source'} TabContentMode
+ */
 
 /**
  * Get icon image HTML for LLM provider
@@ -90,6 +96,9 @@ let selectedProviders = new Set();
 
 /** @type {chrome.tabs.Tab[]} */
 let targetTabs = [];
+
+/** @type {Map<number, TabContentMode>} */
+const tabContentModeById = new Map();
 
 /** @type {string | null} */
 let currentSelectedPromptId = null;
@@ -227,27 +236,142 @@ async function getTargetTabs() {
 }
 
 /**
+ * Synchronize per-tab content modes with the current tab selection.
+ * @returns {void}
+ */
+function syncTabContentModesWithTargetTabs() {
+  const validTabIds = new Set(
+    targetTabs
+      .map((tab) => tab.id)
+      .filter((tabId) => typeof tabId === 'number'),
+  );
+
+  Array.from(tabContentModeById.keys()).forEach((tabId) => {
+    if (!validTabIds.has(tabId)) {
+      tabContentModeById.delete(tabId);
+    }
+  });
+
+  validTabIds.forEach((tabId) => {
+    if (!tabContentModeById.has(tabId)) {
+      tabContentModeById.set(tabId, TAB_CONTENT_MODE_PAGE);
+    }
+  });
+}
+
+/**
+ * Get current content mode for a tab.
+ * @param {number} tabId
+ * @returns {TabContentMode}
+ */
+function getTabContentMode(tabId) {
+  return tabContentModeById.get(tabId) || TAB_CONTENT_MODE_PAGE;
+}
+
+/**
+ * Toggle content mode for a tab.
+ * @param {number} tabId
+ * @returns {void}
+ */
+function toggleTabContentMode(tabId) {
+  const nextMode =
+    getTabContentMode(tabId) === TAB_CONTENT_MODE_HTML
+      ? TAB_CONTENT_MODE_PAGE
+      : TAB_CONTENT_MODE_HTML;
+  tabContentModeById.set(tabId, nextMode);
+  renderTabFavicons();
+}
+
+/**
+ * Render tab favicon controls in the footer.
+ * @returns {void}
+ */
+function renderTabFavicons() {
+  if (!tabFaviconsDiv) {
+    return;
+  }
+
+  tabFaviconsDiv.innerHTML = '';
+  if (targetTabs.length === 0) {
+    return;
+  }
+
+  targetTabs.slice(0, 5).forEach((tab) => {
+    const tabId = tab.id;
+    if (typeof tabId !== 'number') {
+      const fallbackFavicon = document.createElement('img');
+      fallbackFavicon.className = 'tab-favicon';
+      fallbackFavicon.src =
+        tab.favIconUrl ||
+        'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
+      fallbackFavicon.alt = tab.title || '';
+      fallbackFavicon.title = tab.title || '';
+      tabFaviconsDiv.appendChild(fallbackFavicon);
+      return;
+    }
+
+    const mode = getTabContentMode(tabId);
+    const modeLabel =
+      mode === TAB_CONTENT_MODE_HTML ? 'HTML source mode' : 'Page content mode';
+
+    const faviconButton = document.createElement('button');
+    faviconButton.type = 'button';
+    faviconButton.className = 'tab-favicon-button';
+    if (mode === TAB_CONTENT_MODE_HTML) {
+      faviconButton.classList.add('html-source-mode');
+    }
+    faviconButton.title = `${tab.title || tab.url || 'Tab'}\n${modeLabel}`;
+
+    faviconButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleTabContentMode(tabId);
+    });
+
+    const favicon = document.createElement('img');
+    favicon.className = 'tab-favicon';
+    favicon.src =
+      tab.favIconUrl ||
+      'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
+    favicon.alt = tab.title || '';
+    faviconButton.appendChild(favicon);
+
+    if (mode === TAB_CONTENT_MODE_HTML) {
+      const modeBadge = document.createElement('span');
+      modeBadge.className = 'tab-mode-badge';
+      modeBadge.textContent = 'HTML';
+      faviconButton.appendChild(modeBadge);
+    }
+
+    tabFaviconsDiv.appendChild(faviconButton);
+  });
+}
+
+/**
+ * Build payload map for tab content modes.
+ * @returns {Record<string, TabContentMode>}
+ */
+function buildTabContentModesPayload() {
+  /** @type {Record<string, TabContentMode>} */
+  const payload = {};
+
+  targetTabs.forEach((tab) => {
+    if (typeof tab.id === 'number') {
+      payload[String(tab.id)] = getTabContentMode(tab.id);
+    }
+  });
+
+  return payload;
+}
+
+/**
  * Update the tabs info display in the toolbar.
  * @returns {Promise<void>}
  */
 async function updateTabsInfoDisplay() {
   targetTabs = await getTargetTabs();
-
-  if (tabFaviconsDiv) {
-    tabFaviconsDiv.innerHTML = '';
-    if (targetTabs.length > 0) {
-      targetTabs.slice(0, 5).forEach((tab) => {
-        const favicon = document.createElement('img');
-        favicon.className = 'tab-favicon';
-        favicon.src =
-          tab.favIconUrl ||
-          'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>';
-        favicon.alt = tab.title || '';
-        favicon.title = tab.title || '';
-        tabFaviconsDiv.appendChild(favicon);
-      });
-    }
-  }
+  syncTabContentModesWithTargetTabs();
+  renderTabFavicons();
 
   if (tabCountSpan) {
     if (targetTabs.length === 0) {
@@ -799,6 +923,7 @@ async function handleSend() {
       tabIds: targetTabs
         .map((t) => t.id)
         .filter((id) => typeof id === 'number'),
+      tabContentModes: buildTabContentModesPayload(),
       llmProviders: Array.from(selectedProviders),
       promptContent: promptText,
       sessionId: sessionId,
