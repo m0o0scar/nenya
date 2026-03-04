@@ -99,11 +99,17 @@ const COLLECT_AND_SEND_TO_LLM_MESSAGE = 'collect-and-send-to-llm';
 const OPEN_LLM_TABS_MESSAGE = 'open-llm-tabs';
 const CLOSE_LLM_TABS_MESSAGE = 'close-llm-tabs';
 const SWITCH_LLM_PROVIDER_MESSAGE = 'switch-llm-provider';
+const TAB_CONTENT_MODE_PAGE = 'page-content';
+const TAB_CONTENT_MODE_HTML = 'html-source';
 const ENCRYPT_SERVICE_URL = 'https://oh-auth.vercel.app/secret/encrypt';
 const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
 const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
 const OPEN_PINNED_SHORTCUT_COMMAND_PREFIX = 'open-pinned-shortcut-';
 const MAX_PINNED_SHORTCUT_COMMAND_POSITION = 5;
+
+/**
+ * @typedef {'page-content' | 'html-source'} TabContentMode
+ */
 
 /**
  * Resolve 0-based pinned shortcut index for command-based shortcut open.
@@ -2185,6 +2191,169 @@ async function collectPageContentFromTabs(tabIds) {
   return results.filter(Boolean);
 }
 
+/**
+ * Parse incoming tab content mode payload into a typed map.
+ * @param {unknown} rawTabContentModes
+ * @returns {Map<number, TabContentMode>}
+ */
+function parseTabContentModes(rawTabContentModes) {
+  /** @type {Map<number, TabContentMode>} */
+  const modes = new Map();
+  if (!rawTabContentModes || typeof rawTabContentModes !== 'object') {
+    return modes;
+  }
+
+  for (const [tabIdRaw, modeRaw] of Object.entries(rawTabContentModes)) {
+    const tabId = Number.parseInt(tabIdRaw, 10);
+    if (!Number.isInteger(tabId)) {
+      continue;
+    }
+    if (modeRaw === TAB_CONTENT_MODE_HTML || modeRaw === TAB_CONTENT_MODE_PAGE) {
+      modes.set(tabId, modeRaw);
+    }
+  }
+
+  return modes;
+}
+
+/**
+ * Collect sanitized HTML source code from a single tab.
+ * @param {number} tabId
+ * @returns {Promise<{tabId: number, title: string, url: string, content: string} | null>}
+ */
+async function collectHtmlSourceFromTab(tabId) {
+  if (typeof tabId !== 'number') {
+    return null;
+  }
+
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const htmlRoot = document.documentElement;
+        const htmlClone = htmlRoot ? htmlRoot.cloneNode(true) : null;
+        const title = document.title || '';
+        const url = window.location.href || '';
+        if (!(htmlClone instanceof Element)) {
+          return {
+            title,
+            url,
+            content: '<content>\nno content\n</content>',
+          };
+        }
+
+        const head = htmlClone.querySelector('head');
+        if (head) {
+          head.remove();
+        }
+
+        htmlClone
+          .querySelectorAll('style, script, iframe, svg')
+          .forEach((el) => el.remove());
+
+        htmlClone.querySelectorAll('img[src]').forEach((img) => {
+          const src = img.getAttribute('src') || '';
+          if (/^\s*data:image\/[^;]+;base64,/i.test(src)) {
+            img.setAttribute('src', '<base64>');
+          }
+        });
+
+        const htmlSource = htmlClone.outerHTML || '';
+        return {
+          title,
+          url,
+          content: `<content>\n${htmlSource || 'no content'}\n</content>`,
+        };
+      },
+    });
+
+    const result = Array.isArray(results) && results[0] ? results[0].result : null;
+    if (!result || typeof result !== 'object') {
+      return {
+        tabId,
+        title: '',
+        url: '',
+        content: '(failed to collect html source)',
+      };
+    }
+
+    return {
+      tabId,
+      title: typeof result.title === 'string' ? result.title : '',
+      url: typeof result.url === 'string' ? result.url : '',
+      content:
+        typeof result.content === 'string'
+          ? result.content
+          : '(failed to collect html source)',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(
+      `[background] Error collecting HTML source from tab ${tabId}:`,
+      error,
+    );
+    return {
+      tabId,
+      title: '',
+      url: '',
+      content: `(error collecting html source: ${message})`,
+    };
+  }
+}
+
+/**
+ * Collect context for LLM send flow with per-tab content mode support.
+ * @param {number[]} tabIds
+ * @param {Map<number, TabContentMode>} tabContentModes
+ * @returns {Promise<Array<{tabId: number, title: string, url: string, content: string}>>}
+ */
+async function collectLLMContextFromTabs(tabIds, tabContentModes) {
+  const promises = tabIds.map(async (tabId) => {
+    if (typeof tabId !== 'number') {
+      return null;
+    }
+
+    const mode = tabContentModes.get(tabId) || TAB_CONTENT_MODE_PAGE;
+    if (mode === TAB_CONTENT_MODE_HTML) {
+      return (
+        (await collectHtmlSourceFromTab(tabId)) || {
+          tabId,
+          title: '',
+          url: '',
+          content: '(failed to collect html source)',
+        }
+      );
+    }
+
+    try {
+      const content = await collectPageContent(tabId);
+      return (
+        content || {
+          tabId,
+          title: '',
+          url: '',
+          content: '(failed to collect content)',
+        }
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `[background] Error collecting content from tab ${tabId}:`,
+        error,
+      );
+      return {
+        tabId,
+        title: '',
+        url: '',
+        content: `(error: ${message})`,
+      };
+    }
+  });
+
+  const results = await Promise.all(promises);
+  return results.filter(Boolean);
+}
+
 // ============================================================================
 // LLM TAB MANAGEMENT
 // ============================================================================
@@ -3766,6 +3935,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const sessionId =
           typeof message.sessionId === 'string' ? message.sessionId : '';
         const useReuseTabs = message.useReuseTabs === true;
+        const tabContentModes = parseTabContentModes(message.tabContentModes);
 
         if (tabIds.length === 0) {
           // Get highlighted tabs or active tab
@@ -3807,7 +3977,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
 
         // Collect content from each tab
-        collectedContents = await collectPageContentFromTabs(tabIds);
+        collectedContents = await collectLLMContextFromTabs(
+          tabIds,
+          tabContentModes,
+        );
         selectedPromptContent = promptContent;
         selectedLocalFiles = [];
 
