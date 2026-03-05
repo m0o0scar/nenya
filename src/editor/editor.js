@@ -945,6 +945,10 @@ class Editor {
         this.ocrStatus = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-status'));
         /** @type {Record<string, number>} */
         this.actionFeedbackTimers = {};
+        /** @type {number | null} */
+        this.resizeFitTimer = null;
+        /** @type {(() => void) | null} */
+        this.resizeListener = null;
 
         this.init();
     }
@@ -965,7 +969,18 @@ class Editor {
             this.render();
         });
 
+        this.resizeListener = this.handleWindowResize.bind(this);
+        window.addEventListener('resize', this.resizeListener);
+
         window.addEventListener('beforeunload', () => {
+            if (this.resizeListener) {
+                window.removeEventListener('resize', this.resizeListener);
+                this.resizeListener = null;
+            }
+            if (this.resizeFitTimer !== null) {
+                window.clearTimeout(this.resizeFitTimer);
+                this.resizeFitTimer = null;
+            }
             if (this.ocrToastTimer !== null) {
                 window.clearTimeout(this.ocrToastTimer);
             }
@@ -978,6 +993,21 @@ class Editor {
             this.actionFeedbackTimers = {};
             this.disposeOcrWorker();
         });
+    }
+
+    /**
+     * Re-fit canvas after viewport changes, debounced to avoid excessive renders.
+     */
+    handleWindowResize() {
+        if (!this.backgroundImage) return;
+        if (this.resizeFitTimer !== null) {
+            window.clearTimeout(this.resizeFitTimer);
+        }
+        this.resizeFitTimer = window.setTimeout(() => {
+            this.fitToScreen();
+            this.render();
+            this.resizeFitTimer = null;
+        }, 120);
     }
 
     initOcr() {
