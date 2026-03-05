@@ -945,6 +945,10 @@ class Editor {
         this.ocrStatus = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-status'));
         /** @type {Record<string, number>} */
         this.actionFeedbackTimers = {};
+        /** @type {number | null} */
+        this.resizeFitTimer = null;
+        /** @type {(() => void) | null} */
+        this.resizeListener = null;
 
         this.init();
     }
@@ -956,6 +960,7 @@ class Editor {
         this.initTheme();
         this.initOcr();
         await this.loadSettings();
+        await this.ensureFontLoaded(this.fontFamily, this.fontSize, this.isBold, this.isItalic);
         await this.loadImage();
         this.updateUI();
 
@@ -964,7 +969,18 @@ class Editor {
             this.render();
         });
 
+        this.resizeListener = this.handleWindowResize.bind(this);
+        window.addEventListener('resize', this.resizeListener);
+
         window.addEventListener('beforeunload', () => {
+            if (this.resizeListener) {
+                window.removeEventListener('resize', this.resizeListener);
+                this.resizeListener = null;
+            }
+            if (this.resizeFitTimer !== null) {
+                window.clearTimeout(this.resizeFitTimer);
+                this.resizeFitTimer = null;
+            }
             if (this.ocrToastTimer !== null) {
                 window.clearTimeout(this.ocrToastTimer);
             }
@@ -977,6 +993,21 @@ class Editor {
             this.actionFeedbackTimers = {};
             this.disposeOcrWorker();
         });
+    }
+
+    /**
+     * Re-fit canvas after viewport changes, debounced to avoid excessive renders.
+     */
+    handleWindowResize() {
+        if (!this.backgroundImage) return;
+        if (this.resizeFitTimer !== null) {
+            window.clearTimeout(this.resizeFitTimer);
+        }
+        this.resizeFitTimer = window.setTimeout(() => {
+            this.fitToScreen();
+            this.render();
+            this.resizeFitTimer = null;
+        }, 120);
     }
 
     initOcr() {
@@ -1432,6 +1463,37 @@ class Editor {
     }
 
     /**
+     * Ensures the selected font is loaded before text is measured/drawn on canvas.
+     * @param {string} fontFamily
+     * @param {number} fontSize
+     * @param {boolean} [isBold]
+     * @param {boolean} [isItalic]
+     * @returns {Promise<void>}
+     */
+    async ensureFontLoaded(fontFamily, fontSize, isBold = false, isItalic = false) {
+        if (!document.fonts || !fontFamily) return;
+
+        const style = isItalic ? 'italic' : 'normal';
+        const weight = isBold ? '700' : '400';
+        const size = Math.max(8, Math.round(fontSize || 24));
+        const safeFamily = `"${fontFamily.replace(/[\\"]/g, '\\$&')}"`;
+        const fontDescriptor = `${style} ${weight} ${size}px ${safeFamily}`;
+        if (document.fonts.check(fontDescriptor)) return;
+
+        try {
+            await Promise.race([
+                Promise.all([
+                    document.fonts.load(fontDescriptor),
+                    document.fonts.load(`normal 400 ${size}px ${safeFamily}`)
+                ]),
+                new Promise((resolve) => window.setTimeout(resolve, 1200))
+            ]);
+        } catch (error) {
+            console.warn('Failed to preload font:', error);
+        }
+    }
+
+    /**
      * Loads editor settings from chrome.storage.local.
      * @returns {Promise<void>}
      */
@@ -1672,10 +1734,12 @@ class Editor {
         });
 
         const propFontFamily = /** @type {HTMLSelectElement} */ (document.getElementById('prop-font-family'));
-        if (propFontFamily) propFontFamily.addEventListener('change', (e) => {
+        if (propFontFamily) propFontFamily.addEventListener('change', async (e) => {
             this.saveHistory();
             this.fontFamily = /** @type {HTMLSelectElement} */ (e.target).value;
+            await this.ensureFontLoaded(this.fontFamily, this.fontSize, this.isBold, this.isItalic);
             this.updateSelectedShape();
+            this.render();
             this.saveSettings();
         });
         const propFontSize = /** @type {HTMLInputElement} */ (document.getElementById('prop-font-size'));
@@ -2117,6 +2181,7 @@ class Editor {
                 const newText = await this.showTextDialog(textShape.text, true);
                 if (newText !== null) {
                     textShape.text = newText;
+                    await this.ensureFontLoaded(textShape.fontFamily, textShape.fontSize, textShape.isBold, textShape.isItalic);
                     this.render();
                 } else {
                     // If cancelled, remove the history state we just added
@@ -2239,8 +2304,9 @@ class Editor {
             // Store position for async dialog
             const textX = pos.x;
             const textY = pos.y;
-            this.showTextDialog('').then((text) => {
+            this.showTextDialog('').then(async (text) => {
                 if (text) {
+                    await this.ensureFontLoaded(this.fontFamily, this.fontSize, this.isBold, this.isItalic);
                     this.saveHistory();
                     const shape = new TextShape(textX, textY, text, this.color, this.opacity, this.fontFamily, this.fontSize, this.isBold, this.isItalic, this.isUnderline, this.hasBorder);
                     this.shapes.push(shape);
