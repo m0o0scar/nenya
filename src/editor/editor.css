@@ -199,6 +199,152 @@ body {
     border-bottom: 1px solid var(--color-base-300);
 }
 
+.editor-toolbar {
+    gap: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-base-content), transparent 60%) transparent;
+}
+
+.editor-toolbar > * {
+    flex-shrink: 0;
+}
+
+@media (max-width: 1200px) {
+    .editor-toolbar {
+        height: 46px !important;
+        padding-left: 10px !important;
+        padding-right: 10px !important;
+        gap: 8px;
+    }
+
+    .toolbar-cluster {
+        gap: 8px !important;
+    }
+
+    .toolbar-properties {
+        gap: 10px !important;
+    }
+
+    .editor-toolbar .btn.btn-sm {
+        min-height: 1.75rem;
+        height: 1.75rem;
+    }
+
+    .editor-toolbar .btn.btn-sm.btn-square {
+        width: 1.75rem;
+    }
+
+    .editor-toolbar .divider-vertical {
+        margin: 0 2px;
+        height: 18px;
+    }
+
+    .toolbar-zoom #zoom-level {
+        min-width: 36px;
+        padding-left: 6px;
+        padding-right: 6px;
+    }
+
+    #prop-font-family {
+        width: 7.5rem;
+    }
+}
+
+@media (max-width: 1024px) {
+    .shortcut-badge,
+    #ocr-status {
+        display: none;
+    }
+
+    .toolbar-ocr {
+        gap: 6px !important;
+    }
+
+    #prop-font-family {
+        width: 6.5rem;
+    }
+
+    #prop-font-size {
+        width: 2.75rem;
+    }
+}
+
+@media (max-width: 860px) {
+    .editor-toolbar {
+        justify-content: flex-start !important;
+        gap: 6px;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    .editor-toolbar .divider-vertical {
+        display: none;
+    }
+
+    .toolbar-tools {
+        padding: 2px;
+        gap: 2px;
+    }
+
+    .toolbar-tools .btn.btn-sm.btn-square {
+        width: 1.625rem;
+        min-height: 1.625rem;
+        height: 1.625rem;
+    }
+
+    .toolbar-tools svg {
+        width: 14px;
+        height: 14px;
+    }
+
+    .toolbar-properties {
+        gap: 8px !important;
+    }
+
+    .color-preset {
+        width: 14px;
+        height: 18px;
+    }
+
+    .input-color-custom {
+        width: 20px;
+        height: 18px;
+    }
+}
+
+@media (max-width: 680px) {
+    .editor-toolbar {
+        height: 42px !important;
+        gap: 4px;
+    }
+
+    .prop-label {
+        display: none;
+    }
+
+    #stroke-prop,
+    #opacity-prop {
+        width: 3rem !important;
+    }
+
+    .toolbar-zoom {
+        gap: 2px !important;
+        padding-left: 2px !important;
+        padding-right: 2px !important;
+    }
+
+    .toolbar-primary-actions {
+        gap: 6px !important;
+    }
+
+    .toolbar-primary-join .btn.btn-sm {
+        min-height: 1.75rem;
+        height: 1.75rem;
+    }
+}
+
 /* Tool active state */
 .btn-tool-active {
     background-color: var(--color-primary) !important;
