@@ -3732,7 +3732,7 @@ async function initializeBookmarksSearch(
 
     const isSlashCommandQuery = query.trim().startsWith('/');
 
-    if (query.length >= 4 && !isSlashCommandQuery) {
+    if (query.length >= 3 && !isSlashCommandQuery) {
       debouncedSearch(query);
     } else {
       resultsElement.innerHTML = '';
