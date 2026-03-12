@@ -60,6 +60,8 @@ export const NENYA_MENU_IDS = {
   RENAME_TAB: 'nenya-rename-tab',
   EMOJI_PICKER: 'nenya-emoji-picker',
   TAKE_SCREENSHOT: 'nenya-take-screenshot',
+  SPLIT: 'nenya-split',
+  MERGE: 'nenya-merge',
   SCREEN_RECORDING: 'nenya-screen-recording',
   PIP: 'nenya-pip',
   CUSTOM_FILTER: 'nenya-custom-filter',
@@ -321,6 +323,20 @@ async function createRootMenus() {
     id: NENYA_MENU_IDS.TAKE_SCREENSHOT,
     parentId: NENYA_MENU_IDS.TOOLS_PARENT,
     title: '📸 Take screenshot',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.SPLIT,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🪟 Split',
+    contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.MERGE,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '🪟 Merge',
     contexts: contexts,
   });
 

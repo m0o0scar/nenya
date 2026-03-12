@@ -421,8 +421,8 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
-  if (command === 'split-screen-arrange') {
-    void handleSplitScreenArrangeCommand();
+  if (command === 'split') {
+    void handleSplitCommand();
     return;
   }
 
@@ -451,8 +451,8 @@ chrome.commands.onCommand.addListener((command) => {
     return;
   }
 
-  if (command === 'window-merge-single-tab-windows') {
-    void handleMergeSingleTabWindowsCommand();
+  if (command === 'merge') {
+    void handleMergeCommand();
     return;
   }
 
@@ -675,62 +675,151 @@ function getWindowBoundsFromWindow(windowInfo) {
 }
 
 /**
- * Resolve display work area bounds for a window.
- * Falls back to current window bounds when display info is unavailable.
- * @param {chrome.windows.Window} windowInfo
- * @returns {Promise<WindowLayoutBounds>}
+ * Resolve the display work area or bounds as simple numeric bounds.
+ * @param {chrome.system.display.DisplayUnitInfo} displayInfo
+ * @param {WindowLayoutBounds} fallback
+ * @returns {WindowLayoutBounds}
  */
-async function getDisplayWorkAreaForWindow(windowInfo) {
+function getDisplayBounds(displayInfo, fallback) {
+  const area = displayInfo.workArea || displayInfo.bounds;
+  if (!area) {
+    return fallback;
+  }
+
+  return {
+    left: normalizeWindowMetric(area.left, fallback.left),
+    top: normalizeWindowMetric(area.top, fallback.top),
+    width: Math.max(1, normalizeWindowMetric(area.width, fallback.width)),
+    height: Math.max(1, normalizeWindowMetric(area.height, fallback.height)),
+  };
+}
+
+/**
+ * Determine whether a point lies inside bounds.
+ * @param {number} x
+ * @param {number} y
+ * @param {WindowLayoutBounds} bounds
+ * @returns {boolean}
+ */
+function isPointInBounds(x, y, bounds) {
+  return (
+    x >= bounds.left &&
+    x < bounds.left + bounds.width &&
+    y >= bounds.top &&
+    y < bounds.top + bounds.height
+  );
+}
+
+/**
+ * Determine which display contains a window center point.
+ * @param {chrome.windows.Window} windowInfo
+ * @param {chrome.system.display.DisplayUnitInfo[]} displays
+ * @returns {chrome.system.display.DisplayUnitInfo | null}
+ */
+function findDisplayForWindow(windowInfo, displays) {
+  const bounds = getWindowBoundsFromWindow(windowInfo);
+  const centerX = bounds.left + bounds.width / 2;
+  const centerY = bounds.top + bounds.height / 2;
+
+  for (const displayInfo of displays) {
+    const displayBounds = getDisplayBounds(displayInfo, bounds);
+    if (isPointInBounds(centerX, centerY, displayBounds)) {
+      return displayInfo;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Compare windows in a stable display order.
+ * @param {chrome.windows.Window} leftWindow
+ * @param {chrome.windows.Window} rightWindow
+ * @param {boolean} isLandscape
+ * @returns {number}
+ */
+function compareWindowsForDisplayOrder(leftWindow, rightWindow, isLandscape) {
+  const leftBounds = getWindowBoundsFromWindow(leftWindow);
+  const rightBounds = getWindowBoundsFromWindow(rightWindow);
+
+  if (isLandscape) {
+    if (leftBounds.left !== rightBounds.left) {
+      return leftBounds.left - rightBounds.left;
+    }
+    if (leftBounds.top !== rightBounds.top) {
+      return leftBounds.top - rightBounds.top;
+    }
+  } else {
+    if (leftBounds.top !== rightBounds.top) {
+      return leftBounds.top - rightBounds.top;
+    }
+    if (leftBounds.left !== rightBounds.left) {
+      return leftBounds.left - rightBounds.left;
+    }
+  }
+
+  return (leftWindow.id ?? 0) - (rightWindow.id ?? 0);
+}
+
+/**
+ * Resolve display context for a window, including work area bounds.
+ * @param {chrome.windows.Window} windowInfo
+ * @returns {Promise<{bounds: WindowLayoutBounds, displayId: string | null, isLandscape: boolean}>}
+ */
+async function getDisplayContextForWindow(windowInfo) {
   const fallback = getWindowBoundsFromWindow(windowInfo);
   if (
     !chrome.system ||
     !chrome.system.display ||
     typeof chrome.system.display.getInfo !== 'function'
   ) {
-    return fallback;
+    return {
+      bounds: fallback,
+      displayId: null,
+      isLandscape: fallback.width >= fallback.height,
+    };
   }
 
   try {
     const displays = await chrome.system.display.getInfo();
     if (!Array.isArray(displays) || displays.length === 0) {
-      return fallback;
+      return {
+        bounds: fallback,
+        displayId: null,
+        isLandscape: fallback.width >= fallback.height,
+      };
     }
 
-    const centerX = fallback.left + fallback.width / 2;
-    const centerY = fallback.top + fallback.height / 2;
-
-    let selectedDisplay = displays.find((display) => {
-      const area = display.workArea || display.bounds;
-      if (!area) {
-        return false;
-      }
-      return (
-        centerX >= area.left &&
-        centerX < area.left + area.width &&
-        centerY >= area.top &&
-        centerY < area.top + area.height
-      );
-    });
-
-    if (!selectedDisplay) {
-      selectedDisplay = displays.find((display) => display.isPrimary) || displays[0];
-    }
-
-    const area = selectedDisplay.workArea || selectedDisplay.bounds;
-    if (!area) {
-      return fallback;
-    }
+    const selectedDisplay =
+      findDisplayForWindow(windowInfo, displays)
+      || displays.find((displayInfo) => displayInfo.isPrimary)
+      || displays[0];
+    const bounds = getDisplayBounds(selectedDisplay, fallback);
 
     return {
-      left: normalizeWindowMetric(area.left, fallback.left),
-      top: normalizeWindowMetric(area.top, fallback.top),
-      width: Math.max(1, normalizeWindowMetric(area.width, fallback.width)),
-      height: Math.max(1, normalizeWindowMetric(area.height, fallback.height)),
+      bounds,
+      displayId: typeof selectedDisplay.id === 'string' ? selectedDisplay.id : null,
+      isLandscape: bounds.width >= bounds.height,
     };
   } catch (error) {
     console.warn('[commands] Failed to read display work area:', error);
-    return fallback;
+    return {
+      bounds: fallback,
+      displayId: null,
+      isLandscape: fallback.width >= fallback.height,
+    };
   }
+}
+
+/**
+ * Resolve display work area bounds for a window.
+ * Falls back to current window bounds when display info is unavailable.
+ * @param {chrome.windows.Window} windowInfo
+ * @returns {Promise<WindowLayoutBounds>}
+ */
+async function getDisplayWorkAreaForWindow(windowInfo) {
+  const displayContext = await getDisplayContextForWindow(windowInfo);
+  return displayContext.bounds;
 }
 
 /**
@@ -757,140 +846,211 @@ async function setWindowLayout(windowId, bounds, focused) {
 }
 
 /**
- * Case 1: move the current tab to a right-half window.
- * @param {chrome.tabs.Tab} activeTab
- * @param {chrome.windows.Window} currentWindow
- * @param {WindowLayoutBounds} screenBounds
- * @returns {Promise<void>}
+ * Determine whether a window is eligible for split-screen operations.
+ * @param {chrome.windows.Window} windowInfo
+ * @param {boolean} incognito
+ * @returns {boolean}
  */
-async function arrangeSingleTabSplit(activeTab, currentWindow, screenBounds) {
-  if (
-    typeof activeTab.id !== 'number' ||
-    typeof activeTab.windowId !== 'number' ||
-    typeof currentWindow.id !== 'number'
-  ) {
-    return;
-  }
-
-  const currentTabs = Array.isArray(currentWindow.tabs) ? currentWindow.tabs : [];
-  if (currentTabs.length === 1) {
-    await chrome.tabs.create({
-      windowId: activeTab.windowId,
-      url: 'chrome://newtab/',
-      active: false,
-    });
-  }
-
-  const rightWindow = await chrome.windows.create({
-    tabId: activeTab.id,
-    focused: true,
-    state: 'normal',
-  });
-
-  if (!rightWindow || typeof rightWindow.id !== 'number') {
-    return;
-  }
-
-  const leftWidth = Math.floor(screenBounds.width / 2);
-  const rightWidth = screenBounds.width - leftWidth;
-
-  await setWindowLayout(
-    currentWindow.id,
-    {
-      left: screenBounds.left,
-      top: screenBounds.top,
-      width: leftWidth,
-      height: screenBounds.height,
-    },
-    false,
-  );
-
-  await setWindowLayout(
-    rightWindow.id,
-    {
-      left: screenBounds.left + leftWidth,
-      top: screenBounds.top,
-      width: rightWidth,
-      height: screenBounds.height,
-    },
-    true,
+function isSplitScreenWindowEligible(windowInfo, incognito) {
+  return (
+    Boolean(windowInfo) &&
+    windowInfo.type === 'normal' &&
+    Boolean(windowInfo.incognito) === incognito
   );
 }
 
 /**
- * Case 2: move highlighted tabs into N equal-width windows.
- * @param {chrome.tabs.Tab[]} highlightedTabs
- * @param {WindowLayoutBounds} screenBounds
- * @param {number} activeTabId
+ * Collect all eligible windows on the current display.
+ * @param {chrome.windows.Window} currentWindow
+ * @returns {Promise<{displayContext: {bounds: WindowLayoutBounds, displayId: string | null, isLandscape: boolean}, windows: chrome.windows.Window[]}>}
+ */
+async function getCurrentDisplayWindows(currentWindow) {
+  const displayContext = await getDisplayContextForWindow(currentWindow);
+  const allWindows = await chrome.windows.getAll({ populate: true });
+  const windows = (allWindows || [])
+    .filter((windowInfo) =>
+      isSplitScreenWindowEligible(windowInfo, Boolean(currentWindow.incognito)),
+    )
+    .filter((windowInfo) => {
+      if (!displayContext.displayId) {
+        return windowInfo.id === currentWindow.id;
+      }
+
+      const windowBounds = getWindowBoundsFromWindow(windowInfo);
+      const centerX = windowBounds.left + windowBounds.width / 2;
+      const centerY = windowBounds.top + windowBounds.height / 2;
+      return isPointInBounds(centerX, centerY, displayContext.bounds);
+    })
+    .sort((leftWindow, rightWindow) =>
+      compareWindowsForDisplayOrder(
+        leftWindow,
+        rightWindow,
+        displayContext.isLandscape,
+      ),
+    );
+
+  return { displayContext, windows };
+}
+
+/**
+ * Resolve tabs to split from the current window.
+ * @param {chrome.tabs.Tab} activeTab
+ * @returns {Promise<chrome.tabs.Tab[]>}
+ */
+async function getTabsForSplit(activeTab) {
+  const highlightedTabs = await chrome.tabs.query({
+    currentWindow: true,
+    highlighted: true,
+  });
+  const filteredHighlightedTabs = (highlightedTabs || [])
+    .filter((tab) => typeof tab.id === 'number')
+    .sort((leftTab, rightTab) => (leftTab.index ?? 0) - (rightTab.index ?? 0));
+
+  if (filteredHighlightedTabs.length > 1) {
+    return filteredHighlightedTabs;
+  }
+
+  return [activeTab];
+}
+
+/**
+ * Show the split-screen limit alert inside the active tab when possible.
+ * @param {number} tabId
  * @returns {Promise<void>}
  */
-async function arrangeHighlightedTabsColumns(
-  highlightedTabs,
-  screenBounds,
-  activeTabId,
-) {
-  /** @type {Array<{windowId: number, tabId: number}>} */
-  const createdWindows = [];
+async function showSplitLimitAlert(tabId) {
+  const message = 'There are too many windows on this screen. Split supports at most 12 windows.';
 
-  for (const tab of highlightedTabs) {
-    if (typeof tab.id !== 'number') {
-      continue;
+  if (chrome.scripting && typeof tabId === 'number') {
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId },
+        func: (alertMessage) => {
+          window.alert(alertMessage);
+        },
+        args: [message],
+      });
+      return;
+    } catch (error) {
+      console.warn('[commands] Failed to show split limit alert:', error);
     }
+  }
 
-    const newWindow = await chrome.windows.create({
-      tabId: tab.id,
-      focused: false,
-      state: 'normal',
-    });
+  void pushNotification('split-screen', 'Split aborted', message);
+}
 
-    if (newWindow && typeof newWindow.id === 'number') {
-      createdWindows.push({
-        windowId: newWindow.id,
-        tabId: tab.id,
+/**
+ * Build grid bounds for a screen area.
+ * @param {WindowLayoutBounds} screenBounds
+ * @param {number} rows
+ * @param {number} cols
+ * @returns {WindowLayoutBounds[]}
+ */
+function buildGridBounds(screenBounds, rows, cols) {
+  /** @type {WindowLayoutBounds[]} */
+  const boundsList = [];
+
+  for (let row = 0; row < rows; row++) {
+    const top = screenBounds.top + Math.floor((row * screenBounds.height) / rows);
+    const nextTop =
+      screenBounds.top + Math.floor(((row + 1) * screenBounds.height) / rows);
+
+    for (let col = 0; col < cols; col++) {
+      const left =
+        screenBounds.left + Math.floor((col * screenBounds.width) / cols);
+      const nextLeft =
+        screenBounds.left + Math.floor(((col + 1) * screenBounds.width) / cols);
+
+      boundsList.push({
+        left,
+        top,
+        width: Math.max(1, nextLeft - left),
+        height: Math.max(1, nextTop - top),
       });
     }
   }
 
-  if (createdWindows.length === 0) {
-    return;
-  }
-
-  const totalWidth = screenBounds.width;
-  const baseWidth = Math.max(1, Math.floor(totalWidth / createdWindows.length));
-  let nextLeft = screenBounds.left;
-
-  for (let index = 0; index < createdWindows.length; index++) {
-    const item = createdWindows[index];
-    const isLast = index === createdWindows.length - 1;
-    const width = isLast
-      ? Math.max(1, screenBounds.left + totalWidth - nextLeft)
-      : baseWidth;
-
-    await setWindowLayout(
-      item.windowId,
-      {
-        left: nextLeft,
-        top: screenBounds.top,
-        width,
-        height: screenBounds.height,
-      },
-      false,
-    );
-
-    nextLeft += width;
-  }
-
-  const focusTarget =
-    createdWindows.find((item) => item.tabId === activeTabId)
-    || createdWindows[0];
-  await chrome.windows.update(focusTarget.windowId, { focused: true });
+  return boundsList;
 }
 
 /**
- * Handle the split-screen arrangement command with Chrome windows.
+ * Resolve grid size for a final window count.
+ * @param {number} windowCount
+ * @param {boolean} isLandscape
+ * @returns {{rows: number, cols: number}}
+ */
+function getGridSize(windowCount, isLandscape) {
+  if (windowCount <= 1) {
+    return { rows: 1, cols: 1 };
+  }
+
+  if (windowCount === 2) {
+    return isLandscape ? { rows: 1, cols: 2 } : { rows: 2, cols: 1 };
+  }
+
+  if (windowCount === 3) {
+    return isLandscape ? { rows: 1, cols: 3 } : { rows: 3, cols: 1 };
+  }
+
+  if (windowCount <= 4) {
+    return { rows: 2, cols: 2 };
+  }
+
+  if (windowCount <= 6) {
+    return { rows: 2, cols: 3 };
+  }
+
+  if (windowCount <= 9) {
+    return { rows: 3, cols: 3 };
+  }
+
+  return { rows: 3, cols: 4 };
+}
+
+/**
+ * Arrange windows into the target grid in the provided order.
+ * @param {chrome.windows.Window[]} orderedWindows
+ * @param {WindowLayoutBounds} screenBounds
+ * @param {boolean} isLandscape
+ * @param {number | null} focusedWindowId
  * @returns {Promise<void>}
  */
-async function handleSplitScreenArrangeCommand() {
+async function arrangeWindowsInGrid(
+  orderedWindows,
+  screenBounds,
+  isLandscape,
+  focusedWindowId,
+) {
+  if (orderedWindows.length === 0) {
+    return;
+  }
+
+  const gridSize = getGridSize(orderedWindows.length, isLandscape);
+  const gridBounds = buildGridBounds(
+    screenBounds,
+    gridSize.rows,
+    gridSize.cols,
+  );
+
+  for (let index = 0; index < orderedWindows.length; index++) {
+    const windowInfo = orderedWindows[index];
+    if (typeof windowInfo.id !== 'number') {
+      continue;
+    }
+
+    await setWindowLayout(
+      windowInfo.id,
+      gridBounds[index],
+      windowInfo.id === focusedWindowId,
+    );
+  }
+}
+
+/**
+ * Handle split for current-display windows.
+ * @returns {Promise<void>}
+ */
+async function handleSplitCommand() {
   try {
     const activeTabs = await chrome.tabs.query({
       currentWindow: true,
@@ -912,28 +1072,88 @@ async function handleSplitScreenArrangeCommand() {
       return;
     }
 
-    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
+    const tabsToSplit = await getTabsForSplit(activeTab);
+    const { displayContext, windows: currentDisplayWindows } =
+      await getCurrentDisplayWindows(currentWindow);
 
-    const highlightedTabsRaw = await chrome.tabs.query({
-      currentWindow: true,
-      highlighted: true,
-    });
-    const highlightedTabs = (highlightedTabsRaw || [])
-      .filter((tab) => typeof tab.id === 'number')
-      .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-
-    if (highlightedTabs.length >= 2) {
-      await arrangeHighlightedTabsColumns(
-        highlightedTabs,
-        screenBounds,
-        activeTab.id,
-      );
+    if (currentDisplayWindows.length + tabsToSplit.length > 12) {
+      await showSplitLimitAlert(activeTab.id);
       return;
     }
 
-    await arrangeSingleTabSplit(activeTab, currentWindow, screenBounds);
+    const orderedExistingWindowIds = currentDisplayWindows
+      .filter((windowInfo) => windowInfo.id !== currentWindow.id)
+      .map((windowInfo) => windowInfo.id)
+      .filter((windowId) => typeof windowId === 'number');
+
+    /** @type {Array<{windowId: number, tabId: number}>} */
+    const createdWindows = [];
+    for (const tab of tabsToSplit) {
+      if (typeof tab.id !== 'number') {
+        continue;
+      }
+
+      const createdWindow = await chrome.windows.create({
+        tabId: tab.id,
+        focused: false,
+        state: 'normal',
+      });
+
+      if (createdWindow && typeof createdWindow.id === 'number') {
+        createdWindows.push({
+          windowId: createdWindow.id,
+          tabId: tab.id,
+        });
+      }
+    }
+
+    const { windows: windowsAfterSplit } = await getCurrentDisplayWindows(currentWindow);
+    const windowsById = new Map(
+      windowsAfterSplit
+        .filter((windowInfo) => typeof windowInfo.id === 'number')
+        .map((windowInfo) => [windowInfo.id, windowInfo]),
+    );
+
+    /** @type {chrome.windows.Window[]} */
+    const orderedWindows = [];
+    for (const windowId of orderedExistingWindowIds) {
+      const windowInfo = windowsById.get(windowId);
+      if (windowInfo) {
+        orderedWindows.push(windowInfo);
+      }
+    }
+
+    if (typeof currentWindow.id === 'number') {
+      const leftoverWindow = windowsById.get(currentWindow.id);
+      if (leftoverWindow) {
+        orderedWindows.push(leftoverWindow);
+      }
+    }
+
+    for (const createdWindow of createdWindows) {
+      const windowInfo = windowsById.get(createdWindow.windowId);
+      if (windowInfo) {
+        orderedWindows.push(windowInfo);
+      }
+    }
+
+    const focusedCreatedWindow = createdWindows.find(
+      (windowInfo) => windowInfo.tabId === activeTab.id,
+    );
+    const focusedWindowId =
+      focusedCreatedWindow?.windowId
+      ?? (typeof currentWindow.id === 'number' && windowsById.has(currentWindow.id)
+        ? currentWindow.id
+        : orderedWindows[0]?.id ?? null);
+
+    await arrangeWindowsInGrid(
+      orderedWindows,
+      displayContext.bounds,
+      displayContext.isLandscape,
+      typeof focusedWindowId === 'number' ? focusedWindowId : null,
+    );
   } catch (error) {
-    console.warn('[commands] Split-screen arrange command failed:', error);
+    console.warn('[commands] Split command failed:', error);
   }
 }
 
@@ -1042,120 +1262,45 @@ async function handleResizeCurrentWindowToHalfCommand(side) {
 }
 
 /**
- * Collect all single-tab windows and move those tabs into a main window.
- * Main window selection:
- * 1) current window if it has more than one tab
- * 2) focused multi-tab window
- * 3) first multi-tab window
- * 4) if no multi-tab window exists, create one from a single-tab window
+ * Merge all current-display windows into the active window.
  * @returns {Promise<void>}
  */
-async function handleMergeSingleTabWindowsCommand() {
+async function handleMergeCommand() {
   try {
     const currentWindow = await getCurrentActiveWindowForResize();
     if (!currentWindow || typeof currentWindow.id !== 'number') {
       return;
     }
 
-    const allWindows = await chrome.windows.getAll({ populate: true });
-    const scopedWindows = (allWindows || []).filter(
-      (windowInfo) =>
-        windowInfo &&
-        windowInfo.type === 'normal' &&
-        Boolean(windowInfo.incognito) === Boolean(currentWindow.incognito),
-    );
-
-    const windowsWithTabs = scopedWindows
-      .map((windowInfo) => {
-        const tabs = (windowInfo.tabs || []).filter(
-          (tab) => typeof tab.id === 'number',
-        );
-        return {
-          window: windowInfo,
-          tabs,
-        };
-      })
-      .filter((entry) => entry.tabs.length > 0);
-
-    if (windowsWithTabs.length === 0) {
+    const { displayContext, windows: currentDisplayWindows } =
+      await getCurrentDisplayWindows(currentWindow);
+    if (currentDisplayWindows.length <= 1) {
       return;
     }
 
-    const multiTabWindows = windowsWithTabs.filter((entry) => entry.tabs.length > 1);
-    const singleTabWindows = windowsWithTabs
-      .filter((entry) => entry.tabs.length === 1)
-      .sort((a, b) => (a.window.id ?? 0) - (b.window.id ?? 0));
-
-    if (singleTabWindows.length === 0) {
-      return;
-    }
-
-    let mainWindowId = null;
-    /** @type {number | null} */
-    let seededTabId = null;
-
-    if (multiTabWindows.length > 0) {
-      const currentMultiTabWindow = multiTabWindows.find(
-        (entry) => entry.window.id === currentWindow.id,
-      );
-      const focusedMultiTabWindow = multiTabWindows.find(
-        (entry) => entry.window.focused,
-      );
-      const targetMainWindow =
-        currentMultiTabWindow || focusedMultiTabWindow || multiTabWindows[0];
-      mainWindowId =
-        typeof targetMainWindow.window.id === 'number'
-          ? targetMainWindow.window.id
-          : null;
-    } else {
-      const seedWindow =
-        singleTabWindows.find((entry) => entry.window.id === currentWindow.id)
-        || singleTabWindows[0];
-      const firstTab = seedWindow.tabs[0];
-      seededTabId = typeof firstTab.id === 'number' ? firstTab.id : null;
-      if (seededTabId === null) {
-        return;
+    for (const windowInfo of currentDisplayWindows) {
+      if (windowInfo.id === currentWindow.id) {
+        continue;
       }
 
-      const createdWindow = await chrome.windows.create({
-        tabId: seededTabId,
-        focused: true,
-        state: 'normal',
-      });
-      mainWindowId =
-        createdWindow && typeof createdWindow.id === 'number'
-          ? createdWindow.id
-          : null;
-    }
+      const tabIds = (windowInfo.tabs || [])
+        .filter((tab) => typeof tab.id === 'number')
+        .sort((leftTab, rightTab) => (leftTab.index ?? 0) - (rightTab.index ?? 0))
+        .map((tab) => tab.id);
 
-    if (mainWindowId === null) {
-      return;
-    }
+      if (tabIds.length === 0) {
+        continue;
+      }
 
-    const tabsToMove = singleTabWindows
-      .map((entry) => entry.tabs[0]?.id ?? null)
-      .filter(
-        (tabId) => typeof tabId === 'number' && tabId !== seededTabId,
-      );
-
-    if (tabsToMove.length > 0) {
-      await chrome.tabs.move(tabsToMove, {
-        windowId: mainWindowId,
+      await chrome.tabs.move(tabIds, {
+        windowId: currentWindow.id,
         index: -1,
       });
     }
 
-    const mainWindow = await chrome.windows.get(mainWindowId, {
-      populate: false,
-    });
-    if (!mainWindow || typeof mainWindow.id !== 'number') {
-      return;
-    }
-
-    const screenBounds = await getDisplayWorkAreaForWindow(mainWindow);
-    await setWindowLayout(mainWindow.id, screenBounds, true);
+    await setWindowLayout(currentWindow.id, displayContext.bounds, true);
   } catch (error) {
-    console.warn('[commands] Merge single-tab windows failed:', error);
+    console.warn('[commands] Merge command failed:', error);
   }
 }
 
@@ -4404,6 +4549,18 @@ if (chrome.contextMenus) {
       if (tab && typeof tab.id === 'number') {
         void handleScreenshotCopy(tab.id);
       }
+      return;
+    }
+
+    // Split
+    if (menuItemId === NENYA_MENU_IDS.SPLIT) {
+      void handleSplitCommand();
+      return;
+    }
+
+    // Merge
+    if (menuItemId === NENYA_MENU_IDS.MERGE) {
+      void handleMergeCommand();
       return;
     }
 
