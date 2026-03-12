@@ -164,8 +164,8 @@
     "tabs-close-tab": {
       "description": "🗂️ Close active or highlighted tabs"
     },
-    "split-screen-arrange": {
-      "description": "🖥️ Arrange windows for split screen"
+    "split": {
+      "description": "🪟 Split"
     },
     "window-resize-fullscreen": {
       "description": "🖥️ Resize window to full screen"
@@ -182,8 +182,8 @@
     "window-resize-bottom-half": {
       "description": "🖥️ Resize window to bottom half"
     },
-    "window-merge-single-tab-windows": {
-      "description": "🖥️ Merge single-tab windows"
+    "merge": {
+      "description": "🪟 Merge"
     },
     "block-element-picker": {
       "description": "🎯 Element Picker"
