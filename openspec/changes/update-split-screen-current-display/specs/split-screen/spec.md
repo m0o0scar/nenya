@@ -73,4 +73,6 @@ When the user triggers merge, the extension SHALL gather tabs from all eligible 
 - **WHEN** the user triggers merge
 - **THEN** the extension MUST use the current active window as the merge target
 - **AND** it MUST move all tabs from the other current-display windows into that target window
+- **AND** it MUST preserve each moved tab's pinned status
+- **AND** it MUST recreate moved tab groups in the target window with their original title, color, and collapsed state
 - **AND** once merge completes there MUST be a single remaining current-display window

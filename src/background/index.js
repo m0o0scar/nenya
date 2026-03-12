@@ -1262,6 +1262,99 @@ async function handleResizeCurrentWindowToHalfCommand(side) {
 }
 
 /**
+ * Read tab group metadata when available.
+ * @param {number} groupId
+ * @returns {Promise<{title?: string, color: chrome.tabGroups.ColorEnum, collapsed?: boolean} | null>}
+ */
+async function getTabGroupMetadata(groupId) {
+  if (
+    !chrome.tabGroups ||
+    typeof chrome.tabGroups.get !== 'function' ||
+    groupId < 0
+  ) {
+    return null;
+  }
+
+  try {
+    const group = await chrome.tabGroups.get(groupId);
+    if (!group) {
+      return null;
+    }
+
+    return {
+      title: group.title,
+      color: group.color,
+      collapsed: group.collapsed,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Move tabs into the target window while preserving pin state.
+ * @param {chrome.tabs.Tab[]} tabs
+ * @param {number} targetWindowId
+ * @param {number} nextPinnedIndex
+ * @returns {Promise<number>}
+ */
+async function moveTabsPreservingPinned(tabs, targetWindowId, nextPinnedIndex) {
+  const pinnedTabs = tabs.filter((tab) => Boolean(tab.pinned));
+  const unpinnedTabs = tabs.filter((tab) => !tab.pinned);
+
+  for (const tab of pinnedTabs) {
+    if (typeof tab.id !== 'number') {
+      continue;
+    }
+
+    await chrome.tabs.move(tab.id, {
+      windowId: targetWindowId,
+      index: nextPinnedIndex,
+    });
+    await chrome.tabs.update(tab.id, { pinned: true });
+    nextPinnedIndex += 1;
+  }
+
+  const unpinnedTabIds = unpinnedTabs
+    .map((tab) => tab.id)
+    .filter((tabId) => typeof tabId === 'number');
+  if (unpinnedTabIds.length > 0) {
+    await chrome.tabs.move(unpinnedTabIds, {
+      windowId: targetWindowId,
+      index: -1,
+    });
+  }
+
+  return nextPinnedIndex;
+}
+
+/**
+ * Restore moved tab groups inside the target window.
+ * @param {Array<{title?: string, color: chrome.tabGroups.ColorEnum, collapsed?: boolean, tabIds: number[]}>} groups
+ * @returns {Promise<void>}
+ */
+async function restoreMovedTabGroups(groups) {
+  if (!chrome.tabGroups || typeof chrome.tabGroups.update !== 'function') {
+    return;
+  }
+
+  for (const group of groups) {
+    if (!Array.isArray(group.tabIds) || group.tabIds.length === 0) {
+      continue;
+    }
+
+    const newGroupId = await chrome.tabs.group({
+      tabIds: /** @type {any} */ (group.tabIds),
+    });
+    await chrome.tabGroups.update(newGroupId, {
+      title: group.title,
+      color: group.color,
+      collapsed: group.collapsed,
+    });
+  }
+}
+
+/**
  * Merge all current-display windows into the active window.
  * @returns {Promise<void>}
  */
@@ -1278,26 +1371,54 @@ async function handleMergeCommand() {
       return;
     }
 
+    let nextPinnedIndex = (currentDisplayWindows.find(
+      (windowInfo) => windowInfo.id === currentWindow.id,
+    )?.tabs || []).filter((tab) => Boolean(tab.pinned)).length;
+
+    /** @type {Array<{title?: string, color: chrome.tabGroups.ColorEnum, collapsed?: boolean, tabIds: number[]}>} */
+    const movedGroups = [];
     for (const windowInfo of currentDisplayWindows) {
       if (windowInfo.id === currentWindow.id) {
         continue;
       }
 
-      const tabIds = (windowInfo.tabs || [])
+      const sortedTabs = (windowInfo.tabs || [])
         .filter((tab) => typeof tab.id === 'number')
-        .sort((leftTab, rightTab) => (leftTab.index ?? 0) - (rightTab.index ?? 0))
-        .map((tab) => tab.id);
-
-      if (tabIds.length === 0) {
+        .sort((leftTab, rightTab) => (leftTab.index ?? 0) - (rightTab.index ?? 0));
+      if (sortedTabs.length === 0) {
         continue;
       }
 
-      await chrome.tabs.move(tabIds, {
-        windowId: currentWindow.id,
-        index: -1,
-      });
+      /** @type {Map<number, number[]>} */
+      const groupTabs = new Map();
+      for (const tab of sortedTabs) {
+        if (typeof tab.groupId === 'number' && tab.groupId >= 0) {
+          const tabIds = groupTabs.get(tab.groupId) || [];
+          tabIds.push(tab.id);
+          groupTabs.set(tab.groupId, tabIds);
+        }
+      }
+
+      for (const [groupId, tabIds] of groupTabs.entries()) {
+        const groupMeta = await getTabGroupMetadata(groupId);
+        if (groupMeta) {
+          movedGroups.push({
+            title: groupMeta.title,
+            color: groupMeta.color,
+            collapsed: groupMeta.collapsed,
+            tabIds,
+          });
+        }
+      }
+
+      nextPinnedIndex = await moveTabsPreservingPinned(
+        sortedTabs,
+        currentWindow.id,
+        nextPinnedIndex,
+      );
     }
 
+    await restoreMovedTabGroups(movedGroups);
     await setWindowLayout(currentWindow.id, displayContext.bounds, true);
   } catch (error) {
     console.warn('[commands] Merge command failed:', error);
