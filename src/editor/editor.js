@@ -14,7 +14,7 @@ class Shape {
     constructor(type, color, opacity, lineWidth = 4) {
         this.type = type;
         this.color = color;
-        this.opacity = opacity;
+        this.opacity = 1;
         this.lineWidth = lineWidth;
         this.selected = false;
         this.id = Date.now() + Math.random();
@@ -1504,7 +1504,7 @@ class Editor {
                 if (result.editorSettings) {
                     const s = result.editorSettings;
                     if (s.color) this.color = s.color;
-                    if (s.opacity !== undefined) this.opacity = s.opacity;
+                    this.opacity = 1;
                     if (s.lineWidth !== undefined) this.lineWidth = s.lineWidth;
 
                     if (s.rectLineWidth !== undefined) this.rectLineWidth = s.rectLineWidth;
@@ -1536,7 +1536,6 @@ class Editor {
                 await chrome.storage.local.set({
                     editorSettings: {
                         color: this.color,
-                        opacity: this.opacity,
                         lineWidth: this.lineWidth,
                         rectLineWidth: this.rectLineWidth,
                         arrowLineWidth: this.arrowLineWidth,
@@ -1698,6 +1697,10 @@ class Editor {
             const el = document.getElementById(`tool-${t}`);
             if (el) el.addEventListener('click', () => this.setTool(t));
         });
+        const toolSelectMobile = /** @type {HTMLSelectElement} */ (document.getElementById('tool-select-mobile'));
+        if (toolSelectMobile) toolSelectMobile.addEventListener('change', (e) => {
+            this.setTool(/** @type {HTMLSelectElement} */ (e.target).value);
+        });
 
         // Zoom
         const zoomIn = document.getElementById('zoom-in');
@@ -1712,12 +1715,15 @@ class Editor {
         if (propColor) propColor.addEventListener('input', (e) => {
             this.color = /** @type {HTMLInputElement} */ (e.target).value;
             this.updateSelectedShape();
+            this.syncColorControls();
             this.saveSettings();
         });
-        const propOpacity = /** @type {HTMLInputElement} */ (document.getElementById('prop-opacity'));
-        if (propOpacity) propOpacity.addEventListener('input', (e) => {
-            this.opacity = parseFloat(/** @type {HTMLInputElement} */ (e.target).value);
+        const propColorMobile = /** @type {HTMLSelectElement} */ (document.getElementById('prop-color-mobile'));
+        if (propColorMobile) propColorMobile.addEventListener('change', (e) => {
+            this.saveHistory();
+            this.color = /** @type {HTMLSelectElement} */ (e.target).value;
             this.updateSelectedShape();
+            this.syncColorControls();
             this.saveSettings();
         });
         const propStroke = /** @type {HTMLInputElement} */ (document.getElementById('prop-stroke'));
@@ -1728,7 +1734,7 @@ class Editor {
             this.saveSettings();
         });
 
-        ['prop-color', 'prop-opacity', 'prop-stroke'].forEach(id => {
+        ['prop-color', 'prop-color-mobile', 'prop-stroke'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.addEventListener('mousedown', () => this.saveHistory());
         });
@@ -1771,9 +1777,8 @@ class Editor {
                 const newColor = /** @type {HTMLElement} */ (preset).dataset.color;
                 if (newColor) {
                     this.color = newColor;
-                    const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
-                    if (propColor) propColor.value = newColor;
                     this.updateSelectedShape();
+                    this.syncColorControls();
                     this.saveSettings();
                 }
             }
@@ -1842,7 +1847,6 @@ class Editor {
         // Set sensible defaults for highlight tool
         if (tool === 'highlight') {
             this.color = '#ffff00'; // Yellow
-            this.opacity = 0.4; // Semi-transparent
             this.lineWidth = this.highlightLineWidth;
         } else if (tool === 'rect') {
             this.lineWidth = this.rectLineWidth;
@@ -1859,6 +1863,8 @@ class Editor {
         document.querySelectorAll('.tool-btn').forEach(btn => btn.classList.remove('btn-tool-active'));
         const activeBtn = document.getElementById(`tool-${this.tool}`);
         if(activeBtn) activeBtn.classList.add('btn-tool-active');
+        const toolSelectMobile = /** @type {HTMLSelectElement} */ (document.getElementById('tool-select-mobile'));
+        if (toolSelectMobile) toolSelectMobile.value = this.tool;
 
         // Cursor
         let cursor = 'default';
@@ -1931,7 +1937,7 @@ class Editor {
         const shape = this.getSelectedShape();
         if (shape) {
             shape.color = this.color;
-            shape.opacity = this.opacity;
+            shape.opacity = 1;
             if (shape.lineWidth !== undefined) shape.lineWidth = this.lineWidth;
             if (shape instanceof TextShape) {
                 shape.fontFamily = this.fontFamily;
@@ -1962,10 +1968,7 @@ class Editor {
         const deleteBtn = /** @type {HTMLButtonElement} */ (document.getElementById('action-delete'));
 
         // Always sync global state to UI first
-        const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
-        if (propColor) propColor.value = this.color;
-        const propOpacity = /** @type {HTMLInputElement} */ (document.getElementById('prop-opacity'));
-        if (propOpacity) propOpacity.value = this.opacity.toString();
+        this.syncColorControls();
         const propStroke = /** @type {HTMLInputElement} */ (document.getElementById('prop-stroke'));
         if (propStroke) propStroke.value = this.lineWidth.toString();
         const propFontFamily = /** @type {HTMLSelectElement} */ (document.getElementById('prop-font-family'));
@@ -1979,8 +1982,8 @@ class Editor {
 
         if (shape) {
             if (deleteBtn) deleteBtn.disabled = false;
-            if (propColor) propColor.value = shape.color;
-            if (propOpacity) propOpacity.value = shape.opacity.toString();
+            this.color = shape.color;
+            this.syncColorControls();
             if (shape.lineWidth && propStroke) propStroke.value = shape.lineWidth.toString();
 
             if (shape instanceof TextShape) {
@@ -2040,6 +2043,28 @@ class Editor {
             }
         }
         return null;
+    }
+
+    syncColorControls() {
+        const propColor = /** @type {HTMLInputElement} */ (document.getElementById('prop-color'));
+        if (propColor) propColor.value = this.color;
+        const propColorMobile = /** @type {HTMLSelectElement} */ (document.getElementById('prop-color-mobile'));
+        if (propColorMobile) {
+            let customOption = /** @type {HTMLOptionElement | null} */ (propColorMobile.querySelector('option[data-custom-color="true"]'));
+            const hasPreset = Array.from(propColorMobile.options).some((option) => option.value === this.color);
+            if (!hasPreset) {
+                if (!customOption) {
+                    customOption = document.createElement('option');
+                    customOption.dataset.customColor = 'true';
+                    propColorMobile.appendChild(customOption);
+                }
+                customOption.value = this.color;
+                customOption.textContent = 'Custom';
+            } else if (customOption) {
+                customOption.remove();
+            }
+            propColorMobile.value = this.color;
+        }
     }
 
     attachCanvasListeners() {

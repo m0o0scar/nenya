@@ -201,14 +201,24 @@ body {
 
 .editor-toolbar {
     gap: 10px;
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: thin;
-    scrollbar-color: color-mix(in srgb, var(--color-base-content), transparent 60%) transparent;
+    overflow: hidden;
 }
 
 .editor-toolbar > * {
-    flex-shrink: 0;
+    min-width: 0;
+}
+
+.toolbar-cluster {
+    min-width: 0;
+}
+
+.toolbar-cluster-right {
+    margin-left: auto;
+}
+
+.toolbar-mobile-select {
+    font-size: 11px;
+    line-height: 1.1;
 }
 
 @media (max-width: 1200px) {
@@ -253,13 +263,48 @@ body {
 }
 
 @media (max-width: 1024px) {
+    .editor-toolbar {
+        gap: 6px;
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
     .shortcut-badge,
     #ocr-status {
         display: none;
     }
 
+    .toolbar-mobile-select {
+        display: inline-flex !important;
+    }
+
+    .toolbar-tools,
+    .color-button-group {
+        display: none !important;
+    }
+
+    .toolbar-zoom-step {
+        display: none;
+    }
+
+    .toolbar-cluster {
+        gap: 6px !important;
+    }
+
+    .toolbar-properties {
+        gap: 6px !important;
+    }
+
     .toolbar-ocr {
         gap: 6px !important;
+    }
+
+    .toolbar-mobile-select#tool-select-mobile {
+        width: 7.25rem;
+    }
+
+    .toolbar-mobile-select#prop-color-mobile {
+        width: 6rem;
     }
 
     #prop-font-family {
@@ -283,34 +328,8 @@ body {
         display: none;
     }
 
-    .toolbar-tools {
-        padding: 2px;
-        gap: 2px;
-    }
-
-    .toolbar-tools .btn.btn-sm.btn-square {
-        width: 1.625rem;
-        min-height: 1.625rem;
-        height: 1.625rem;
-    }
-
-    .toolbar-tools svg {
-        width: 14px;
-        height: 14px;
-    }
-
     .toolbar-properties {
         gap: 8px !important;
-    }
-
-    .color-preset {
-        width: 14px;
-        height: 18px;
-    }
-
-    .input-color-custom {
-        width: 20px;
-        height: 18px;
     }
 }
 
@@ -324,8 +343,7 @@ body {
         display: none;
     }
 
-    #stroke-prop,
-    #opacity-prop {
+    #stroke-prop {
         width: 3rem !important;
     }
 
