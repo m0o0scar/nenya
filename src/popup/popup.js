@@ -911,6 +911,7 @@ const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 const EXPANDED_SESSIONS_STORAGE_KEY = 'popupExpandedSessionIds';
+const SESSION_DETAILS_CACHE_KEY = 'popupSessionDetailsCache';
 
 const PINNED_COLOR_PALETTE = [
   { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
@@ -1095,6 +1096,97 @@ function pruneExpandedSessionIds(expandedSessionIds, sessions) {
   return new Set(
     Array.from(expandedSessionIds).filter((sessionId) => validSessionIds.has(sessionId)),
   );
+}
+
+/**
+ * Load cached session details map from localStorage.
+ * @returns {Record<string, any>}
+ */
+function loadSessionDetailsCache() {
+  try {
+    const stored = window.localStorage.getItem(SESSION_DETAILS_CACHE_KEY);
+    if (!stored) {
+      return {};
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+
+    return parsed;
+  } catch (error) {
+    console.warn('[popup] Failed to load session details cache:', error);
+    return {};
+  }
+}
+
+/**
+ * Persist cached session details map to localStorage.
+ * @param {Record<string, any>} cache
+ * @returns {void}
+ */
+function saveSessionDetailsCache(cache) {
+  try {
+    window.localStorage.setItem(
+      SESSION_DETAILS_CACHE_KEY,
+      JSON.stringify(cache),
+    );
+  } catch (error) {
+    console.warn('[popup] Failed to save session details cache:', error);
+  }
+}
+
+/**
+ * Read cached details for a specific session.
+ * @param {number|string} collectionId
+ * @returns {any|null}
+ */
+function getCachedSessionDetails(collectionId) {
+  const cache = loadSessionDetailsCache();
+  const cacheKey = String(collectionId);
+  return cache[cacheKey] || null;
+}
+
+/**
+ * Update cached details for a specific session and drop stale entries.
+ * @param {number|string} collectionId
+ * @param {any} details
+ * @param {Array<{id: number|string}>} [sessions=[]]
+ * @returns {void}
+ */
+function cacheSessionDetails(collectionId, details, sessions = []) {
+  const cache = loadSessionDetailsCache();
+  cache[String(collectionId)] = details;
+
+  if (sessions.length > 0) {
+    const validSessionIds = new Set(sessions.map((session) => String(session.id)));
+    Object.keys(cache).forEach((sessionId) => {
+      if (!validSessionIds.has(sessionId)) {
+        delete cache[sessionId];
+      }
+    });
+  }
+
+  saveSessionDetailsCache(cache);
+}
+
+/**
+ * Remove cached detail entries for sessions that no longer exist.
+ * @param {Array<{id: number|string}>} sessions
+ * @returns {void}
+ */
+function pruneSessionDetailsCache(sessions) {
+  const cache = loadSessionDetailsCache();
+  const validSessionIds = new Set(sessions.map((session) => String(session.id)));
+
+  Object.keys(cache).forEach((sessionId) => {
+    if (!validSessionIds.has(sessionId)) {
+      delete cache[sessionId];
+    }
+  });
+
+  saveSessionDetailsCache(cache);
 }
 
 /**
@@ -1395,6 +1487,7 @@ async function initializeSessions() {
         cachedSessions,
       );
       saveExpandedSessionIds(prunedExpandedSessionIds);
+      pruneSessionDetailsCache(cachedSessions);
       sessionsSection.classList.remove('hidden');
       renderSessions(cachedSessions, sessionsList, prunedExpandedSessionIds);
       sessionsList.scrollTop = scrollPosition; // Restore scroll after initial render
@@ -1420,6 +1513,7 @@ async function initializeSessions() {
           response.sessions,
         );
         saveExpandedSessionIds(prunedExpandedSessionIds);
+        pruneSessionDetailsCache(response.sessions);
         sessionsSection.classList.remove('hidden');
         renderSessions(response.sessions, sessionsList, prunedExpandedSessionIds);
         // Update cache
@@ -1429,6 +1523,7 @@ async function initializeSessions() {
         sessionsSection.classList.add('hidden');
         sessionsList.innerHTML = '';
         saveExpandedSessionIds(new Set());
+        saveSessionDetailsCache({});
         await chrome.storage.local.remove(SESSIONS_CACHE_KEY);
       }
     } else {
@@ -1895,8 +1990,13 @@ async function handleDeleteSession(collectionId, sessionTitle) {
  * @param {HTMLElement} container
  */
 async function fetchAndRenderSessionDetails(collectionId, container) {
-  container.innerHTML =
-    '<div class="flex items-center justify-center py-2"><span class="loading loading-spinner loading-xs"></span></div>';
+  const cachedDetails = getCachedSessionDetails(collectionId);
+  if (cachedDetails) {
+    renderSessionTree(cachedDetails, container);
+  } else {
+    container.innerHTML =
+      '<div class="flex items-center justify-center py-2"><span class="loading loading-spinner loading-xs"></span></div>';
+  }
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -1905,15 +2005,20 @@ async function fetchAndRenderSessionDetails(collectionId, container) {
     });
 
     if (response && response.ok && response.details) {
+      cacheSessionDetails(collectionId, response.details);
       renderSessionTree(response.details, container);
     } else {
-      container.innerHTML =
-        '<div class="text-xs text-error p-2">Failed to load details</div>';
+      if (!cachedDetails) {
+        container.innerHTML =
+          '<div class="text-xs text-error p-2">Failed to load details</div>';
+      }
     }
   } catch (error) {
     console.error('[popup] Error fetching session details:', error);
-    container.innerHTML =
-      '<div class="text-xs text-error p-2">Error loading details</div>';
+    if (!cachedDetails) {
+      container.innerHTML =
+        '<div class="text-xs text-error p-2">Error loading details</div>';
+    }
   }
 }
 
