@@ -910,6 +910,7 @@ const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
+const EXPANDED_SESSIONS_STORAGE_KEY = 'popupExpandedSessionIds';
 
 const PINNED_COLOR_PALETTE = [
   { bg: '#fecaca', text: '#991b1b' }, // red-200 / red-900
@@ -1038,6 +1039,62 @@ function getStableColor(str) {
   }
   const index = Math.abs(hash) % PINNED_COLOR_PALETTE.length;
   return PINNED_COLOR_PALETTE[index];
+}
+
+/**
+ * Load expanded popup session IDs from localStorage.
+ * @returns {Set<string>}
+ */
+function loadExpandedSessionIds() {
+  try {
+    const stored = window.localStorage.getItem(EXPANDED_SESSIONS_STORAGE_KEY);
+    if (!stored) {
+      return new Set();
+    }
+
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) {
+      return new Set();
+    }
+
+    return new Set(
+      parsed
+        .filter((value) => typeof value === 'string' && value.trim().length > 0)
+        .map((value) => value.trim()),
+    );
+  } catch (error) {
+    console.warn('[popup] Failed to load expanded session IDs:', error);
+    return new Set();
+  }
+}
+
+/**
+ * Persist expanded popup session IDs to localStorage.
+ * @param {Set<string>} expandedSessionIds
+ * @returns {void}
+ */
+function saveExpandedSessionIds(expandedSessionIds) {
+  try {
+    window.localStorage.setItem(
+      EXPANDED_SESSIONS_STORAGE_KEY,
+      JSON.stringify(Array.from(expandedSessionIds)),
+    );
+  } catch (error) {
+    console.warn('[popup] Failed to save expanded session IDs:', error);
+  }
+}
+
+/**
+ * Keep only expanded IDs that still exist in the available sessions list.
+ * @param {Set<string>} expandedSessionIds
+ * @param {Array<{id: number|string}>} sessions
+ * @returns {Set<string>}
+ */
+function pruneExpandedSessionIds(expandedSessionIds, sessions) {
+  const validSessionIds = new Set(sessions.map((session) => String(session.id)));
+  return new Set(
+    Array.from(expandedSessionIds).filter((sessionId) => validSessionIds.has(sessionId)),
+  );
 }
 
 /**
@@ -1315,8 +1372,8 @@ async function initializeSessions() {
   // 1. Save scroll position
   const scrollPosition = sessionsList.scrollTop;
 
-  // 2. Save expanded session IDs
-  const expandedSessionIds = new Set();
+  // 2. Preserve expanded session IDs from persisted state and current DOM
+  const expandedSessionIds = loadExpandedSessionIds();
   sessionsList.querySelectorAll('.session-item').forEach((item) => {
     const details = item.querySelector('.session-details');
     if (details && !details.classList.contains('hidden')) {
@@ -1333,8 +1390,13 @@ async function initializeSessions() {
     const result = await chrome.storage.local.get(SESSIONS_CACHE_KEY);
     const cachedSessions = result[SESSIONS_CACHE_KEY];
     if (Array.isArray(cachedSessions) && cachedSessions.length > 0) {
+      const prunedExpandedSessionIds = pruneExpandedSessionIds(
+        expandedSessionIds,
+        cachedSessions,
+      );
+      saveExpandedSessionIds(prunedExpandedSessionIds);
       sessionsSection.classList.remove('hidden');
-      renderSessions(cachedSessions, sessionsList, expandedSessionIds);
+      renderSessions(cachedSessions, sessionsList, prunedExpandedSessionIds);
       sessionsList.scrollTop = scrollPosition; // Restore scroll after initial render
     }
   } catch (err) {
@@ -1353,14 +1415,20 @@ async function initializeSessions() {
 
     if (response && response.ok && Array.isArray(response.sessions)) {
       if (response.sessions.length > 0) {
+        const prunedExpandedSessionIds = pruneExpandedSessionIds(
+          expandedSessionIds,
+          response.sessions,
+        );
+        saveExpandedSessionIds(prunedExpandedSessionIds);
         sessionsSection.classList.remove('hidden');
-        renderSessions(response.sessions, sessionsList, expandedSessionIds);
+        renderSessions(response.sessions, sessionsList, prunedExpandedSessionIds);
         // Update cache
         await chrome.storage.local.set({ [SESSIONS_CACHE_KEY]: response.sessions });
       } else {
         // If no sessions found on server, clear UI and cache
         sessionsSection.classList.add('hidden');
         sessionsList.innerHTML = '';
+        saveExpandedSessionIds(new Set());
         await chrome.storage.local.remove(SESSIONS_CACHE_KEY);
       }
     } else {
@@ -1395,6 +1463,8 @@ async function initializeSessions() {
 function renderSessions(sessions, container, expandedSessionIds = new Set()) {
   container.innerHTML = '';
   const existingNames = new Set(sessions.map((s) => s.title));
+  const persistedExpandedSessionIds = pruneExpandedSessionIds(expandedSessionIds, sessions);
+  saveExpandedSessionIds(persistedExpandedSessionIds);
 
   sessions.forEach((session) => {
     const sessionItem = document.createElement('div');
@@ -1495,7 +1565,8 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
     const detailsContainer = document.createElement('div');
     detailsContainer.className = 'session-details pl-4 hidden';
 
-    const isExpanded = expandedSessionIds.has(String(session.id));
+    const sessionId = String(session.id);
+    const isExpanded = persistedExpandedSessionIds.has(sessionId);
     if (isExpanded) {
       detailsContainer.classList.remove('hidden');
       toggleIcon.classList.add('rotate-90');
@@ -1509,10 +1580,14 @@ function renderSessions(sessions, container, expandedSessionIds = new Set()) {
       if (isHidden) {
         detailsContainer.classList.remove('hidden');
         toggleIcon.classList.add('rotate-90');
+        persistedExpandedSessionIds.add(sessionId);
+        saveExpandedSessionIds(persistedExpandedSessionIds);
         void fetchAndRenderSessionDetails(session.id, detailsContainer);
       } else {
         detailsContainer.classList.add('hidden');
         toggleIcon.classList.remove('rotate-90');
+        persistedExpandedSessionIds.delete(sessionId);
+        saveExpandedSessionIds(persistedExpandedSessionIds);
       }
     });
 
