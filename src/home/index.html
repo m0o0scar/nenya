@@ -6,6 +6,7 @@
   <title>Nenya - Home</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script src="./home.js"></script>
   <link rel="stylesheet" href="../libs/daisyui@5.css">
   <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
   <link rel="stylesheet" href="./home.css">
@@ -20,32 +21,56 @@
         <img src="../../assets/icons/icon-48x48.png" alt="Nenya" class="home-brand-icon" />
         <span>Nenya</span>
       </div>
-      <div id="shortcutsContainer" class="home-shortcuts" aria-label="Action shortcuts"></div>
+      <div class="home-header-right">
+        <div class="home-surface-controls" aria-label="Home page controls">
+          <button id="changeBackgroundButton" type="button" class="btn btn-sm home-control-button">
+            Change image
+          </button>
+          <button
+            id="toggleZenModeButton"
+            type="button"
+            class="btn btn-sm btn-ghost home-control-button"
+            aria-pressed="false">
+            Zen mode
+          </button>
+        </div>
+        <div id="shortcutsContainer" class="home-shortcuts" aria-label="Action shortcuts"></div>
+      </div>
     </header>
 
-    <div class="home-status-row">
-      <span id="autoReloadStatus" class="text-xs text-base-content/70" hidden></span>
+    <div class="home-content">
+      <div class="home-status-row">
+        <span id="autoReloadStatus" class="text-xs text-base-content/70" hidden></span>
+      </div>
+
+      <main class="home-main">
+        <article class="home-card home-search-card" aria-labelledby="bookmarks-search-heading">
+          <h1 id="bookmarks-search-heading" class="sr-only">Bookmarks Search</h1>
+          <div class="space-y-3">
+            <div class="relative">
+              <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
+                class="input input-bordered w-full" autofocus />
+              <div
+                id="customSearchSuggestions"
+                class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-base-100/95 border border-base-300 rounded-md shadow-md max-h-56 overflow-y-auto"
+                role="listbox"
+                aria-label="Custom search engines">
+              </div>
+            </div>
+            <div id="pinnedItemsContainer" class="flex flex-wrap gap-2 mt-2 empty:mt-0"></div>
+            <div id="bookmarksSearchResults" class="space-y-2" role="list"></div>
+          </div>
+        </article>
+
+        <article id="sessionsSection" class="home-card hidden" aria-labelledby="sessions-heading">
+          <div class="flex items-center justify-between mb-3">
+            <h2 id="sessions-heading" class="text-xs font-bold text-base-content/60 uppercase tracking-[0.2em]">Sessions</h2>
+            <span id="sessionsLoadingIndicator" class="text-[10px] text-base-content/40 hidden italic">loading...</span>
+          </div>
+          <div id="sessionsList" class="space-y-2" role="list"></div>
+        </article>
+      </main>
     </div>
-
-    <main class="home-main">
-      <article class="home-card home-search-card" aria-labelledby="bookmarks-search-heading">
-        <h1 id="bookmarks-search-heading" class="sr-only">Bookmarks Search</h1>
-        <div class="space-y-3">
-          <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
-            class="input input-bordered w-full" autofocus />
-          <div id="pinnedItemsContainer" class="flex flex-wrap gap-2 mt-2 empty:mt-0"></div>
-          <div id="bookmarksSearchResults" class="space-y-2" role="list"></div>
-        </div>
-      </article>
-
-      <article id="sessionsSection" class="home-card hidden" aria-labelledby="sessions-heading">
-        <div class="flex items-center justify-between mb-3">
-          <h2 id="sessions-heading" class="text-xs font-bold text-base-content/60 uppercase tracking-[0.2em]">Sessions</h2>
-          <span id="sessionsLoadingIndicator" class="text-[10px] text-base-content/40 hidden italic">loading...</span>
-        </div>
-        <div id="sessionsList" class="space-y-2" role="list"></div>
-      </article>
-    </main>
   </div>
 
   <div id="statusMessage"
