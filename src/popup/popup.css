@@ -8,6 +8,83 @@
 body {
   width: var(--popup-width);
   max-width: var(--popup-width);
+  min-height: 300px;
+}
+
+.nenya-popup-body {
+  padding: 0.75rem;
+}
+
+.nenya-popup-header {
+  border: 1px solid var(--nenya-border-soft);
+  border-radius: var(--nenya-radius-lg);
+  box-shadow: var(--nenya-shadow-soft);
+  background: color-mix(in oklch, var(--color-base-100) 90%, transparent);
+  padding-inline: 0.5rem;
+}
+
+.nenya-popup-header .btn {
+  border-radius: 999px;
+}
+
+#shortcutsContainer .btn {
+  color: #2b211c;
+}
+
+[data-theme='dark'] #shortcutsContainer .btn {
+  color: #f3ebe7;
+}
+
+#bookmarksSearchInput {
+  height: 2.8rem;
+  outline: none;
+  box-shadow: none;
+}
+
+#bookmarksSearchInput:focus {
+  border-color: var(--nenya-accent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--nenya-accent) 14%, transparent);
+}
+
+#customSearchSuggestions,
+#bookmarksSearchResults,
+#sessionsList {
+  scrollbar-width: thin;
+}
+
+#bookmarksSearchResults > div,
+#sessionsList .session-item > div:first-child {
+  border-radius: var(--nenya-radius-md);
+}
+
+#bookmarksSearchResults > div:hover,
+#sessionsList .session-item > div:first-child:hover {
+  background: color-mix(in oklch, var(--nenya-accent) 12%, var(--color-base-200));
+}
+
+#pinnedItemsContainer .badge {
+  border-radius: 999px;
+  box-shadow: 0 5px 14px rgb(0 0 0 / 0.08);
+}
+
+#pinnedItemsContainer .unpin-button {
+  opacity: 0.65;
+}
+
+#pinnedItemsContainer .badge:hover .unpin-button {
+  opacity: 1;
+}
+
+#statusMessage {
+  border-top: 1px solid var(--nenya-border-soft);
+  background: color-mix(in oklch, var(--color-base-100) 88%, transparent);
+  backdrop-filter: blur(10px);
+}
+
+.modal-box {
+  border-radius: var(--nenya-radius-lg);
+  border: 1px solid var(--nenya-border-soft);
+  box-shadow: var(--nenya-shadow-soft);
 }
 
 #projectsErrorContainer.flex {
