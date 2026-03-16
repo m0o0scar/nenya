@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --nenya-accent: #b97155;
+  --nenya-accent-strong: #a05b40;
+  --nenya-accent-soft: color-mix(in oklch, var(--nenya-accent) 18%, transparent);
+  --nenya-border-soft: color-mix(in oklch, var(--color-base-content) 14%, transparent);
+  --nenya-shadow-soft: 0 16px 40px rgb(28 20 16 / 0.1);
+  --nenya-shadow-card: 0 12px 30px rgb(28 20 16 / 0.08);
+  --nenya-radius-lg: 1.15rem;
+  --nenya-radius-md: 0.85rem;
+}
+
+html,
+body {
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+
+body {
+  background:
+    radial-gradient(circle at 18% 10%, color-mix(in oklch, var(--nenya-accent) 9%, transparent), transparent 40%),
+    radial-gradient(circle at 82% 90%, color-mix(in oklch, var(--color-primary) 8%, transparent), transparent 45%),
+    var(--color-base-200);
+}
+
+[data-theme='dark'] {
+  --nenya-accent: #d89778;
+  --nenya-accent-strong: #c88362;
+  --nenya-shadow-soft: 0 16px 40px rgb(0 0 0 / 0.36);
+  --nenya-shadow-card: 0 12px 30px rgb(0 0 0 / 0.32);
+}
+
+.nenya-soft-surface {
+  border: 1px solid var(--nenya-border-soft);
+  border-radius: var(--nenya-radius-lg);
+  box-shadow: var(--nenya-shadow-card);
+  backdrop-filter: blur(8px);
+}
+
+.nenya-soft-input {
+  border-radius: 999px;
+  border-color: var(--nenya-border-soft);
+  background: color-mix(in oklch, var(--color-base-100) 80%, transparent);
+  outline: none;
+  box-shadow: none;
+}
+
+.nenya-soft-input:focus,
+.nenya-soft-input:focus-within {
+  border-color: var(--nenya-accent);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--nenya-accent) 14%, transparent);
+}
