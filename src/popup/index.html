@@ -8,47 +8,14 @@
   <meta name="color-scheme" content="light dark">
   <link rel="stylesheet" href="../libs/daisyui@5.css">
   <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+  <link rel="stylesheet" href="../shared/cozy-theme.css">
   <link rel="stylesheet" href="./popup.css">
   <script src="../libs/tailwindcss@4.js"></script>
   <script src="../libs/prompt.js"></script>
-  <style>
-    body {
-      min-height: 300px;
-    }
-
-    /* Icon colors - black by default, white in dark mode */
-    #getMarkdownButton,
-    #pullButton,
-    #saveUnsortedButton,
-    #importCustomCodeButton,
-    #customFilterButton,
-    #autoReloadButton,
-    #brightModeButton,
-    #highlightTextButton,
-    #customCodeButton,
-    #pictureInPictureButton,
-    #openOptionsButton {
-      color: #000000;
-    }
-
-    [data-theme="dark"] #getMarkdownButton,
-    [data-theme="dark"] #pullButton,
-    [data-theme="dark"] #saveUnsortedButton,
-    [data-theme="dark"] #importCustomCodeButton,
-    [data-theme="dark"] #customFilterButton,
-    [data-theme="dark"] #autoReloadButton,
-    [data-theme="dark"] #brightModeButton,
-    [data-theme="dark"] #highlightTextButton,
-    [data-theme="dark"] #customCodeButton,
-    [data-theme="dark"] #pictureInPictureButton,
-    [data-theme="dark"] #openOptionsButton {
-      color: #ffffff;
-    }
-  </style>
 </head>
 
-<body class="bg-base-200">
-  <div class="navbar bg-base-100 shadow-sm sticky top-0 z-10">
+<body class="bg-base-200 nenya-popup-body">
+  <div class="navbar bg-base-100 sticky top-0 z-10 nenya-popup-header">
     <div class="flex-1 flex items-center gap-3">
       <a class="btn btn-ghost text-xl flex items-center gap-2">
         <img id="extensionIcon" src="../../assets/icons/icon-48x48.png" alt="Nenya" class="w-6 h-6" />
@@ -59,17 +26,17 @@
       <!-- Buttons will be dynamically inserted here -->
     </div>
   </div>
-  <div class="w-full bg-base-100 text-center pt-2">
+  <div class="w-full text-center pt-2">
     <span id="autoReloadStatus" class="text-xs text-base-content/70" hidden></span>
   </div>
-  <main class="space-y-4">
+  <main class="space-y-4 px-3 pb-3">
 
     <!-- bookmarks search -->
-    <article class="w-full p-4 bg-base-100" aria-labelledby="bookmarks-search-heading">
+    <article class="w-full p-4 bg-base-100 nenya-soft-surface" aria-labelledby="bookmarks-search-heading">
       <div class="space-y-2">
         <div class="relative">
           <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
-            class="input input-bordered w-full" autofocus />
+            class="input input-bordered w-full nenya-soft-input" autofocus />
           <div id="customSearchSuggestions"
             class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-base-100 border border-base-300 rounded-md shadow-md max-h-56 overflow-y-auto"
             role="listbox" aria-label="Custom search engines">
@@ -81,7 +48,7 @@
     </article>
 
     <!-- sessions section -->
-    <article id="sessionsSection" class="w-full p-4 bg-base-100 hidden" aria-labelledby="sessions-heading">
+    <article id="sessionsSection" class="w-full p-4 bg-base-100 hidden nenya-soft-surface" aria-labelledby="sessions-heading">
       <div class="flex items-center justify-between mb-2">
         <h2 id="sessions-heading" class="text-xs font-bold text-base-content/50 uppercase tracking-wider">Sessions</h2>
         <span id="sessionsLoadingIndicator" class="text-[10px] text-base-content/40 hidden italic">loading...</span>
