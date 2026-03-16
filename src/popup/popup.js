@@ -1005,7 +1005,6 @@ async function openBookmark(url) {
         'about:newtab', // Firefox
         'edge://newtab/', // Edge
         'about:blank', // All browsers
-        chrome.runtime.getURL('src/home/index.html'),
       ];
       if (
         currentTab.id &&
