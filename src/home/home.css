@@ -10,7 +10,7 @@ body {
 body {
   margin: 0;
   color: hsl(var(--bc));
-  background: lightgrey;
+  background: #f0f0f0;
 }
 
 .home-shell {
