@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <title>Nenya</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: 'Nunito', system-ui, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background:
+        radial-gradient(circle at top, rgb(251 191 36 / 0.18), transparent 42%),
+        linear-gradient(180deg, #f8f5f0 0%, #efe7dc 100%);
+      color: #2f241d;
+    }
+
+    main {
+      width: min(32rem, calc(100vw - 2rem));
+      padding: 2rem;
+      border-radius: 1.5rem;
+      background: rgb(255 255 255 / 0.84);
+      border: 1px solid rgb(120 93 68 / 0.16);
+      box-shadow: 0 20px 60px rgb(31 24 19 / 0.12);
+      text-align: center;
+      backdrop-filter: blur(12px);
+    }
+
+    h1 {
+      margin: 0 0 0.75rem;
+      font-size: 1.5rem;
+    }
+
+    p {
+      margin: 0;
+      line-height: 1.6;
+      color: rgb(47 36 29 / 0.78);
+    }
+
+    a {
+      color: inherit;
+      font-weight: 700;
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>Redirecting to your browser new tab page…</h1>
+    <p>
+      This page exists only to recover old Nenya new tab sessions after the update.
+      If you stay here, open <a id="nativeNewTabLink" href="chrome://newtab/">a new tab</a>.
+    </p>
+  </main>
+  <script src="./redirect.js"></script>
+</body>
+
+</html>
