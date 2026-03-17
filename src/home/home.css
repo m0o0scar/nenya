@@ -80,11 +80,6 @@ body {
 
 .home-card {
   width: min(100%, 640px);
-  background: hsl(var(--b1) / 0.8);
-  border: 1px solid hsl(var(--bc) / 0.16);
-  border-radius: 0.9rem;
-  backdrop-filter: blur(20px);
-  box-shadow: 0 18px 36px hsl(var(--bc) / 0.12);
   padding: 1rem;
 }
 
@@ -105,11 +100,8 @@ body {
 #sessionsList {
   max-height: min(55vh, 48rem);
   overflow: auto;
-  border: 1px solid hsl(var(--bc) / 0.14);
-  border-radius: 0.75rem;
   padding: 0.5rem;
   padding-right: 0.25rem;
-  background: hsl(var(--b1) / 0.4);
 }
 
 #shortcutsContainer .btn {
