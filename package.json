@@ -1,6 +1,6 @@
 {
   "name": "nenya",
-  "version": "1.79.0",
+  "version": "1.80.0",
   "description": "",
   "type": "module",
   "main": "index.js",
