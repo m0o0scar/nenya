@@ -4086,9 +4086,9 @@ async function initializeBookmarksSearch(
     }
   });
 
-  // Handle Cmd/Ctrl + [key] shortcuts for pinned shortcut actions
+  // Handle Alt + [key] shortcuts for pinned shortcut actions
   window.addEventListener('keydown', (event) => {
-    if (event.metaKey || event.ctrlKey) {
+    if (event.altKey && !event.metaKey && !event.ctrlKey) {
       const key = event.key.toLowerCase();
       const matchedShortcut = Object.entries(SHORTCUT_CONFIG).find(
         ([shortcutId, config]) =>
