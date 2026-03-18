@@ -129,6 +129,44 @@ function getPinnedItemIndexFromEvent(event) {
 }
 
 /**
+ * Determine whether the popup search field is currently the active element.
+ * @returns {boolean}
+ */
+function isSearchInputFocused() {
+  return document.activeElement === bookmarksSearchInput;
+}
+
+/**
+ * Whether an Alt-modified keydown should be suppressed to keep popup shortcut
+ * keystrokes from inserting alternate characters into the search input.
+ * @param {KeyboardEvent} event
+ * @returns {boolean}
+ */
+function shouldSuppressSearchInputAltShortcut(event) {
+  if (
+    !isSearchInputFocused() ||
+    !event.altKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.defaultPrevented ||
+    event.isComposing
+  ) {
+    return false;
+  }
+
+  const key = getShortcutKeyFromEvent(event);
+  if (!key) {
+    return false;
+  }
+
+  if (key >= '1' && key <= '9') {
+    return true;
+  }
+
+  return Object.values(SHORTCUT_CONFIG).some((config) => config.key === key);
+}
+
+/**
  * Gets all custom search engines from storage.
  * @returns {Promise<Array<{id: string, name: string, shortcut: string, searchUrl: string}>>}
  */
@@ -4147,6 +4185,10 @@ async function initializeBookmarksSearch(
   // Handle Alt-based popup shortcuts in capture phase so the focused search input
   // never inserts the modified character before we can trigger the action.
   window.addEventListener('keydown', async (event) => {
+    if (shouldSuppressSearchInputAltShortcut(event)) {
+      event.preventDefault();
+    }
+
     const pinnedItemIndex = getPinnedItemIndexFromEvent(event);
     if (pinnedItemIndex >= 0) {
       event.preventDefault();
