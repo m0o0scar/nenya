@@ -82,7 +82,6 @@ function getPinnedShortcutActionFromEvent(event) {
     !event.altKey ||
     event.metaKey ||
     event.ctrlKey ||
-    event.defaultPrevented ||
     event.isComposing
   ) {
     return null;
@@ -114,7 +113,6 @@ function getPinnedItemIndexFromEvent(event) {
     event.metaKey ||
     event.ctrlKey ||
     event.shiftKey ||
-    event.defaultPrevented ||
     event.isComposing
   ) {
     return -1;
@@ -148,7 +146,6 @@ function shouldSuppressSearchInputAltShortcut(event) {
     !event.altKey ||
     event.metaKey ||
     event.ctrlKey ||
-    event.defaultPrevented ||
     event.isComposing
   ) {
     return false;
