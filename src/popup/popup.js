@@ -43,6 +43,92 @@ function closeCurrentSurface() {
 }
 
 /**
+ * Normalize a keyboard event to a lowercase letter/digit based on physical key.
+ * event.code stays stable for Alt-modified shortcuts where event.key may change.
+ * @param {KeyboardEvent} event
+ * @returns {string}
+ */
+function getShortcutKeyFromEvent(event) {
+  if (typeof event.code === 'string') {
+    if (
+      event.code.startsWith('Key') &&
+      event.code.length === 4
+    ) {
+      return event.code.slice(3).toLowerCase();
+    }
+
+    if (
+      event.code.startsWith('Digit') &&
+      event.code.length === 6
+    ) {
+      return event.code.slice(5);
+    }
+  }
+
+  if (typeof event.key === 'string' && event.key.length === 1) {
+    return event.key.toLowerCase();
+  }
+
+  return '';
+}
+
+/**
+ * Match a popup pinned shortcut from an Alt-modified keydown event.
+ * @param {KeyboardEvent} event
+ * @returns {{ handler: () => void | Promise<void> } | null}
+ */
+function getPinnedShortcutActionFromEvent(event) {
+  if (
+    !event.altKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.defaultPrevented ||
+    event.isComposing
+  ) {
+    return null;
+  }
+
+  const key = getShortcutKeyFromEvent(event);
+  if (!key || key < 'a' || key > 'z') {
+    return null;
+  }
+
+  return (
+    Object.entries(SHORTCUT_CONFIG).find(
+      ([shortcutId, config]) =>
+        isShortcutSupportedOnCurrentSurface(shortcutId) &&
+        config.key === key &&
+        (config.shift ? event.shiftKey : !event.shiftKey),
+    )?.[1] || null
+  );
+}
+
+/**
+ * Resolve a pinned search-result index from Alt+Digit1..9.
+ * @param {KeyboardEvent} event
+ * @returns {number}
+ */
+function getPinnedItemIndexFromEvent(event) {
+  if (
+    !event.altKey ||
+    event.metaKey ||
+    event.ctrlKey ||
+    event.shiftKey ||
+    event.defaultPrevented ||
+    event.isComposing
+  ) {
+    return -1;
+  }
+
+  const key = getShortcutKeyFromEvent(event);
+  if (key >= '1' && key <= '9') {
+    return parseInt(key, 10) - 1;
+  }
+
+  return -1;
+}
+
+/**
  * Gets all custom search engines from storage.
  * @returns {Promise<Array<{id: string, name: string, shortcut: string, searchUrl: string}>>}
  */
@@ -4058,50 +4144,29 @@ async function initializeBookmarksSearch(
     }
   });
 
-  // Handle Alt + Number shortcuts to open pinned items
+  // Handle Alt-based popup shortcuts in capture phase so the focused search input
+  // never inserts the modified character before we can trigger the action.
   window.addEventListener('keydown', async (event) => {
-    // Determine the digit from either event.key or event.code
-    // event.code (e.g., 'Digit1') is more reliable on different keyboard layouts and OSes (like Mac)
-    let digit = null;
-    if (event.key >= '1' && event.key <= '9') {
-      digit = event.key;
-    } else if (event.code.startsWith('Digit')) {
-      const d = event.code.substring(5);
-      if (d >= '1' && d <= '9') {
-        digit = d;
-      }
-    }
-
-    if (event.altKey && digit) {
-      const index = parseInt(digit, 10) - 1;
-      // We must call preventDefault() synchronously before any await
-      // to ensure the browser's default action is blocked.
+    const pinnedItemIndex = getPinnedItemIndexFromEvent(event);
+    if (pinnedItemIndex >= 0) {
       event.preventDefault();
+      event.stopPropagation();
 
       const pinnedItems = await getPinnedItems();
-      if (index >= 0 && index < pinnedItems.length) {
-        const item = pinnedItems[index];
+      if (pinnedItemIndex < pinnedItems.length) {
+        const item = pinnedItems[pinnedItemIndex];
         void openBookmark(item.url);
       }
+      return;
     }
-  });
 
-  // Handle Alt + [key] shortcuts for pinned shortcut actions
-  window.addEventListener('keydown', (event) => {
-    if (event.altKey && !event.metaKey && !event.ctrlKey) {
-      const key = event.key.toLowerCase();
-      const matchedShortcut = Object.entries(SHORTCUT_CONFIG).find(
-        ([shortcutId, config]) =>
-          isShortcutSupportedOnCurrentSurface(shortcutId) &&
-          config.key === key &&
-          (config.shift ? event.shiftKey : !event.shiftKey),
-      )?.[1];
-
-      if (matchedShortcut) {
-        event.preventDefault();
-        event.stopPropagation();
-        void matchedShortcut.handler();
-      }
+    const matchedShortcut = getPinnedShortcutActionFromEvent(event);
+    if (!matchedShortcut) {
+      return;
     }
-  });
+
+    event.preventDefault();
+    event.stopPropagation();
+    void matchedShortcut.handler();
+  }, true);
 }
