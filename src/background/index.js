@@ -23,7 +23,14 @@ import {
   handleOptionsBackupMessage,
   runAutomaticRestore,
   runStartupSync,
+  runManualRestore,
 } from './options-backup.js';
+import {
+  initializePinnedSearchResultsBackupService,
+  runPinnedSearchResultsAutomaticRestore,
+  runPinnedSearchResultsStartupSync,
+  runPinnedSearchResultsManualRestore,
+} from './pinned-search-results-backup.js';
 import {
   initializeAutoReloadFeature,
   handleAutoReloadAlarm,
@@ -60,6 +67,7 @@ import {
   isLLMPage,
   getLLMProviderFromURL,
 } from '../shared/llmProviders.js';
+import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 import { processUrl } from '../shared/urlProcessor.js';
 import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
@@ -2110,7 +2118,9 @@ function handleLifecycleEvent(trigger) {
   setupClipboardContextMenus();
   initializeTabSnapshots();
   void initializeOptionsBackupService();
+  void initializePinnedSearchResultsBackupService();
   void runStartupSync();
+  void runPinnedSearchResultsStartupSync();
   chrome.alarms.create('options-backup-check', {
     periodInMinutes: 1,
   });
@@ -2217,6 +2227,7 @@ chrome.runtime.onStartup.addListener(() => {
 
 // Ensure backup service is initialized immediately when service worker starts
 initializeOptionsBackupService();
+void initializePinnedSearchResultsBackupService();
 void ensureNenyaSessionsCollection();
 
 void initializeAutoReloadFeature().catch((error) => {
@@ -2290,6 +2301,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   void (async () => {
     if (alarm.name === 'options-backup-check') {
       await runAutomaticRestore();
+      await runPinnedSearchResultsAutomaticRestore();
     } else {
       await handleAutoReloadAlarm(alarm);
     }
@@ -3545,6 +3557,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (handleOptionsBackupMessage(message, sendResponse)) {
+    return true;
+  }
+
+  if (
+    message.type === OPTIONS_BACKUP_MESSAGES.SYNC_AFTER_LOGIN ||
+    message.type === OPTIONS_BACKUP_MESSAGES.RESTORE_AFTER_LOGIN
+  ) {
+    void Promise.allSettled([
+      runManualRestore(),
+      runPinnedSearchResultsManualRestore(),
+    ])
+      .then((results) => {
+        const errors = results.flatMap((result) => {
+          if (result.status === 'rejected') {
+            return [
+              result.reason instanceof Error
+                ? result.reason.message
+                : String(result.reason ?? 'Unknown error'),
+            ];
+          }
+
+          const value = result.value;
+          if (!value?.ok && Array.isArray(value?.errors)) {
+            return value.errors;
+          }
+
+          return [];
+        });
+
+        sendResponse({
+          ok: errors.length === 0,
+          errors,
+        });
+      })
+      .catch((error) =>
+        sendResponse({
+          ok: false,
+          errors: [
+            error instanceof Error
+              ? error.message
+              : String(error ?? 'Unknown error'),
+          ],
+        }),
+      );
     return true;
   }
 
