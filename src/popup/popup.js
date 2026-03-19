@@ -12,8 +12,8 @@ import {
   showSaveToUnsortedDialog,
 } from './mirror.js';
 import { concludeStatus } from './shared.js';
-
 import { debounce } from '../shared/debounce.js';
+import { normalizePinnedSearchResults } from '../shared/pinnedSearchResults.js';
 
 const CURRENT_SURFACE = document.body?.dataset.surface || 'popup';
 const IS_HOME_SURFACE = CURRENT_SURFACE === 'home';
@@ -1336,44 +1336,16 @@ function getPinnedFaviconSource(url) {
   }
 }
 
-/**
- * Normalize pinned search results stored in extension storage.
- * @param {unknown} items
- * @returns {Array<{title: string, url: string, type: string}>}
- */
-function normalizePinnedItems(items) {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-
-  return items.reduce((accumulator, item) => {
-    if (!item || typeof item !== 'object') {
-      return accumulator;
-    }
-
-    const title = typeof item.title === 'string' ? item.title : '';
-    const url = typeof item.url === 'string' ? item.url : '';
-    const type = typeof item.type === 'string' ? item.type : '';
-
-    if (!title || !url) {
-      return accumulator;
-    }
-
-    accumulator.push({ title, url, type });
-    return accumulator;
-  }, /** @type {Array<{title: string, url: string, type: string}>} */ ([]));
-}
-
 async function getPinnedItems() {
   const result = await chrome.storage.local.get(
     PINNED_SEARCH_RESULTS_STORAGE_KEY,
   );
-  return normalizePinnedItems(result[PINNED_SEARCH_RESULTS_STORAGE_KEY]);
+  return normalizePinnedSearchResults(result[PINNED_SEARCH_RESULTS_STORAGE_KEY]);
 }
 
 async function savePinnedItems(items) {
   await chrome.storage.local.set({
-    [PINNED_SEARCH_RESULTS_STORAGE_KEY]: normalizePinnedItems(items),
+    [PINNED_SEARCH_RESULTS_STORAGE_KEY]: normalizePinnedSearchResults(items),
   });
 }
 
@@ -1381,7 +1353,10 @@ async function pinItem(item) {
   const pinnedItems = await getPinnedItems();
   const isPinned = pinnedItems.some((i) => i.url === item.url);
   if (!isPinned) {
-    const updatedPinnedItems = [...pinnedItems, ...normalizePinnedItems([item])];
+    const updatedPinnedItems = [
+      ...pinnedItems,
+      ...normalizePinnedSearchResults([item]),
+    ];
     await savePinnedItems(updatedPinnedItems);
     await renderPinnedItems(updatedPinnedItems);
   }
@@ -1403,7 +1378,7 @@ async function renderPinnedItems(items) {
   if (!pinnedItemsContainer) return;
   const renderToken = ++pinnedItemsRenderToken;
   const pinnedItems = Array.isArray(items)
-    ? normalizePinnedItems(items)
+    ? normalizePinnedSearchResults(items)
     : await getPinnedItems();
 
   // Avoid wiping out newer state with an older async storage read.
