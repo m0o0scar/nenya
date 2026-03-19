@@ -10,6 +10,7 @@ import { normalizePinnedSearchResults } from '../shared/pinnedSearchResults.js';
 
 const BACKUP_COLLECTION_TITLE = 'nenya / pinned search results';
 const BACKUP_FILE_NAME = 'pinned_search_results.json';
+const UPLOAD_FILE_NAME = 'pinned_search_results.txt';
 const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
 const STATE_STORAGE_KEY = 'pinnedSearchResultsBackupState';
 
@@ -258,7 +259,7 @@ async function uploadBackupFile(tokens, collectionId, payload) {
   const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
   const formData = new FormData();
   formData.append('collectionId', String(collectionId));
-  formData.append('file', blob, BACKUP_FILE_NAME);
+  formData.append('file', blob, UPLOAD_FILE_NAME);
 
   const response = await raindropRequest('/raindrop/file', tokens, {
     method: 'PUT',
@@ -271,11 +272,18 @@ async function uploadBackupFile(tokens, collectionId, payload) {
   }
 
   const itemCollectionId = getCollectionId(item.collection);
-  if (itemCollectionId !== collectionId) {
+  if (itemCollectionId !== collectionId || item.title !== BACKUP_FILE_NAME) {
+    /** @type {Record<string, any>} */
+    const updateBody = {
+      title: BACKUP_FILE_NAME,
+    };
+    if (itemCollectionId !== collectionId) {
+      updateBody.collection = { $id: collectionId };
+    }
     await raindropRequest('/raindrop/' + item._id, tokens, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collection: { $id: collectionId } }),
+      body: JSON.stringify(updateBody),
     });
   }
 }
