@@ -11,6 +11,7 @@ import {
 } from './brightMode.js';
 import { loadRules as loadHighlightTextRules } from './highlightText.js';
 import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
+import { normalizePinnedSearchResults } from '../shared/pinnedSearchResults.js';
 import { loadRules as loadVideoEnhancementRules } from './videoEnhancements.js';
 import { loadLLMPrompts } from './llmPrompts.js';
 import { loadRules as loadUrlProcessRules } from './urlProcessRules.js';
@@ -303,26 +304,6 @@ function showToast(message, variant = 'info') {
   } catch (_) {
     // ignore
   }
-}
-
-/**
- * Normalize pinned search results array.
- * @param {unknown} value
- * @returns {any[]}
- */
-function normalizePinnedSearchResults(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.filter((item) => {
-    return (
-      item &&
-      typeof item === 'object' &&
-      typeof item.title === 'string' &&
-      typeof item.url === 'string' &&
-      typeof item.type === 'string'
-    );
-  });
 }
 
 /**
