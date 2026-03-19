@@ -361,6 +361,10 @@ const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
 );
 
 const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
+/** @type {number} */
+let draggedItemIndex = -1;
+/** @type {number} */
+let pinnedItemsRenderToken = 0;
 
 // Keep references to buttons for backward compatibility
 let getMarkdownButton = null;
@@ -1332,16 +1336,44 @@ function getPinnedFaviconSource(url) {
   }
 }
 
+/**
+ * Normalize pinned search results stored in extension storage.
+ * @param {unknown} items
+ * @returns {Array<{title: string, url: string, type: string}>}
+ */
+function normalizePinnedItems(items) {
+  if (!Array.isArray(items)) {
+    return [];
+  }
+
+  return items.reduce((accumulator, item) => {
+    if (!item || typeof item !== 'object') {
+      return accumulator;
+    }
+
+    const title = typeof item.title === 'string' ? item.title : '';
+    const url = typeof item.url === 'string' ? item.url : '';
+    const type = typeof item.type === 'string' ? item.type : '';
+
+    if (!title || !url) {
+      return accumulator;
+    }
+
+    accumulator.push({ title, url, type });
+    return accumulator;
+  }, /** @type {Array<{title: string, url: string, type: string}>} */ ([]));
+}
+
 async function getPinnedItems() {
   const result = await chrome.storage.local.get(
     PINNED_SEARCH_RESULTS_STORAGE_KEY,
   );
-  return result[PINNED_SEARCH_RESULTS_STORAGE_KEY] || [];
+  return normalizePinnedItems(result[PINNED_SEARCH_RESULTS_STORAGE_KEY]);
 }
 
 async function savePinnedItems(items) {
   await chrome.storage.local.set({
-    [PINNED_SEARCH_RESULTS_STORAGE_KEY]: items,
+    [PINNED_SEARCH_RESULTS_STORAGE_KEY]: normalizePinnedItems(items),
   });
 }
 
@@ -1349,9 +1381,9 @@ async function pinItem(item) {
   const pinnedItems = await getPinnedItems();
   const isPinned = pinnedItems.some((i) => i.url === item.url);
   if (!isPinned) {
-    pinnedItems.push(item);
-    await savePinnedItems(pinnedItems);
-    await renderPinnedItems();
+    const updatedPinnedItems = [...pinnedItems, ...normalizePinnedItems([item])];
+    await savePinnedItems(updatedPinnedItems);
+    await renderPinnedItems(updatedPinnedItems);
   }
 }
 
@@ -1359,15 +1391,26 @@ async function unpinItem(url) {
   let pinnedItems = await getPinnedItems();
   pinnedItems = pinnedItems.filter((i) => i.url !== url);
   await savePinnedItems(pinnedItems);
-  await renderPinnedItems();
+  await renderPinnedItems(pinnedItems);
 }
 
-/** @type {number} */
-let draggedItemIndex = -1;
-
-async function renderPinnedItems() {
+/**
+ * Render the current pinned search results, ignoring stale async renders.
+ * @param {Array<{title: string, url: string, type: string}>} [items]
+ * @returns {Promise<void>}
+ */
+async function renderPinnedItems(items) {
   if (!pinnedItemsContainer) return;
-  const pinnedItems = await getPinnedItems();
+  const renderToken = ++pinnedItemsRenderToken;
+  const pinnedItems = Array.isArray(items)
+    ? normalizePinnedItems(items)
+    : await getPinnedItems();
+
+  // Avoid wiping out newer state with an older async storage read.
+  if (renderToken !== pinnedItemsRenderToken) {
+    return;
+  }
+
   pinnedItemsContainer.innerHTML = '';
   pinnedItems.forEach((item, index) => {
     const colors = getStableColor(item.url);
@@ -1464,7 +1507,7 @@ async function renderPinnedItems() {
         const movedItem = items.splice(fromIndex, 1)[0];
         items.splice(toIndex, 0, movedItem);
         await savePinnedItems(items);
-        await renderPinnedItems();
+        await renderPinnedItems(items);
       }
       return false;
     });
