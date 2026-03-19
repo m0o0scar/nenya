@@ -255,7 +255,7 @@ async function uploadBackupFile(tokens, collectionId, payload) {
     .filter((id) => Number.isFinite(id));
   await deleteItems(tokens, collectionId, existingIds);
 
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify(payload)], { type: 'text/plain' });
   const formData = new FormData();
   formData.append('collectionId', String(collectionId));
   formData.append('file', blob, BACKUP_FILE_NAME);
