@@ -13,7 +13,6 @@ import {
 } from '../shared/bookmarkFolders.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
-import { normalizePinnedSearchResults } from '../shared/pinnedSearchResults.js';
 
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / backup';
@@ -86,7 +85,6 @@ const DEFAULT_NOTIFICATION_PREFERENCES = {
 
 let initialized = false;
 let isRestoring = false;
-let autoBackupListenerInitialized = false;
 
 /**
  * @typedef {Object} BackupState
@@ -286,9 +284,7 @@ async function buildBackupPayload() {
       autoSave: false,
     },
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
-    pinnedSearchResults: normalizePinnedSearchResults(
-      stored?.[PINNED_SEARCH_RESULTS_KEY],
-    ),
+    pinnedSearchResults: stored?.[PINNED_SEARCH_RESULTS_KEY] || [],
     customSearchEngines: stored?.[CUSTOM_SEARCH_ENGINES_KEY] || [],
   };
 
@@ -378,9 +374,7 @@ async function applyBackupPayload(payload) {
       autoSave: false,
     },
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
-    [PINNED_SEARCH_RESULTS_KEY]: normalizePinnedSearchResults(
-      payload.pinnedSearchResults,
-    ),
+    [PINNED_SEARCH_RESULTS_KEY]: payload.pinnedSearchResults || [],
     [CUSTOM_SEARCH_ENGINES_KEY]: payload.customSearchEngines || [],
   };
 
@@ -1065,10 +1059,7 @@ export function handleOptionsBackupMessage(message, sendResponse) {
  */
 export async function initializeOptionsBackupService() {
   await ensureInitialized();
-  if (!autoBackupListenerInitialized) {
-    setupAutoBackupListener();
-    autoBackupListenerInitialized = true;
-  }
+  setupAutoBackupListener();
 }
 
 /**
