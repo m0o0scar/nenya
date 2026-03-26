@@ -17,6 +17,10 @@ import {
   ensureDeviceCollectionAndExport,
   loadValidProviderTokens,
 } from './mirror.js';
+import {
+  searchNotion,
+  validateNotionSecret,
+} from './notion.js';
 
 import {
   initializeOptionsBackupService,
@@ -81,6 +85,7 @@ const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
+const VALIDATE_NOTION_SECRET_MESSAGE = 'notion:validateSecret';
 const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
 const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
 const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
@@ -3692,13 +3697,53 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === RAINDROP_SEARCH_MESSAGE) {
     const query = typeof message.query === 'string' ? message.query : '';
-    handleRaindropSearch(query)
+    void (async () => {
+      const [raindropResult, notionResult] = await Promise.allSettled([
+        handleRaindropSearch(query),
+        searchNotion(query),
+      ]);
+
+      if (raindropResult.status === 'rejected') {
+        console.error('[background] Raindrop search failed:', raindropResult.reason);
+      }
+      if (notionResult.status === 'rejected') {
+        console.warn('[background] Notion search failed:', notionResult.reason);
+      }
+
+      sendResponse({
+        items:
+          raindropResult.status === 'fulfilled'
+            ? raindropResult.value.items
+            : [],
+        collections:
+          raindropResult.status === 'fulfilled'
+            ? raindropResult.value.collections
+            : [],
+        notionPages:
+          notionResult.status === 'fulfilled'
+            ? notionResult.value.notionPages
+            : [],
+        notionDataSources:
+          notionResult.status === 'fulfilled'
+            ? notionResult.value.notionDataSources
+            : [],
+      });
+    })();
+    return true;
+  }
+
+  if (message.type === VALIDATE_NOTION_SECRET_MESSAGE) {
+    const secret = typeof message.secret === 'string' ? message.secret : '';
+    validateNotionSecret(secret)
       .then((result) => {
         sendResponse(result);
       })
       .catch((error) => {
-        console.error('[background] Raindrop search failed:', error);
-        sendResponse({ items: [], collections: [] });
+        console.error('[background] Notion secret validation failed:', error);
+        sendResponse({
+          ok: false,
+          error: error instanceof Error ? error.message : 'Validation failed.',
+        });
       });
     return true;
   }

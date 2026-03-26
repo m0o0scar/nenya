@@ -224,6 +224,7 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  * @property {ScreenshotSettings} screenshotSettings
  * @property {string[]} pinnedShortcuts
  * @property {any[]} pinnedSearchResults
+ * @property {string} notionIntegrationSecret
  */
 
 /**
@@ -233,7 +234,7 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 const PROVIDER_ID = 'raindrop';
-const EXPORT_VERSION = 12;
+const EXPORT_VERSION = 13;
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
@@ -251,6 +252,7 @@ const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
 const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
+const NOTION_INTEGRATION_SECRET_KEY = 'notionIntegrationSecret';
 const MIN_RULE_INTERVAL_SECONDS = 5;
 const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
 
@@ -1410,6 +1412,15 @@ function normalizeCustomSearchEngines(value) {
 }
 
 /**
+ * Normalize a Notion integration secret.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeNotionIntegrationSecret(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+/**
  * Normalize possibly partial preferences.
  * @param {unknown} value
  * @returns {NotificationPreferences}
@@ -1493,7 +1504,7 @@ function normalizePreferences(value) {
 
 /**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[], pinnedSearchResults: any[] }>}
+ * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
  */
 async function readCurrentOptions() {
   const [
@@ -1513,6 +1524,7 @@ async function readCurrentOptions() {
     pinnedShortcutsResp,
     pinnedSearchResultsResp,
     customSearchEnginesResp,
+    notionIntegrationSecretResp,
   ] = await Promise.all([
     chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY),
     chrome.storage.local.get(NOTIFICATION_PREFERENCES_KEY),
@@ -1530,6 +1542,7 @@ async function readCurrentOptions() {
     chrome.storage.local.get(PINNED_SHORTCUTS_KEY),
     chrome.storage.local.get(PINNED_SEARCH_RESULTS_KEY),
     chrome.storage.local.get(CUSTOM_SEARCH_ENGINES_KEY),
+    chrome.storage.local.get(NOTION_INTEGRATION_SECRET_KEY),
   ]);
 
   /** @type {Record<string, RootFolderSettings> | undefined} */
@@ -1618,6 +1631,9 @@ async function readCurrentOptions() {
   const customSearchEngines = normalizeCustomSearchEngines(
     customSearchEnginesResp?.[CUSTOM_SEARCH_ENGINES_KEY],
   );
+  const notionIntegrationSecret = normalizeNotionIntegrationSecret(
+    notionIntegrationSecretResp?.[NOTION_INTEGRATION_SECRET_KEY],
+  );
 
   return {
     rootFolder,
@@ -1637,6 +1653,7 @@ async function readCurrentOptions() {
     pinnedShortcuts,
     pinnedSearchResults,
     customSearchEngines,
+    notionIntegrationSecret,
   };
 }
 
@@ -1685,6 +1702,7 @@ async function handleExportClick() {
       pinnedShortcuts,
       pinnedSearchResults,
       customSearchEngines,
+      notionIntegrationSecret,
     } = await readCurrentOptions();
     /** @type {ExportFile} */
     const payload = {
@@ -1708,6 +1726,7 @@ async function handleExportClick() {
         pinnedShortcuts,
         pinnedSearchResults,
         customSearchEngines,
+        notionIntegrationSecret,
       },
     };
     const now = new Date();
@@ -1744,6 +1763,7 @@ async function handleExportClick() {
  * @param {string[]} pinnedShortcuts
  * @param {any[]} pinnedSearchResults
  * @param {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} customSearchEngines
+ * @param {string} notionIntegrationSecret
  * @returns {Promise<void>}
  */
 async function applyImportedOptions(
@@ -1764,6 +1784,7 @@ async function applyImportedOptions(
   pinnedShortcuts,
   pinnedSearchResults,
   customSearchEngines,
+  notionIntegrationSecret,
 ) {
   let parentFolderId = '';
   const desiredPath =
@@ -1855,6 +1876,9 @@ async function applyImportedOptions(
   const sanitizedCustomSearchEngines = normalizeCustomSearchEngines(
     customSearchEngines || [],
   );
+  const sanitizedNotionIntegrationSecret = normalizeNotionIntegrationSecret(
+    notionIntegrationSecret,
+  );
 
   // Handle bright mode settings - support both old and new format
   let sanitizedWhitelist = [];
@@ -1893,6 +1917,7 @@ async function applyImportedOptions(
       [PINNED_SHORTCUTS_KEY]: sanitizedPinnedShortcuts,
       [PINNED_SEARCH_RESULTS_KEY]: sanitizedPinnedSearchResults,
       [CUSTOM_SEARCH_ENGINES_KEY]: sanitizedCustomSearchEngines,
+      [NOTION_INTEGRATION_SECRET_KEY]: sanitizedNotionIntegrationSecret,
       [CUSTOM_CODE_RULES_KEY]: sanitizedCustomCodeRules,
       [RUN_CODE_IN_PAGE_RULES_KEY]: sanitizedRunCodeInPageRules,
     }),
@@ -1973,6 +1998,9 @@ async function handleFileChosen() {
       /** @type {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} */ (
         data.customSearchEngines || []
       );
+    const notionIntegrationSecret = normalizeNotionIntegrationSecret(
+      data.notionIntegrationSecret,
+    );
 
     // Handle bright mode settings - support both old and new format
     let brightModeSettings = data.brightModeSettings;
@@ -2005,6 +2033,7 @@ async function handleFileChosen() {
       pinnedShortcuts,
       pinnedSearchResults,
       customSearchEngines,
+      notionIntegrationSecret,
     );
     showToast('Options imported successfully.', 'success');
   } catch (error) {

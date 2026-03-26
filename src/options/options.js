@@ -1,6 +1,7 @@
 import './theme.js';
 import '../shared/iconUrl.js';
 import './bookmarks.js';
+import './notionIntegration.js';
 import './backup.js';
 import './pinnedShortcuts.js';
 import './notifications.js';

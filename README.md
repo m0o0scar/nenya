@@ -33,12 +33,13 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   - Mirror Raindrop collections as browser bookmarks
   - Automatic background synchronization
 - **Backup & Restore:** Export and import all your extension settings with conflict-free (Automerge) sync across browsers
+- **Notion Integration:** Add a Notion integration secret so popup search can surface shared Notion pages and databases alongside Raindrop results
 
 ### 🖥️ Advanced Tab Features
 
 - **Split Screen:** View up to 4 web pages simultaneously in a single tab with resizable split-screen view
 - **Auto Reload:** Automatically reload specific pages based on URL patterns and intervals
-- **Bookmark Search:** Fast search across all your bookmarks with keyboard navigation
+- **Bookmark Search:** Fast popup search across Raindrop and shared Notion content with keyboard navigation
 - **Custom Search Engines:** Add your own search shortcuts (`keyword + query`) directly from options
 
 ### 🤖 AI/LLM Integration

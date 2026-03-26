@@ -41,6 +41,7 @@ const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
 const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
+const NOTION_INTEGRATION_SECRET_KEY = 'notionIntegrationSecret';
 
 const OPTION_KEYS = [
   ROOT_FOLDER_SETTINGS_KEY,
@@ -61,6 +62,7 @@ const OPTION_KEYS = [
   PINNED_SHORTCUTS_KEY,
   PINNED_SEARCH_RESULTS_KEY,
   CUSTOM_SEARCH_ENGINES_KEY,
+  NOTION_INTEGRATION_SECRET_KEY,
 ];
 
 const DEFAULT_NOTIFICATION_PREFERENCES = {
@@ -131,6 +133,7 @@ let isRestoring = false;
  * @property {any[]} pinnedShortcuts
  * @property {any[]} pinnedSearchResults
  * @property {any[]} customSearchEngines
+ * @property {string} notionIntegrationSecret
  */
 
 /**
@@ -286,6 +289,10 @@ async function buildBackupPayload() {
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
     pinnedSearchResults: stored?.[PINNED_SEARCH_RESULTS_KEY] || [],
     customSearchEngines: stored?.[CUSTOM_SEARCH_ENGINES_KEY] || [],
+    notionIntegrationSecret:
+      typeof stored?.[NOTION_INTEGRATION_SECRET_KEY] === 'string'
+        ? stored[NOTION_INTEGRATION_SECRET_KEY]
+        : '',
   };
 
   return clone(payload);
@@ -376,6 +383,10 @@ async function applyBackupPayload(payload) {
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
     [PINNED_SEARCH_RESULTS_KEY]: payload.pinnedSearchResults || [],
     [CUSTOM_SEARCH_ENGINES_KEY]: payload.customSearchEngines || [],
+    [NOTION_INTEGRATION_SECRET_KEY]:
+      typeof payload.notionIntegrationSecret === 'string'
+        ? payload.notionIntegrationSecret.trim()
+        : '',
   };
 
   await chrome.storage.local.set(updates);
@@ -949,6 +960,7 @@ export async function resetOptionsToDefaults() {
     [PINNED_SHORTCUTS_KEY]: [],
     [PINNED_SEARCH_RESULTS_KEY]: [],
     [CUSTOM_SEARCH_ENGINES_KEY]: [],
+    [NOTION_INTEGRATION_SECRET_KEY]: '',
   });
 
   const state = await updateState((draft) => {

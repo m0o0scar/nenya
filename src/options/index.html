@@ -522,7 +522,7 @@
         <div class="nav-group-title">General</div>
         <a href="#mirror-heading" class="nav-item nav-link" data-section="mirror-heading">
           <span class="nav-icon text-lg">☁️</span>
-          <span>Raindrop</span>
+          <span>Integration</span>
         </a>
         <a href="#notifications-heading" class="nav-item nav-link" data-section="notifications-heading">
           <span class="nav-icon text-lg">🔔</span>
@@ -615,42 +615,82 @@
         <section class="section-content" data-section="mirror-heading" id="section-mirror">
           <div class="animate-in">
             <div class="section-header">
-              <h1 id="mirror-heading" class="section-title">Raindrop</h1>
-              <p class="section-description">Connect your Raindrop.io account to enable saving URLs to your
-                Unsorted collection.</p>
+              <h1 id="mirror-heading" class="section-title">Integration</h1>
+              <p class="section-description">Manage external services used by Nenya for syncing and search.</p>
             </div>
 
-            <div class="options-card">
-              <div class="flex items-center gap-4 mb-6">
-                <div
-                  class="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600">
-                  <svg class="w-7 h-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
-                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path
-                      d="M17.5 19H17a5 5 0 0 0 0-10 4.5 4.5 0 1 0-7.02-.55C8.61 7.6 7.1 8 5.5 8A4.5 4.5 0 0 0 5 17h.5" />
-                    <path d="M18 10a4 4 0 0 0-1.2-2.7" />
-                  </svg>
+            <div class="space-y-6">
+              <div class="options-card">
+                <div class="flex items-center gap-4 mb-6">
+                  <div
+                    class="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center text-blue-600">
+                    <svg class="w-7 h-7" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path
+                        d="M17.5 19H17a5 5 0 0 0 0-10 4.5 4.5 0 1 0-7.02-.55C8.61 7.6 7.1 8 5.5 8A4.5 4.5 0 0 0 5 17h.5" />
+                      <path d="M18 10a4 4 0 0 0-1.2-2.7" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-bold">Raindrop.io</h3>
+                    <div id="statusMessage" class="flex items-center gap-2 text-sm text-base-content/70"
+                      role="status" aria-live="polite"></div>
+                  </div>
                 </div>
-                <div>
-                  <h3 class="text-lg font-bold">Raindrop.io</h3>
-                  <div id="statusMessage" class="flex items-center gap-2 text-sm text-base-content/70" role="status"
-                    aria-live="polite"></div>
+
+                <div class="space-y-4">
+                  <div>
+                    <label class="form-label">Provider</label>
+                    <select id="providerSelect" class="nenya-input"></select>
+                  </div>
+                  <p id="providerDescription" class="text-sm text-base-content/60"></p>
+                </div>
+
+
+                <div class="flex flex-wrap gap-3 mt-6 pt-6 border-t border-base-300">
+                  <button id="connectButton" class="nenya-btn nenya-btn-primary" type="button" hidden>Connect</button>
+                  <button id="disconnectButton" class="nenya-btn nenya-btn-danger" type="button" hidden>Logout</button>
+                  <div class="flex gap-3 ml-auto">
+                  </div>
                 </div>
               </div>
 
-              <div class="space-y-4">
-                <div>
-                  <label class="form-label">Provider</label>
-                  <select id="providerSelect" class="nenya-input"></select>
+              <div class="options-card">
+                <div class="flex items-center gap-4 mb-6">
+                  <div
+                    class="w-14 h-14 bg-neutral-100 dark:bg-neutral-900/30 rounded-2xl flex items-center justify-center text-neutral-700">
+                    <span class="text-2xl">📝</span>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-bold">Notion</h3>
+                    <p class="text-sm text-base-content/60 mt-1">
+                      Save a Notion integration secret so popup search can include pages and databases shared with that integration.
+                    </p>
+                  </div>
                 </div>
-                <p id="providerDescription" class="text-sm text-base-content/60"></p>
-              </div>
 
+                <div class="space-y-4">
+                  <div>
+                    <label class="form-label" for="notionIntegrationSecretInput">Integration Secret</label>
+                    <input id="notionIntegrationSecretInput" type="password" class="nenya-input"
+                      placeholder="secret_xxx or ntn_xxx" autocomplete="off" spellcheck="false" />
+                  </div>
 
-              <div class="flex flex-wrap gap-3 mt-6 pt-6 border-t border-base-300">
-                <button id="connectButton" class="nenya-btn nenya-btn-primary" type="button" hidden>Connect</button>
-                <button id="disconnectButton" class="nenya-btn nenya-btn-danger" type="button" hidden>Logout</button>
-                <div class="flex gap-3 ml-auto">
+                  <div class="text-sm text-base-content/60">
+                    Nenya validates the secret before saving it. Only content shared with the integration will appear in popup search.
+                  </div>
+
+                  <div id="notionIntegrationStatus" class="text-sm text-base-content/70" role="status"
+                    aria-live="polite">Not configured.</div>
+                </div>
+
+                <div class="flex flex-wrap gap-3 mt-6 pt-6 border-t border-base-300">
+                  <button id="saveNotionIntegrationButton" class="nenya-btn nenya-btn-primary" type="button">
+                    Save
+                  </button>
+                  <button id="clearNotionIntegrationButton" class="nenya-btn nenya-btn-secondary" type="button">
+                    Clear
+                  </button>
                 </div>
               </div>
             </div>

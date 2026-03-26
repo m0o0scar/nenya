@@ -23,6 +23,8 @@ We do not collect, store, or transmit any personal data from our users. All data
 
 The Nenya extension is designed to be a private and secure tool. Your data, such as browsing history, bookmarks, and settings, remains on your computer.
 
+If you choose to configure third-party integrations such as Raindrop.io or Notion, the credentials and related settings are stored locally in the extension. User-triggered JSON exports and Raindrop-based backup files may include those integration settings so they can be restored later.
+
 ## Permissions
 
 The Nenya extension requires certain permissions to function correctly. This section explains why each permission is necessary:
@@ -40,7 +42,7 @@ The Nenya extension requires certain permissions to function correctly. This sec
 
 ## Third-Party Services
 
-The Nenya extension may allow you to connect to third-party services, such as Raindrop.io. When you authorize the Extension to access your account on a third-party service, you are subject to that service's privacy policy. We do not collect or store any data from these services.
+The Nenya extension may allow you to connect to third-party services, such as Raindrop.io and Notion. When you authorize the Extension to access your account on a third-party service, you are subject to that service's privacy policy. We do not collect or store any data from these services outside the local extension storage and user-triggered backup/export files described above.
 
 ## Changes to this Privacy Policy
 

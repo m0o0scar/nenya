@@ -3424,6 +3424,10 @@ async function initializeBookmarksSearch(
   customSearchSuggestionsElement,
 ) {
   /**
+   * @typedef {{ type: 'raindrop', data: any } | { type: 'raindrop-collection', data: any } | { type: 'notion-page', data: any } | { type: 'notion-data-source', data: any }} PopupSearchResult
+   */
+
+  /**
    * Increments the weight of a search result URL in local storage.
    * @param {string} url
    * @returns {Promise<void>}
@@ -3443,7 +3447,7 @@ async function initializeBookmarksSearch(
 
   /** @type {number} */
   let highlightedIndex = -1;
-  /** @type {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} */
+  /** @type {PopupSearchResult[]} */
   let currentResults = [];
   /** @type {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} */
   let filteredCustomSearchEngines = [];
@@ -3649,7 +3653,7 @@ async function initializeBookmarksSearch(
 
   /**
    * Renders the bookmark search results.
-   * @param {Array<{type: 'raindrop'|'raindrop-collection', data: any}>} results
+   * @param {PopupSearchResult[]} results
    */
   function renderSearchResults(results) {
     resultsElement.innerHTML = '';
@@ -3660,6 +3664,8 @@ async function initializeBookmarksSearch(
       resultItem.dataset.index = String(index);
 
       let title, url, typeIcon, itemType;
+      let sourceChip = '';
+      let secondaryChip = '';
 
       if (result.type === 'raindrop') {
         const item = result.data;
@@ -3676,6 +3682,26 @@ async function initializeBookmarksSearch(
         }
         url = `https://app.raindrop.io/my/${collection._id}`;
         typeIcon = '📥';
+      } else if (result.type === 'notion-page') {
+        const page = result.data;
+        itemType = 'notion-page';
+        title = page.title || 'Untitled';
+        url = page.url;
+        typeIcon = '📝';
+        sourceChip =
+          '<span class="px-1.5 py-0.5 text-[9px] bg-neutral-200 text-neutral-700 rounded-md whitespace-nowrap ml-1 font-medium">Notion</span>';
+        secondaryChip =
+          '<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">Page</span>';
+      } else if (result.type === 'notion-data-source') {
+        const dataSource = result.data;
+        itemType = 'notion-data-source';
+        title = dataSource.title || 'Untitled';
+        url = dataSource.url;
+        typeIcon = '🗃️';
+        sourceChip =
+          '<span class="px-1.5 py-0.5 text-[9px] bg-neutral-200 text-neutral-700 rounded-md whitespace-nowrap ml-1 font-medium">Notion</span>';
+        secondaryChip =
+          '<span class="px-1.5 py-0.5 text-[9px] bg-base-200 text-base-content/70 rounded-md whitespace-nowrap ml-1 font-medium">Database</span>';
       }
 
       const truncatedUrl = url.startsWith('folder:')
@@ -3719,6 +3745,8 @@ async function initializeBookmarksSearch(
             <button class="pin-button btn btn-ghost btn-xs absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200 -ml-[2px] -mt-[2px]">📌</button>
           </div>
           <span class="flex-1 truncate">${escapeHtml(title)}</span>
+          ${sourceChip}
+          ${secondaryChip}
           ${collectionChip}
           ${parentCollectionChip}
           ${openAllButtonHtml}
@@ -3801,6 +3829,35 @@ async function initializeBookmarksSearch(
         highlightedIndex = -1;
       }
     }
+  }
+
+  /**
+   * Sort normalized Notion search results using local weights first, then edit time.
+   * @param {Array<{type: 'notion-page' | 'notion-data-source', data: any}>} results
+   * @param {Record<string, number>} weights
+   * @returns {Array<{type: 'notion-page' | 'notion-data-source', data: any}>}
+   */
+  function sortNotionResults(results, weights) {
+    return [...results].sort((a, b) => {
+      const urlA = typeof a.data?.url === 'string' ? a.data.url : '';
+      const urlB = typeof b.data?.url === 'string' ? b.data.url : '';
+      const weightA = weights[urlA] || 0;
+      const weightB = weights[urlB] || 0;
+
+      if (weightA !== weightB) {
+        return weightB - weightA;
+      }
+
+      const lastEditedA = Date.parse(a.data?.lastEditedTime || '') || 0;
+      const lastEditedB = Date.parse(b.data?.lastEditedTime || '') || 0;
+      if (lastEditedA !== lastEditedB) {
+        return lastEditedB - lastEditedA;
+      }
+
+      const titleA = typeof a.data?.title === 'string' ? a.data.title : '';
+      const titleB = typeof b.data?.title === 'string' ? b.data.title : '';
+      return titleA.localeCompare(titleB);
+    });
   }
 
 
@@ -3986,6 +4043,8 @@ async function initializeBookmarksSearch(
     `;
 
     const results = [];
+    const notionPageResults = [];
+    const notionDataSourceResults = [];
     
     // URLs to exclude from search results (internal/system URLs)
     const excludedUrlPatterns = [
@@ -4034,9 +4093,35 @@ async function initializeBookmarksSearch(
             });
           });
         }
+        if (Array.isArray(response.notionPages)) {
+          response.notionPages.forEach((page) => {
+            notionPageResults.push({
+              type: 'notion-page',
+              data: page,
+            });
+          });
+        }
+        if (Array.isArray(response.notionDataSources)) {
+          response.notionDataSources.forEach((dataSource) => {
+            notionDataSourceResults.push({
+              type: 'notion-data-source',
+              data: dataSource,
+            });
+          });
+        }
       }
 
-      const topResults = processSearchResults(results, weights);
+      const raindropResults = processSearchResults(results, weights);
+      const sortedNotionPages = sortNotionResults(notionPageResults, weights);
+      const sortedNotionDataSources = sortNotionResults(
+        notionDataSourceResults,
+        weights,
+      );
+      const topResults = [
+        ...raindropResults,
+        ...sortedNotionPages,
+        ...sortedNotionDataSources,
+      ].slice(0, 50);
       currentResults = topResults;
       
       if (topResults.length === 0) {
@@ -4161,6 +4246,18 @@ async function initializeBookmarksSearch(
           const collectionUrl = `https://app.raindrop.io/my/${collection._id}`;
           void updateSearchResultWeight(collectionUrl);
           void openBookmark(collectionUrl);
+        } else if (
+          highlightedResult.type === 'notion-page' ||
+          highlightedResult.type === 'notion-data-source'
+        ) {
+          const notionUrl =
+            typeof highlightedResult.data?.url === 'string'
+              ? highlightedResult.data.url
+              : '';
+          if (notionUrl) {
+            void updateSearchResultWeight(notionUrl);
+            void openBookmark(notionUrl);
+          }
         }
         return;
       }
