@@ -85,6 +85,7 @@ const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
 const GET_CURRENT_TAB_ID_MESSAGE = 'getCurrentTabId';
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
+const NOTION_SEARCH_MESSAGE = 'notion:search';
 const VALIDATE_NOTION_SECRET_MESSAGE = 'notion:validateSecret';
 const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
 const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
@@ -3697,38 +3698,45 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === RAINDROP_SEARCH_MESSAGE) {
     const query = typeof message.query === 'string' ? message.query : '';
-    void (async () => {
-      const [raindropResult, notionResult] = await Promise.allSettled([
-        handleRaindropSearch(query),
-        searchNotion(query),
-      ]);
-
-      if (raindropResult.status === 'rejected') {
-        console.error('[background] Raindrop search failed:', raindropResult.reason);
-      }
-      if (notionResult.status === 'rejected') {
-        console.warn('[background] Notion search failed:', notionResult.reason);
-      }
-
-      sendResponse({
-        items:
-          raindropResult.status === 'fulfilled'
-            ? raindropResult.value.items
-            : [],
-        collections:
-          raindropResult.status === 'fulfilled'
-            ? raindropResult.value.collections
-            : [],
-        notionPages:
-          notionResult.status === 'fulfilled'
-            ? notionResult.value.notionPages
-            : [],
-        notionDataSources:
-          notionResult.status === 'fulfilled'
-            ? notionResult.value.notionDataSources
-            : [],
+    handleRaindropSearch(query)
+      .then((result) => {
+        sendResponse({
+          items: Array.isArray(result?.items) ? result.items : [],
+          collections: Array.isArray(result?.collections) ? result.collections : [],
+        });
+      })
+      .catch((error) => {
+        console.error('[background] Raindrop search failed:', error);
+        sendResponse({
+          items: [],
+          collections: [],
+          error: error instanceof Error ? error.message : 'Raindrop search failed.',
+        });
       });
-    })();
+    return true;
+  }
+
+  if (message.type === NOTION_SEARCH_MESSAGE) {
+    const query = typeof message.query === 'string' ? message.query : '';
+    searchNotion(query)
+      .then((result) => {
+        sendResponse({
+          notionPages: Array.isArray(result?.notionPages)
+            ? result.notionPages
+            : [],
+          notionDataSources: Array.isArray(result?.notionDataSources)
+            ? result.notionDataSources
+            : [],
+        });
+      })
+      .catch((error) => {
+        console.warn('[background] Notion search failed:', error);
+        sendResponse({
+          notionPages: [],
+          notionDataSources: [],
+          error: error instanceof Error ? error.message : 'Notion search failed.',
+        });
+      });
     return true;
   }
 

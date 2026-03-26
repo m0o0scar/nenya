@@ -1023,6 +1023,7 @@ async function handleSaveSession(collectionId, button) {
 }
 
 const RAINDROP_SEARCH_MESSAGE = 'mirror:search';
+const NOTION_SEARCH_MESSAGE = 'notion:search';
 const FETCH_SESSIONS_MESSAGE = 'mirror:fetchSessions';
 const FETCH_SESSION_DETAILS_MESSAGE = 'mirror:fetchSessionDetails';
 const RESTORE_SESSION_MESSAGE = 'mirror:restoreSession';
@@ -3449,6 +3450,8 @@ async function initializeBookmarksSearch(
   let highlightedIndex = -1;
   /** @type {PopupSearchResult[]} */
   let currentResults = [];
+  /** @type {number} */
+  let activeSearchRequestId = 0;
   /** @type {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} */
   let filteredCustomSearchEngines = [];
   /** @type {number} */
@@ -3860,6 +3863,127 @@ async function initializeBookmarksSearch(
     });
   }
 
+  /**
+   * Builds the merged search result list from provider responses.
+   * @param {{ items?: any[], collections?: any[] } | null} raindropResponse
+   * @param {{ notionPages?: any[], notionDataSources?: any[] } | null} notionResponse
+   * @param {Record<string, number>} weights
+   * @returns {PopupSearchResult[]}
+   */
+  function buildMergedSearchResults(raindropResponse, notionResponse, weights) {
+    const raindropResults = [];
+    const notionPageResults = [];
+    const notionDataSourceResults = [];
+
+    // URLs to exclude from search results (internal/system URLs)
+    const excludedUrlPatterns = [
+      'nenya.local',
+      'api.raindrop.io',
+      'up.raindrop.io',
+    ];
+
+    if (raindropResponse) {
+      if (Array.isArray(raindropResponse.items)) {
+        raindropResponse.items.forEach((item) => {
+          if (item.link) {
+            const url = item.link.toLowerCase();
+            if (excludedUrlPatterns.some((pattern) => url.includes(pattern))) {
+              return;
+            }
+          }
+          raindropResults.push({
+            type: 'raindrop',
+            data: item,
+          });
+        });
+      }
+
+      if (Array.isArray(raindropResponse.collections)) {
+        raindropResponse.collections.forEach((collection) => {
+          raindropResults.push({
+            type: 'raindrop-collection',
+            data: collection,
+          });
+        });
+      }
+    }
+
+    if (notionResponse) {
+      if (Array.isArray(notionResponse.notionPages)) {
+        notionResponse.notionPages.forEach((page) => {
+          notionPageResults.push({
+            type: 'notion-page',
+            data: page,
+          });
+        });
+      }
+
+      if (Array.isArray(notionResponse.notionDataSources)) {
+        notionResponse.notionDataSources.forEach((dataSource) => {
+          notionDataSourceResults.push({
+            type: 'notion-data-source',
+            data: dataSource,
+          });
+        });
+      }
+    }
+
+    const processedRaindropResults = processSearchResults(raindropResults, weights);
+    const sortedNotionPages = sortNotionResults(notionPageResults, weights);
+    const sortedNotionDataSources = sortNotionResults(
+      notionDataSourceResults,
+      weights,
+    );
+
+    return [
+      ...processedRaindropResults,
+      ...sortedNotionPages,
+      ...sortedNotionDataSources,
+    ].slice(0, 50);
+  }
+
+  /**
+   * Renders the current search state, including partial provider results while
+   * another provider is still pending.
+   * @param {PopupSearchResult[]} results
+   * @param {boolean} hasPendingProviders
+   * @returns {void}
+   */
+  function renderSearchState(results, hasPendingProviders) {
+    currentResults = results;
+
+    if (results.length === 0) {
+      resultsElement.innerHTML = hasPendingProviders
+        ? `
+          <div class="p-2 flex items-center justify-center text-base-content/60">
+            <span class="loading loading-spinner loading-xs mr-2"></span>
+            <span>searching ...</span>
+          </div>
+        `
+        : `
+          <div class="p-2 text-center text-base-content/60">
+            No results found
+          </div>
+        `;
+      return;
+    }
+
+    renderSearchResults(results);
+
+    if (!hasPendingProviders) {
+      return;
+    }
+
+    const loadingMoreElement = document.createElement('div');
+    loadingMoreElement.className =
+      'p-2 flex items-center justify-center text-[11px] text-base-content/50';
+    loadingMoreElement.innerHTML = `
+      <span class="loading loading-spinner loading-xs mr-2"></span>
+      <span>searching more ...</span>
+    `;
+    resultsElement.appendChild(loadingMoreElement);
+  }
+
 
 
   /**
@@ -4024,36 +4148,25 @@ async function initializeBookmarksSearch(
   }
 
   /**
-   * Performs a search and renders Raindrop results only.
+   * Performs provider searches in parallel and renders results as each
+   * provider returns, while keeping the final merged ordering stable.
    * @param {string} query
    */
   async function performSearch(query) {
+    if (inputElement.value !== query) {
+      return;
+    }
+
     if (!query.trim()) {
+      activeSearchRequestId += 1;
       currentResults = [];
       resultsElement.innerHTML = '';
       return;
     }
 
-    // Show loading indicator
-    resultsElement.innerHTML = `
-      <div class="p-2 flex items-center justify-center text-base-content/60">
-        <span class="loading loading-spinner loading-xs mr-2"></span>
-        <span>searching ...</span>
-      </div>
-    `;
+    const requestId = activeSearchRequestId + 1;
+    activeSearchRequestId = requestId;
 
-    const results = [];
-    const notionPageResults = [];
-    const notionDataSourceResults = [];
-    
-    // URLs to exclude from search results (internal/system URLs)
-    const excludedUrlPatterns = [
-      'nenya.local',
-      'api.raindrop.io',
-      'up.raindrop.io',
-    ];
-    
-    // Fetch weights once for sorting
     let weights = {};
     try {
       const weightResult = await chrome.storage.local.get(SEARCH_RESULT_WEIGHTS_KEY);
@@ -4062,85 +4175,103 @@ async function initializeBookmarksSearch(
       console.warn('[popup] Failed to fetch weights for sorting:', error);
     }
 
-    // Search Raindrop
-    try {
-      const response = await chrome.runtime.sendMessage({
-        type: 'mirror:search',
-        query,
-      });
+    if (requestId !== activeSearchRequestId) {
+      return;
+    }
 
-      if (response) {
-        if (Array.isArray(response.items)) {
-          response.items.forEach((item) => {
-            // Filter out internal/system URLs
-            if (item.link) {
-              const url = item.link.toLowerCase();
-              if (excludedUrlPatterns.some((pattern) => url.includes(pattern))) {
-                return; // Skip this item
-              }
-            }
-            results.push({
-              type: 'raindrop',
-              data: item,
-            });
-          });
-        }
-        if (Array.isArray(response.collections)) {
-          response.collections.forEach((collection) => {
-            results.push({
-              type: 'raindrop-collection',
-              data: collection,
-            });
-          });
-        }
-        if (Array.isArray(response.notionPages)) {
-          response.notionPages.forEach((page) => {
-            notionPageResults.push({
-              type: 'notion-page',
-              data: page,
-            });
-          });
-        }
-        if (Array.isArray(response.notionDataSources)) {
-          response.notionDataSources.forEach((dataSource) => {
-            notionDataSourceResults.push({
-              type: 'notion-data-source',
-              data: dataSource,
-            });
-          });
-        }
+    renderSearchState([], true);
+
+    /** @type {{ items?: any[], collections?: any[] } | null} */
+    let raindropResponse = null;
+    /** @type {{ notionPages?: any[], notionDataSources?: any[] } | null} */
+    let notionResponse = null;
+    let pendingProviders = 2;
+
+    /**
+     * Applies the latest provider state to the UI if this search is still active.
+     * @returns {void}
+     */
+    function renderMergedState() {
+      if (requestId !== activeSearchRequestId) {
+        return;
       }
 
-      const raindropResults = processSearchResults(results, weights);
-      const sortedNotionPages = sortNotionResults(notionPageResults, weights);
-      const sortedNotionDataSources = sortNotionResults(
-        notionDataSourceResults,
+      const mergedResults = buildMergedSearchResults(
+        raindropResponse,
+        notionResponse,
         weights,
       );
-      const topResults = [
-        ...raindropResults,
-        ...sortedNotionPages,
-        ...sortedNotionDataSources,
-      ].slice(0, 50);
-      currentResults = topResults;
-      
-      if (topResults.length === 0) {
-        resultsElement.innerHTML = `
-          <div class="p-2 text-center text-base-content/60">
-            No results found
-          </div>
-        `;
-      } else {
-        renderSearchResults(topResults);
-      }
-    } catch (error) {
-      console.warn('[popup] Raindrop search failed:', error);
-      resultsElement.innerHTML = `
-        <div class="p-2 text-center text-base-content/60">
-          No results found
-        </div>
-      `;
+      renderSearchState(mergedResults, pendingProviders > 0);
     }
+
+    /**
+     * Handles provider completion and updates the merged UI.
+     * @returns {void}
+     */
+    function finalizeProvider() {
+      pendingProviders = Math.max(0, pendingProviders - 1);
+      renderMergedState();
+    }
+
+    const raindropSearch = chrome.runtime
+      .sendMessage({
+        type: RAINDROP_SEARCH_MESSAGE,
+        query,
+      })
+      .then((response) => {
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        raindropResponse = response || { items: [], collections: [] };
+        renderMergedState();
+      })
+      .catch((error) => {
+        console.warn('[popup] Raindrop search failed:', error);
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        raindropResponse = { items: [], collections: [] };
+      })
+      .finally(() => {
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        finalizeProvider();
+      });
+
+    const notionSearch = chrome.runtime
+      .sendMessage({
+        type: NOTION_SEARCH_MESSAGE,
+        query,
+      })
+      .then((response) => {
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        notionResponse = response || {
+          notionPages: [],
+          notionDataSources: [],
+        };
+        renderMergedState();
+      })
+      .catch((error) => {
+        console.warn('[popup] Notion search failed:', error);
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        notionResponse = {
+          notionPages: [],
+          notionDataSources: [],
+        };
+      })
+      .finally(() => {
+        if (requestId !== activeSearchRequestId) {
+          return;
+        }
+        finalizeProvider();
+      });
+
+    await Promise.allSettled([raindropSearch, notionSearch]);
   }
 
 
@@ -4163,6 +4294,7 @@ async function initializeBookmarksSearch(
     if (query.length >= 3 && !isSlashCommandQuery) {
       debouncedSearch(query);
     } else {
+      activeSearchRequestId += 1;
       resultsElement.innerHTML = '';
       currentResults = [];
     }
