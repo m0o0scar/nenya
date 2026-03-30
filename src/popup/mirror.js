@@ -228,7 +228,7 @@ export async function showSaveToUnsortedDialog(tab) {
 
   titleInput.value = tab.title || '';
   descriptionInput.value = '';
-  screenshotCheckbox.checked = false;
+  screenshotCheckbox.checked = true;
 
   // Store original button content for restoration
   const originalConfirmButtonContent = confirmButton.innerHTML;
