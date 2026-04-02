@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtpvO0tRT1thlVOMgoOlhlhBHZAQD4x3QJKyvFlEPHJ9RiazqqxqtRVXg8lSbzIS3KgsIlBjzCZQdITVP5CF8gxS7xbJqQzc2TwFXUUeiHuPe0lruViQPWgabbUscUNdD3je179/z9eNbILuKfLpp5WoDIxjZcW1fc9XJd22iUDciiedkkKOA37fq0IMYGNykkRtVU9phee2VJVyxU3YbBj7q5nD5fWwgJjXZng3uFeFEqzozl8VmYKn0B0sti/LB+wJ3/eqjJd2ejg5O1oGzLNSS5pSowZxxo5y4HuwsWfONr0vQSZSdtwti2/wozTcvOssJivO+b61tKznqO03yJQIDAQAB",
   "name": "Nenya",
-  "version": "1.85.0",
+  "version": "1.86.0",
   "description": "",
   "icons": {
     "16": "assets/icons/icon-16x16.png",
@@ -116,61 +116,61 @@
       "description": "Open popup"
     },
     "bookmarks-save-to-unsorted": {
-      "description": "\ud83d\udca7 Save to Unsorted"
+      "description": "💧 Save to Unsorted"
     },
     "bookmarks-save-to-unsorted-encrypted": {
-      "description": "\ud83d\udca7 Encrypt & Save to Unsorted"
+      "description": "💧 Encrypt & Save to Unsorted"
     },
     "bookmarks-save-clipboard-to-unsorted": {
-      "description": "\ud83d\udca7 Save clipboard link to Unsorted"
+      "description": "💧 Save clipboard link to Unsorted"
     },
     "copy-title": {
-      "description": "\ud83d\udccb Copy Title"
+      "description": "📋 Copy Title"
     },
     "copy-title-url": {
-      "description": "\ud83d\udccb Copy Title\\nURL"
+      "description": "📋 Copy Title\\nURL"
     },
     "copy-title-dash-url": {
-      "description": "\ud83d\udccb Copy Title - URL"
+      "description": "📋 Copy Title - URL"
     },
     "copy-markdown-link": {
-      "description": "\ud83d\udccb Copy [Title](URL)"
+      "description": "📋 Copy [Title](URL)"
     },
     "copy-screenshot": {
-      "description": "\ud83d\udccb Copy Screenshot"
+      "description": "📋 Copy Screenshot"
     },
     "pip-quit": {
       "suggested_key": {
         "default": "Alt+Q"
       },
-      "description": "\ud83c\udfa5 Quit PiP"
+      "description": "🎥 Quit PiP"
     },
     "tabs-activate-left-tab": {
-      "description": "\ud83d\uddc2\ufe0f Activate left tab"
+      "description": "🗂️ Activate left tab"
     },
     "tabs-activate-right-tab": {
-      "description": "\ud83d\uddc2\ufe0f Activate right tab"
+      "description": "🗂️ Activate right tab"
     },
     "split": {
-      "description": "\ud83e\ude9f Split"
+      "description": "🪟 Split"
     },
     "merge": {
-      "description": "\ud83e\ude9f Merge"
+      "description": "🪟 Merge"
     },
     "block-element-picker": {
-      "description": "\ud83c\udfaf Element Picker"
+      "description": "🎯 Element Picker"
     },
     "llm-chat-with-llm": {
-      "description": "\ud83e\udd16 Chat with LLM"
+      "description": "🤖 Chat with LLM"
     },
     "llm-download-markdown": {
-      "description": "\ud83d\udce5 Download as markdown"
+      "description": "📥 Download as markdown"
     },
     "emoji-picker-show": {
-      "description": "\ud83d\ude00 Show Emoji Picker"
+      "description": "😀 Show Emoji Picker"
     },
     "screen-recording-start": {
-      "description": "\u23fa\ufe0f Start screen recording"
+      "description": "⏺️ Start screen recording"
     }
   }
 }
