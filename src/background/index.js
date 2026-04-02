@@ -64,8 +64,6 @@ import {
   isLLMPage,
   getLLMProviderFromURL,
 } from '../shared/llmProviders.js';
-import { processUrl } from '../shared/urlProcessor.js';
-import { addClipboardItem } from './clipboardHistory.js';
 import { handlePictureInPicture } from './pip-handler.js';
 import {
   handleScreenRecordingToggle,
@@ -1725,15 +1723,12 @@ async function handleSaveClipboardUrlToUnsorted(clipboardText) {
       return { ok: false, error };
     }
 
-    // Process URL through the standard pipeline
-    const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-
     // Derive title from URL
-    const title = new URL(processedUrl).hostname || processedUrl;
+    const title = new URL(normalizedUrl).hostname || normalizedUrl;
 
     // Save to Unsorted using existing pipeline
     const saveResult = await saveUrlsToUnsorted(
-      [{ url: processedUrl, title }],
+      [{ url: normalizedUrl, title }],
       { pleaseParse: true },
     );
 
@@ -1778,22 +1773,7 @@ async function handleEncryptAndSave(options) {
     return { ok: false, error };
   }
 
-  let processedUrl = normalizedUrl;
-  try {
-    processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to prepare URL.';
-    if (notifyOnError) {
-      void pushNotification(
-        'encrypt-unsorted',
-        'Encrypt & save failed',
-        message,
-      );
-    }
-    return { ok: false, error: message };
-  }
-  const finalUrl = processedUrl;
+  const finalUrl = normalizedUrl;
   if (!finalUrl) {
     const error = 'This URL cannot be saved.';
     if (notifyOnError) {
@@ -3307,10 +3287,6 @@ async function restoreWindowFromTree(tree) {
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'addClipboardItem') {
-    void addClipboardItem(message.data);
-    return;
-  }
   if (!message || typeof message.type !== 'string') {
     return false;
   }
@@ -4145,28 +4121,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'auto-google-login-notification') {
-    const title =
-      typeof message.title === 'string' ? message.title : 'Auto Google Login';
-    const notificationMessage =
-      typeof message.message === 'string' ? message.message : '';
-    const targetUrl =
-      typeof message.targetUrl === 'string' ? message.targetUrl : undefined;
-
-    if (notificationMessage) {
-      void pushNotification(
-        'auto-google-login',
-        title,
-        notificationMessage,
-        targetUrl,
-      );
-      sendResponse({ success: true });
-    } else {
-      sendResponse({ success: false, error: 'Missing message' });
-    }
-    return true;
-  }
-
   if (message.type === 'auto-google-login:checkTabActive') {
     void (async () => {
       try {
@@ -4347,13 +4301,12 @@ if (chrome.contextMenus) {
       if (!normalizedUrl) {
         return;
       }
-      const processedUrl = await processUrl(normalizedUrl, 'save-to-raindrop');
       const selection =
         typeof info.selectionText === 'string' ? info.selectionText.trim() : '';
       const originalTitle =
         selection || (typeof tab?.title === 'string' ? tab.title : '');
       const title = await promptForTitle(tab?.id, originalTitle);
-      void saveUrlsToUnsorted([{ url: processedUrl, title }]).catch((error) => {
+      void saveUrlsToUnsorted([{ url: normalizedUrl, title }]).catch((error) => {
         console.error('[contextMenu] Failed to save link:', error);
       });
       return;
@@ -4850,40 +4803,3 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     })();
   }
 });
-
-// ============================================================================
-// URL PROCESSING ON TAB OPEN
-// ============================================================================
-
-/**
- * Process URLs when tabs are opened or navigated to
- */
-if (chrome.webNavigation) {
-  chrome.webNavigation.onBeforeNavigate.addListener(async (details) => {
-    // Only process top-level navigation (not iframes)
-    if (details.frameId !== 0) {
-      return;
-    }
-
-    // Ignore about:, chrome:, and extension URLs
-    if (
-      details.url.startsWith('about:') ||
-      details.url.startsWith('chrome:') ||
-      details.url.startsWith('chrome-extension:')
-    ) {
-      return;
-    }
-
-    try {
-      // Process the URL with 'open-in-new-tab' context
-      const processedUrl = await processUrl(details.url, 'open-in-new-tab');
-
-      // If URL was modified, update the tab
-      if (processedUrl !== details.url) {
-        await chrome.tabs.update(details.tabId, { url: processedUrl });
-      }
-    } catch (error) {
-      console.error('[urlProcessor] Failed to process URL on tab open:', error);
-    }
-  });
-}

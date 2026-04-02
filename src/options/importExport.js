@@ -11,10 +11,7 @@ import {
 } from './brightMode.js';
 import { loadRules as loadHighlightTextRules } from './highlightText.js';
 import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
-import { loadRules as loadVideoEnhancementRules } from './videoEnhancements.js';
 import { loadLLMPrompts } from './llmPrompts.js';
-import { loadRules as loadUrlProcessRules } from './urlProcessRules.js';
-import { loadRules as loadTitleTransformRules } from './titleTransformRules.js';
 import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 
 /**
@@ -209,19 +206,14 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  * @typedef {Object} ExportPayload
  * @property {string} provider
  * @property {RootFolderBackupSettings} mirrorRootFolderSettings
- * @property {NotificationPreferences} notificationPreferences
  * @property {AutoReloadRuleSettings[]} autoReloadRules
  * @property {BrightModeSettings} brightModeSettings
  * @property {HighlightTextRuleSettings[]} highlightTextRules
- * @property {VideoEnhancementRuleSettings[]} videoEnhancementRules
  * @property {BlockElementRuleSettings[]} blockElementRules
  * @property {CustomCodeRuleSettings[]} customCodeRules
  * @property {RunCodeInPageRuleSettings[]} runCodeInPageRules
  * @property {LLMPromptSettings[]} llmPrompts
- * @property {UrlProcessRuleSettings[]} urlProcessRules
- * @property {TitleTransformRuleSettings[]} titleTransformRules
  * @property {AutoGoogleLoginRuleSettings[]} autoGoogleLoginRules
- * @property {ScreenshotSettings} screenshotSettings
  * @property {string[]} pinnedShortcuts
  * @property {any[]} pinnedSearchResults
  * @property {string} notionIntegrationSecret
@@ -236,19 +228,14 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 const PROVIDER_ID = 'raindrop';
 const EXPORT_VERSION = 13;
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
-const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
 const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
-const VIDEO_ENHANCEMENT_RULES_KEY = 'videoEnhancementRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
-const URL_PROCESS_RULES_KEY = 'urlProcessRules';
-const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
-const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
 const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
@@ -1503,22 +1490,18 @@ function normalizePreferences(value) {
 
 /**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, notifications: NotificationPreferences, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], videoEnhancementRules: VideoEnhancementRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], urlProcessRules: UrlProcessRuleSettings[], titleTransformRules: TitleTransformRuleSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], screenshotSettings: ScreenshotSettings, pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
+ * @returns {Promise<{ rootFolder: RootFolderBackupSettings, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
  */
 async function readCurrentOptions() {
   const [
     rootResp,
-    notifResp,
     reloadResp,
     whitelistPatterns,
     highlightTextRules,
-    videoEnhancementRules,
     blockElementResp,
     customCodeResp,
     runCodeInPageResp,
     llmPromptsResp,
-    urlProcessRulesResp,
-    titleTransformRulesResp,
     autoGoogleLoginRulesResp,
     pinnedShortcutsResp,
     pinnedSearchResultsResp,
@@ -1526,17 +1509,13 @@ async function readCurrentOptions() {
     notionIntegrationSecretResp,
   ] = await Promise.all([
     chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY),
-    chrome.storage.local.get(NOTIFICATION_PREFERENCES_KEY),
     chrome.storage.local.get(AUTO_RELOAD_RULES_KEY),
     getWhitelistPatterns(),
     loadHighlightTextRules(),
-    loadVideoEnhancementRules(),
     chrome.storage.local.get(BLOCK_ELEMENT_RULES_KEY),
     chrome.storage.local.get(CUSTOM_CODE_RULES_KEY),
     chrome.storage.local.get(RUN_CODE_IN_PAGE_RULES_KEY),
     loadLLMPrompts(),
-    loadUrlProcessRules(),
-    loadTitleTransformRules(),
     loadAutoGoogleLoginRules(),
     chrome.storage.local.get(PINNED_SHORTCUTS_KEY),
     chrome.storage.local.get(PINNED_SEARCH_RESULTS_KEY),
@@ -1578,9 +1557,6 @@ async function readCurrentOptions() {
     rootFolderName,
   };
 
-  const notifications = normalizePreferences(
-    notifResp?.[NOTIFICATION_PREFERENCES_KEY],
-  );
   const autoReloadRules = normalizeAutoReloadRules(
     reloadResp?.[AUTO_RELOAD_RULES_KEY],
   );
@@ -1603,12 +1579,6 @@ async function readCurrentOptions() {
 
   const llmPrompts = normalizeLLMPrompts(llmPromptsResp);
 
-  const urlProcessRules = normalizeUrlProcessRules(urlProcessRulesResp);
-
-  const titleTransformRules = normalizeTitleTransformRules(
-    titleTransformRulesResp,
-  );
-
   const autoGoogleLoginRules = normalizeAutoGoogleLoginRules(
     autoGoogleLoginRulesResp,
   );
@@ -1620,13 +1590,6 @@ async function readCurrentOptions() {
     pinnedSearchResultsResp?.[PINNED_SEARCH_RESULTS_KEY],
   );
 
-  const screenshotSettingsResp = await chrome.storage.local.get(
-    SCREENSHOT_SETTINGS_KEY,
-  );
-  const screenshotSettings = normalizeScreenshotSettings(
-    screenshotSettingsResp?.[SCREENSHOT_SETTINGS_KEY],
-  );
-
   const customSearchEngines = normalizeCustomSearchEngines(
     customSearchEnginesResp?.[CUSTOM_SEARCH_ENGINES_KEY],
   );
@@ -1636,19 +1599,14 @@ async function readCurrentOptions() {
 
   return {
     rootFolder,
-    notifications,
     autoReloadRules,
     brightModeSettings,
     highlightTextRules,
-    videoEnhancementRules,
     blockElementRules,
     customCodeRules,
     runCodeInPageRules,
     llmPrompts,
-    urlProcessRules,
-    titleTransformRules,
     autoGoogleLoginRules,
-    screenshotSettings,
     pinnedShortcuts,
     pinnedSearchResults,
     customSearchEngines,
@@ -1685,19 +1643,14 @@ async function handleExportClick() {
   try {
     const {
       rootFolder,
-      notifications,
       autoReloadRules,
       brightModeSettings,
       highlightTextRules,
-      videoEnhancementRules,
       blockElementRules,
       customCodeRules,
       runCodeInPageRules,
       llmPrompts,
-      urlProcessRules,
-      titleTransformRules,
       autoGoogleLoginRules,
-      screenshotSettings,
       pinnedShortcuts,
       pinnedSearchResults,
       customSearchEngines,
@@ -1709,19 +1662,14 @@ async function handleExportClick() {
       data: {
         provider: PROVIDER_ID,
         mirrorRootFolderSettings: rootFolder,
-        notificationPreferences: notifications,
         autoReloadRules,
         brightModeSettings,
         highlightTextRules,
-        videoEnhancementRules,
         blockElementRules,
         customCodeRules,
         runCodeInPageRules,
         llmPrompts,
-        urlProcessRules,
-        titleTransformRules,
         autoGoogleLoginRules,
-        screenshotSettings,
         pinnedShortcuts,
         pinnedSearchResults,
         customSearchEngines,
@@ -1747,18 +1695,14 @@ async function handleExportClick() {
 /**
  * Apply imported settings to storage.
  * @param {RootFolderImportSettings} rootFolder
- * @param {NotificationPreferences} notifications
  * @param {AutoReloadRuleSettings[]} autoReloadRules
  * @param {BrightModeSettings} brightModeSettings
  * @param {HighlightTextRuleSettings[]} highlightTextRules
- * @param {VideoEnhancementRuleSettings[]} videoEnhancementRules
  * @param {BlockElementRuleSettings[]} blockElementRules
  * @param {CustomCodeRuleSettings[]} customCodeRules
  * @param {RunCodeInPageRuleSettings[]} runCodeInPageRules
  * @param {LLMPromptSettings[]} llmPrompts
- * @param {UrlProcessRuleSettings[]} urlProcessRules
  * @param {AutoGoogleLoginRuleSettings[]} autoGoogleLoginRules
- * @param {ScreenshotSettings} screenshotSettings
  * @param {string[]} pinnedShortcuts
  * @param {any[]} pinnedSearchResults
  * @param {Array<{id: string, name: string, shortcut: string, searchUrl: string}>} customSearchEngines
@@ -1767,19 +1711,14 @@ async function handleExportClick() {
  */
 async function applyImportedOptions(
   rootFolder,
-  notifications,
   autoReloadRules,
   brightModeSettings,
   highlightTextRules,
-  videoEnhancementRules,
   blockElementRules,
   customCodeRules,
   runCodeInPageRules,
   llmPrompts,
-  urlProcessRules,
-  titleTransformRules,
   autoGoogleLoginRules,
-  screenshotSettings,
   pinnedShortcuts,
   pinnedSearchResults,
   customSearchEngines,
@@ -1826,13 +1765,9 @@ async function applyImportedOptions(
         ? rootFolder.rootFolderName
         : 'Raindrop',
   };
-  const sanitizedNotifications = normalizePreferences(notifications);
   const sanitizedRules = normalizeAutoReloadRules(autoReloadRules);
   const sanitizedHighlightTextRules = normalizeHighlightTextRules(
     highlightTextRules || [],
-  );
-  const sanitizedVideoEnhancementRules = normalizeVideoEnhancementRules(
-    videoEnhancementRules || [],
   );
   const sanitizedBlockElementRules = normalizeBlockElementRules(
     blockElementRules || [],
@@ -1848,20 +1783,8 @@ async function applyImportedOptions(
 
   const sanitizedLLMPrompts = normalizeLLMPrompts(llmPrompts || []);
 
-  const sanitizedUrlProcessRules = normalizeUrlProcessRules(
-    urlProcessRules || [],
-  );
-
-  const sanitizedTitleTransformRules = normalizeTitleTransformRules(
-    titleTransformRules || [],
-  );
-
   const sanitizedAutoGoogleLoginRules = normalizeAutoGoogleLoginRules(
     autoGoogleLoginRules || [],
-  );
-
-  const sanitizedScreenshotSettings = normalizeScreenshotSettings(
-    screenshotSettings || { autoSave: false },
   );
 
   const sanitizedPinnedShortcuts = normalizePinnedShortcuts(
@@ -1902,17 +1825,12 @@ async function applyImportedOptions(
   await Promise.all([
     chrome.storage.local.set({
       [ROOT_FOLDER_SETTINGS_KEY]: map,
-      [NOTIFICATION_PREFERENCES_KEY]: sanitizedNotifications,
       [AUTO_RELOAD_RULES_KEY]: sanitizedRules,
       [BRIGHT_MODE_WHITELIST_KEY]: sanitizedWhitelist,
       [HIGHLIGHT_TEXT_RULES_KEY]: sanitizedHighlightTextRules,
-      [VIDEO_ENHANCEMENT_RULES_KEY]: sanitizedVideoEnhancementRules,
       [BLOCK_ELEMENT_RULES_KEY]: sanitizedBlockElementRules,
       [LLM_PROMPTS_KEY]: sanitizedLLMPrompts,
-      [URL_PROCESS_RULES_KEY]: sanitizedUrlProcessRules,
-      [TITLE_TRANSFORM_RULES_KEY]: sanitizedTitleTransformRules,
       [AUTO_GOOGLE_LOGIN_RULES_KEY]: sanitizedAutoGoogleLoginRules,
-      [SCREENSHOT_SETTINGS_KEY]: sanitizedScreenshotSettings,
       [PINNED_SHORTCUTS_KEY]: sanitizedPinnedShortcuts,
       [PINNED_SEARCH_RESULTS_KEY]: sanitizedPinnedSearchResults,
       [CUSTOM_SEARCH_ENGINES_KEY]: sanitizedCustomSearchEngines,
@@ -1950,19 +1868,12 @@ async function handleFileChosen() {
     const root = /** @type {RootFolderImportSettings} */ (
       data.mirrorRootFolderSettings
     );
-    const notifications = /** @type {NotificationPreferences} */ (
-      data.notificationPreferences
-    );
     const autoReloadRules = /** @type {AutoReloadRuleSettings[]} */ (
       data.autoReloadRules
     );
     const highlightTextRules = /** @type {HighlightTextRuleSettings[]} */ (
       data.highlightTextRules || []
     );
-    const videoEnhancementRules =
-      /** @type {VideoEnhancementRuleSettings[]} */ (
-        data.videoEnhancementRules || []
-      );
     const blockElementRules = /** @type {BlockElementRuleSettings[]} */ (
       data.blockElementRules || []
     );
@@ -1975,17 +1886,8 @@ async function handleFileChosen() {
     const llmPrompts = /** @type {LLMPromptSettings[]} */ (
       data.llmPrompts || []
     );
-    const urlProcessRules = /** @type {UrlProcessRuleSettings[]} */ (
-      data.urlProcessRules || []
-    );
-    const titleTransformRules = /** @type {TitleTransformRuleSettings[]} */ (
-      data.titleTransformRules || []
-    );
     const autoGoogleLoginRules = /** @type {AutoGoogleLoginRuleSettings[]} */ (
       data.autoGoogleLoginRules || []
-    );
-    const screenshotSettings = /** @type {ScreenshotSettings} */ (
-      data.screenshotSettings || { autoSave: false }
     );
     const pinnedShortcuts = /** @type {string[]} */ (
       data.pinnedShortcuts || []
@@ -2016,19 +1918,14 @@ async function handleFileChosen() {
 
     await applyImportedOptions(
       root,
-      notifications,
       autoReloadRules,
       brightModeSettings,
       highlightTextRules,
-      videoEnhancementRules,
       blockElementRules,
       customCodeRules,
       runCodeInPageRules,
       llmPrompts,
-      urlProcessRules,
-      titleTransformRules,
       autoGoogleLoginRules,
-      screenshotSettings,
       pinnedShortcuts,
       pinnedSearchResults,
       customSearchEngines,

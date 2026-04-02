@@ -24,20 +24,15 @@ const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
 const DEFAULT_ROOT_FOLDER_NAME = 'Raindrop';
 
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
-const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const DARK_MODE_RULES_KEY = 'darkModeRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
 const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
-const VIDEO_ENHANCEMENT_RULES_KEY = 'videoEnhancementRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
 const LLM_PROMPTS_KEY = 'llmPrompts';
-const URL_PROCESS_RULES_KEY = 'urlProcessRules';
-const TITLE_TRANSFORM_RULES_KEY = 'titleTransformRules';
 const AUTO_GOOGLE_LOGIN_RULES_KEY = 'autoGoogleLoginRules';
-const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
 const PINNED_SHORTCUTS_KEY = 'pinnedShortcuts';
 const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
@@ -45,45 +40,20 @@ const NOTION_INTEGRATION_SECRET_KEY = 'notionIntegrationSecret';
 
 const OPTION_KEYS = [
   ROOT_FOLDER_SETTINGS_KEY,
-  NOTIFICATION_PREFERENCES_KEY,
   AUTO_RELOAD_RULES_KEY,
   DARK_MODE_RULES_KEY,
   BRIGHT_MODE_WHITELIST_KEY,
   HIGHLIGHT_TEXT_RULES_KEY,
-  VIDEO_ENHANCEMENT_RULES_KEY,
   BLOCK_ELEMENT_RULES_KEY,
   CUSTOM_CODE_RULES_KEY,
   RUN_CODE_IN_PAGE_RULES_KEY,
   LLM_PROMPTS_KEY,
-  URL_PROCESS_RULES_KEY,
-  TITLE_TRANSFORM_RULES_KEY,
   AUTO_GOOGLE_LOGIN_RULES_KEY,
-  SCREENSHOT_SETTINGS_KEY,
   PINNED_SHORTCUTS_KEY,
   PINNED_SEARCH_RESULTS_KEY,
   CUSTOM_SEARCH_ENGINES_KEY,
   NOTION_INTEGRATION_SECRET_KEY,
 ];
-
-const DEFAULT_NOTIFICATION_PREFERENCES = {
-  enabled: true,
-  bookmark: {
-    enabled: true,
-    pullFinished: true,
-    unsortedSaved: true,
-  },
-  project: {
-    enabled: true,
-    saveProject: true,
-    addTabs: true,
-    replaceItems: true,
-    deleteProject: true,
-  },
-  clipboard: {
-    enabled: true,
-    copySuccess: true,
-  },
-};
 
 let initialized = false;
 let isRestoring = false;
@@ -116,20 +86,15 @@ let isRestoring = false;
  * @property {number} version
  * @property {number} savedAt
  * @property {RootFolderBackupSettings} rootFolder
- * @property {any} notificationPreferences
  * @property {any[]} autoReloadRules
  * @property {any[]} darkModeRules
  * @property {any[]} brightModeWhitelist
  * @property {any[]} highlightTextRules
- * @property {any[]} videoEnhancementRules
  * @property {any[]} blockElementRules
  * @property {any[]} customCodeRules
  * @property {any[]} runCodeInPageRules
  * @property {any[]} llmPrompts
- * @property {any[]} urlProcessRules
- * @property {any[]} titleTransformRules
  * @property {any[]} autoGoogleLoginRules
- * @property {any} screenshotSettings
  * @property {any[]} pinnedShortcuts
  * @property {any[]} pinnedSearchResults
  * @property {any[]} customSearchEngines
@@ -264,14 +229,10 @@ async function buildBackupPayload() {
       parentFolderPath,
       rootFolderName,
     },
-    notificationPreferences:
-      stored?.[NOTIFICATION_PREFERENCES_KEY] ||
-      clone(DEFAULT_NOTIFICATION_PREFERENCES),
     autoReloadRules: stored?.[AUTO_RELOAD_RULES_KEY] || [],
     darkModeRules: stored?.[DARK_MODE_RULES_KEY] || [],
     brightModeWhitelist: stored?.[BRIGHT_MODE_WHITELIST_KEY] || [],
     highlightTextRules: stored?.[HIGHLIGHT_TEXT_RULES_KEY] || [],
-    videoEnhancementRules: stored?.[VIDEO_ENHANCEMENT_RULES_KEY] || [],
     blockElementRules: stored?.[BLOCK_ELEMENT_RULES_KEY] || [],
     customCodeRules: encodeCustomCodeRules(
       stored?.[CUSTOM_CODE_RULES_KEY] || [],
@@ -280,12 +241,7 @@ async function buildBackupPayload() {
       stored?.[RUN_CODE_IN_PAGE_RULES_KEY] || [],
     ),
     llmPrompts: stored?.[LLM_PROMPTS_KEY] || [],
-    urlProcessRules: stored?.[URL_PROCESS_RULES_KEY] || [],
-    titleTransformRules: stored?.[TITLE_TRANSFORM_RULES_KEY] || [],
     autoGoogleLoginRules: stored?.[AUTO_GOOGLE_LOGIN_RULES_KEY] || [],
-    screenshotSettings: stored?.[SCREENSHOT_SETTINGS_KEY] || {
-      autoSave: false,
-    },
     pinnedShortcuts: stored?.[PINNED_SHORTCUTS_KEY] || [],
     pinnedSearchResults: stored?.[PINNED_SEARCH_RESULTS_KEY] || [],
     customSearchEngines: stored?.[CUSTOM_SEARCH_ENGINES_KEY] || [],
@@ -358,14 +314,10 @@ async function applyBackupPayload(payload) {
   /** @type {Record<string, any>} */
   const updates = {
     [ROOT_FOLDER_SETTINGS_KEY]: map,
-    [NOTIFICATION_PREFERENCES_KEY]:
-      payload.notificationPreferences ||
-      clone(DEFAULT_NOTIFICATION_PREFERENCES),
     [AUTO_RELOAD_RULES_KEY]: payload.autoReloadRules || [],
     [DARK_MODE_RULES_KEY]: payload.darkModeRules || [],
     [BRIGHT_MODE_WHITELIST_KEY]: payload.brightModeWhitelist || [],
     [HIGHLIGHT_TEXT_RULES_KEY]: migratedHighlightRules,
-    [VIDEO_ENHANCEMENT_RULES_KEY]: payload.videoEnhancementRules || [],
     [BLOCK_ELEMENT_RULES_KEY]: payload.blockElementRules || [],
     [CUSTOM_CODE_RULES_KEY]: decodeCustomCodeRules(
       payload.customCodeRules || [],
@@ -374,12 +326,7 @@ async function applyBackupPayload(payload) {
       payload.runCodeInPageRules || [],
     ),
     [LLM_PROMPTS_KEY]: payload.llmPrompts || [],
-    [URL_PROCESS_RULES_KEY]: payload.urlProcessRules || [],
-    [TITLE_TRANSFORM_RULES_KEY]: payload.titleTransformRules || [],
     [AUTO_GOOGLE_LOGIN_RULES_KEY]: payload.autoGoogleLoginRules || [],
-    [SCREENSHOT_SETTINGS_KEY]: payload.screenshotSettings || {
-      autoSave: false,
-    },
     [PINNED_SHORTCUTS_KEY]: payload.pinnedShortcuts || [],
     [PINNED_SEARCH_RESULTS_KEY]: payload.pinnedSearchResults || [],
     [CUSTOM_SEARCH_ENGINES_KEY]: payload.customSearchEngines || [],
@@ -943,20 +890,15 @@ export async function resetOptionsToDefaults() {
         rootFolderName: DEFAULT_ROOT_FOLDER_NAME,
       },
     },
-    [NOTIFICATION_PREFERENCES_KEY]: clone(DEFAULT_NOTIFICATION_PREFERENCES),
     [AUTO_RELOAD_RULES_KEY]: [],
     [DARK_MODE_RULES_KEY]: [],
     [BRIGHT_MODE_WHITELIST_KEY]: [],
     [HIGHLIGHT_TEXT_RULES_KEY]: [],
-    [VIDEO_ENHANCEMENT_RULES_KEY]: [],
     [BLOCK_ELEMENT_RULES_KEY]: [],
     [CUSTOM_CODE_RULES_KEY]: [],
     [RUN_CODE_IN_PAGE_RULES_KEY]: [],
     [LLM_PROMPTS_KEY]: [],
-    [URL_PROCESS_RULES_KEY]: [],
-    [TITLE_TRANSFORM_RULES_KEY]: [],
     [AUTO_GOOGLE_LOGIN_RULES_KEY]: [],
-    [SCREENSHOT_SETTINGS_KEY]: { autoSave: false },
     [PINNED_SHORTCUTS_KEY]: [],
     [PINNED_SEARCH_RESULTS_KEY]: [],
     [CUSTOM_SEARCH_ENGINES_KEY]: [],

@@ -116,6 +116,7 @@ import {
 export {
   concludeActionBadge,
   setActionBadge,
+  pushNotification,
   raindropRequest,
   loadValidProviderTokens,
   normalizeFolderTitle,
@@ -139,8 +140,6 @@ export {
   handleUploadCollectionCover,
   handleUpdateRaindropUrl,
 };
-
-import { processUrl } from '../shared/urlProcessor.js';
 
 // ... (skipping some lines)
 
@@ -669,11 +668,8 @@ const RAINDROP_API_BASE = 'https://api.raindrop.io/rest/v1';
 const RAINDROP_UNSORTED_URL = 'https://app.raindrop.io/my/-1';
 const RAINDROP_COLLECTION_URL_BASE = 'https://app.raindrop.io/my/';
 const BOOKMARK_MANAGER_URL_BASE = 'chrome://bookmarks/?id=';
-const NOTIFICATION_ICON_PATH = 'assets/icons/icon-128x128.png';
-const NOTIFICATION_PREFERENCES_KEY = 'notificationPreferences';
-const FETCH_PAGE_SIZE = 50; // Raindrop API limits perpage to 50 max for some endpoints
+const FETCH_PAGE_SIZE = 50;
 const DEFAULT_BADGE_ANIMATION_DELAY = 300;
-
 const ANIMATION_DOWN_SEQUENCE = ['🔽', '⏬'];
 const ANIMATION_UP_SEQUENCE = ['🔼', '⏫'];
 const AUTO_EXPORT_ALARM_NAME = 'nenya-session-export';
@@ -683,86 +679,15 @@ const AUTO_EXPORT_INTERVAL_MINUTES = 1;
 let currentBadgeAnimationHandle = null;
 let badgeAnimationSequence = 0;
 let lastStartedBadgeToken = 0;
-/** @type {Map<string, string>} */
-const notificationLinks = new Map();
-/** @type {NotificationPreferences} */
-let notificationPreferencesCache = createDefaultNotificationPreferences();
-let notificationPreferencesLoaded = false;
-/** @type {Promise<NotificationPreferences> | null} */
-let notificationPreferencesPromise = null;
-/** @type {Record<string, string> | null} */
-let itemBookmarkMapCache = null;
-/** @type {Promise<Record<string, string>> | null} */
-let itemBookmarkMapPromise = null;
-
-if (chrome && chrome.notifications) {
-  chrome.notifications.onClicked.addListener((notificationId) => {
-    const targetUrl = notificationLinks.get(notificationId);
-    if (!targetUrl) {
-      return;
-    }
-
-    notificationLinks.delete(notificationId);
-
-    if (!chrome.tabs || typeof chrome.tabs.create !== 'function') {
-      return;
-    }
-
-    try {
-      const maybePromise = chrome.tabs.create({ url: targetUrl });
-      if (isPromiseLike(maybePromise)) {
-        void maybePromise.catch((error) => {
-          console.warn(
-            '[notifications] Failed to open tab for notification click:',
-            error,
-          );
-        });
-      }
-    } catch (error) {
-      console.warn(
-        '[notifications] Failed to open tab for notification click:',
-        error,
-      );
-    }
-  });
-
-  chrome.notifications.onClosed.addListener((notificationId) => {
-    notificationLinks.delete(notificationId);
-  });
-}
 
 /**
- * Update the extension action badge text.
- * @param {string} text
- * @returns {void}
- */
-function setActionBadgeText(text) {
-  if (!chrome?.action) {
-    return;
-  }
-
-  const badgeText = typeof text === 'string' ? text : '';
-
-  try {
-    const maybePromise = chrome.action.setBadgeText({ text: badgeText });
-    if (maybePromise && typeof maybePromise.then === 'function') {
-      void maybePromise.catch((error) => {
-        console.warn('[badge] Failed to set badge text:', error);
-      });
-    }
-  } catch (error) {
-    console.warn('[badge] Failed to set badge text:', error);
-  }
-}
-
-/**
- * Set the extension action badge text and color.
+ * Set the extension action badge and clear it after an optional timeout.
  * @param {string} text
  * @param {string} color
- * @param {number} [clearDelayMs=0]
+ * @param {number} [clearAfterMs]
  * @returns {void}
  */
-function setActionBadge(text, color, clearDelayMs = 0) {
+function setActionBadge(text, color, clearAfterMs) {
   if (!chrome?.action) {
     return;
   }
@@ -770,446 +695,92 @@ function setActionBadge(text, color, clearDelayMs = 0) {
   chrome.action.setBadgeBackgroundColor({ color });
   chrome.action.setBadgeText({ text });
 
-  if (clearDelayMs > 0) {
+  if (typeof clearAfterMs === 'number' && clearAfterMs > 0) {
+    const token = ++badgeAnimationSequence;
     setTimeout(() => {
-      chrome.action.setBadgeBackgroundColor({ color: '' });
+      if (badgeAnimationSequence !== token) {
+        return;
+      }
       chrome.action.setBadgeText({ text: '' });
-    }, clearDelayMs);
+    }, clearAfterMs);
   }
 }
 
 /**
- * Animate the extension action badge with emoji frames.
- * @param {string[]} emojis
- * @param {number} [delayMs=DEFAULT_BADGE_ANIMATION_DELAY]
+ * Animate the action badge through a short emoji sequence.
+ * @param {string[]} sequence
  * @returns {BadgeAnimationHandle}
  */
-export function animateActionBadge(
-  emojis,
-  delayMs = DEFAULT_BADGE_ANIMATION_DELAY,
-) {
-  badgeAnimationSequence += 1;
-  const token = badgeAnimationSequence;
+function animateActionBadge(sequence) {
+  const token = ++badgeAnimationSequence;
+  lastStartedBadgeToken = token;
 
   if (currentBadgeAnimationHandle) {
     currentBadgeAnimationHandle.stop();
-    currentBadgeAnimationHandle = null;
   }
 
-  lastStartedBadgeToken = token;
-
-  /** @type {ReturnType<typeof setInterval> | null} */
-  let intervalId = null;
-
-  /** @type {BadgeAnimationHandle} */
-  const handle = {
-    token,
-    stop: () => {
-      if (intervalId !== null) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-      if (
-        currentBadgeAnimationHandle &&
-        currentBadgeAnimationHandle.token === token
-      ) {
-        currentBadgeAnimationHandle = null;
-      }
-      setActionBadgeText('');
-    },
-  };
-
-  if (!chrome?.action || !Array.isArray(emojis)) {
-    return handle;
-  }
-
-  const frames = emojis
-    .map((emoji) => {
-      if (typeof emoji !== 'string') {
-        return '';
-      }
-      const trimmed = emoji.trim();
-      return trimmed;
-    })
-    .filter((emoji) => emoji.length > 0);
-
-  if (frames.length === 0) {
-    return handle;
-  }
-
-  const computedDelay = Number(delayMs);
-  const frameDelay =
-    Number.isFinite(computedDelay) && computedDelay > 0
-      ? computedDelay
-      : DEFAULT_BADGE_ANIMATION_DELAY;
-
-  let frameIndex = 0;
-
+  let index = 0;
   const tick = () => {
-    const nextText = frames[frameIndex];
-    frameIndex = (frameIndex + 1) % frames.length;
-    setActionBadgeText(nextText);
+    const nextText =
+      Array.isArray(sequence) && sequence.length > 0
+        ? sequence[index % sequence.length]
+        : '';
+    chrome.action.setBadgeText({ text: nextText });
+    index += 1;
   };
 
   tick();
-  intervalId = setInterval(tick, frameDelay);
-  currentBadgeAnimationHandle = handle;
+  const intervalId = setInterval(tick, DEFAULT_BADGE_ANIMATION_DELAY);
 
+  const handle = {
+    token,
+    stop() {
+      clearInterval(intervalId);
+      if (currentBadgeAnimationHandle === handle) {
+        currentBadgeAnimationHandle = null;
+      }
+    },
+  };
+
+  currentBadgeAnimationHandle = handle;
   return handle;
 }
 
 /**
- * Stop a badge animation and optionally show a final emoji if this is the latest started animation.
- * @param {BadgeAnimationHandle} handle
+ * Finish a badge animation with a final emoji, then clear it.
+ * @param {BadgeAnimationHandle | null} handle
  * @param {string} finalEmoji
  * @returns {void}
  */
 function concludeActionBadge(handle, finalEmoji) {
-  if (!handle) {
-    return;
-  }
+  const isLatestStart = !!handle && handle.token === lastStartedBadgeToken;
+  const clearToken = ++badgeAnimationSequence;
 
-  badgeAnimationSequence += 1;
-  const clearToken = badgeAnimationSequence;
-
-  const isCurrent = Boolean(
-    currentBadgeAnimationHandle &&
-    currentBadgeAnimationHandle.token === handle.token,
-  );
-  const isLatestStart = handle.token === lastStartedBadgeToken;
-  if (isCurrent) {
+  if (handle) {
     handle.stop();
   }
   if (!isLatestStart) {
     return;
   }
 
-  setActionBadgeText(finalEmoji);
+  chrome.action.setBadgeText({ text: finalEmoji });
 
   setTimeout(() => {
     if (badgeAnimationSequence !== clearToken) {
       return;
     }
-    setActionBadgeText('');
+    chrome.action.setBadgeText({ text: '' });
   }, 2000);
 }
 
 /**
- * Create the default notification preferences object.
- * @returns {NotificationPreferences}
- */
-function createDefaultNotificationPreferences() {
-  return {
-    enabled: true,
-    bookmark: {
-      enabled: true,
-      pullFinished: true,
-      unsortedSaved: true,
-    },
-    clipboard: {
-      enabled: true,
-      copySuccess: true,
-    },
-  };
-}
-
-/**
- * Clone notification preferences to avoid shared references.
- * @param {NotificationPreferences} value
- * @returns {NotificationPreferences}
- */
-function cloneNotificationPreferences(value) {
-  return {
-    enabled: Boolean(value.enabled),
-    bookmark: {
-      enabled: Boolean(value.bookmark.enabled),
-      pullFinished: Boolean(value.bookmark.pullFinished),
-      unsortedSaved: Boolean(value.bookmark.unsortedSaved),
-    },
-    clipboard: {
-      enabled: Boolean(value.clipboard?.enabled),
-      copySuccess: Boolean(value.clipboard?.copySuccess),
-    },
-  };
-}
-
-function normalizeNotificationPreferences(value) {
-  const fallback = createDefaultNotificationPreferences();
-  if (!value || typeof value !== 'object') {
-    return fallback;
-  }
-
-  const raw =
-    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
-      value
-    );
-  const bookmark = raw.bookmark ?? {};
-  const clipboard = raw.clipboard ?? {};
-
-  return {
-    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
-    bookmark: {
-      enabled:
-        typeof bookmark.enabled === 'boolean'
-          ? bookmark.enabled
-          : fallback.bookmark.enabled,
-      pullFinished:
-        typeof bookmark.pullFinished === 'boolean'
-          ? bookmark.pullFinished
-          : fallback.bookmark.pullFinished,
-      unsortedSaved:
-        typeof bookmark.unsortedSaved === 'boolean'
-          ? bookmark.unsortedSaved
-          : fallback.bookmark.unsortedSaved,
-    },
-    clipboard: {
-      enabled:
-        typeof clipboard.enabled === 'boolean'
-          ? clipboard.enabled
-          : fallback.clipboard.enabled,
-      copySuccess:
-        typeof clipboard.copySuccess === 'boolean'
-          ? clipboard.copySuccess
-          : fallback.clipboard.copySuccess,
-    },
-  };
-}
-
-/**
- * Load notification preferences from storage.
- * @returns {Promise<NotificationPreferences>}
- */
-async function loadNotificationPreferences() {
-  if (!chrome?.storage?.local) {
-    const defaults = createDefaultNotificationPreferences();
-    updateNotificationPreferencesCache(defaults);
-    return defaults;
-  }
-
-  try {
-    const result = await chrome.storage.local.get(NOTIFICATION_PREFERENCES_KEY);
-    const stored = result?.[NOTIFICATION_PREFERENCES_KEY];
-    const normalized = normalizeNotificationPreferences(stored);
-    updateNotificationPreferencesCache(normalized);
-  } catch (error) {
-    console.warn(
-      '[notifications] Failed to load preferences; using defaults.',
-      error,
-    );
-    const defaults = createDefaultNotificationPreferences();
-    updateNotificationPreferencesCache(defaults);
-  }
-
-  return notificationPreferencesCache;
-}
-
-/**
- * Retrieve cached notification preferences, loading them if needed.
- * @returns {Promise<NotificationPreferences>}
- */
-export async function getNotificationPreferences() {
-  if (notificationPreferencesLoaded) {
-    return notificationPreferencesCache;
-  }
-
-  if (!notificationPreferencesPromise) {
-    notificationPreferencesPromise = loadNotificationPreferences().finally(
-      () => {
-        notificationPreferencesPromise = null;
-      },
-    );
-  }
-
-  return notificationPreferencesPromise;
-}
-
-/**
- * Respond to updates from chrome.storage for notification preferences.
- * @param {NotificationPreferences} value
- * @returns {void}
- */
-function updateNotificationPreferencesCache(value) {
-  notificationPreferencesCache = cloneNotificationPreferences(value);
-  notificationPreferencesLoaded = true;
-}
-
-if (chrome?.storage?.onChanged) {
-  chrome.storage.onChanged.addListener((changes, areaName) => {
-    if (areaName !== 'sync') {
-      return;
-    }
-
-    const detail = changes[NOTIFICATION_PREFERENCES_KEY];
-    if (!detail) {
-      return;
-    }
-
-    const next = normalizeNotificationPreferences(detail.newValue);
-    updateNotificationPreferencesCache(next);
-  });
-}
-
-// Listen for chrome.alarms events
-if (chrome?.alarms) {
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === AUTO_EXPORT_ALARM_NAME) {
-      void handleAutoExportAlarm();
-    }
-  });
-}
-
-/**
- * Create a unique notification id.
- * @param {string} prefix
- * @returns {string}
- */
-function createNotificationId(prefix) {
-  const base =
-    typeof prefix === 'string' && prefix.trim().length > 0
-      ? prefix.trim()
-      : 'nenya';
-  const random = Math.random().toString(36).slice(2, 10);
-  return base + '-' + Date.now().toString(36) + '-' + random;
-}
-
-/**
- * Resolve the notification icon URL.
- * @returns {string}
- */
-function getNotificationIconUrl() {
-  if (
-    !chrome ||
-    !chrome.runtime ||
-    typeof chrome.runtime.getURL !== 'function'
-  ) {
-    return NOTIFICATION_ICON_PATH;
-  }
-
-  try {
-    return chrome.runtime.getURL(NOTIFICATION_ICON_PATH);
-  } catch (error) {
-    console.warn('[notifications] Failed to resolve icon URL:', error);
-    return NOTIFICATION_ICON_PATH;
-  }
-}
-
-/**
- * Create a Chrome notification.
- * @param {string} prefix
- * @param {string} title
- * @param {string} message
- * @param {string} [targetUrl]
- * @param {string} [contextMessage]
+ * Notifications are intentionally disabled, but the shared helper is kept so
+ * existing background call sites do not fail module initialization.
  * @returns {Promise<void>}
  */
-export async function pushNotification(
-  prefix,
-  title,
-  message,
-  targetUrl,
-  contextMessage,
-) {
-  if (!chrome || !chrome.notifications) {
-    return;
-  }
-
-  const safeTitle =
-    typeof title === 'string' && title.trim().length > 0
-      ? title.trim()
-      : 'Nenya';
-  const safeMessage =
-    typeof message === 'string' && message.trim().length > 0
-      ? message.trim()
-      : '';
-
-  if (safeMessage.length === 0) {
-    return;
-  }
-
-  const notificationId = createNotificationId(prefix);
-  /** @type {chrome.notifications.NotificationCreateOptions} */
-  const options = {
-    type: 'basic',
-    iconUrl: getNotificationIconUrl(),
-    title: safeTitle,
-    message: safeMessage,
-    priority: 0,
-  };
-
-  if (typeof contextMessage === 'string' && contextMessage.trim().length > 0) {
-    options.contextMessage = contextMessage.trim();
-  }
-
-  let created = false;
-
-  created = await new Promise((resolve) => {
-    try {
-      chrome.notifications.create(notificationId, options, () => {
-        const lastError = chrome.runtime.lastError;
-        if (lastError) {
-          console.warn(
-            '[notifications] Failed to create notification:',
-            lastError.message,
-          );
-          resolve(false);
-          return;
-        }
-        resolve(true);
-      });
-    } catch (error) {
-      console.warn('[notifications] Failed to create notification:', error);
-      resolve(false);
-    }
-  });
-
-  if (created && targetUrl) {
-    notificationLinks.set(notificationId, targetUrl);
-  }
+async function pushNotification() {
+  return;
 }
-
-/**
- * Normalize notification message text.
- * @param {unknown} value
- * @returns {string}
- */
-function sanitizeNotificationMessage(value) {
-  const text = typeof value === 'string' ? value.trim() : '';
-  if (!text) {
-    return 'Unknown error.';
-  }
-  if (text.length <= 180) {
-    return text;
-  }
-  return text.slice(0, 177) + '...';
-}
-
-/**
- * Format a count with a noun.
- * @param {number} count
- * @param {string} noun
- * @returns {string}
- */
-function formatCountLabel(count, noun) {
-  const safeCount = Number.isFinite(count) ? count : 0;
-  const baseNoun = noun.trim();
-  if (safeCount === 1) {
-    return safeCount + ' ' + baseNoun;
-  }
-  if (baseNoun.endsWith('y')) {
-    return safeCount + ' ' + baseNoun.slice(0, -1) + 'ies';
-  }
-  return safeCount + ' ' + baseNoun + 's';
-}
-
-const MIRROR_STAT_LABELS = {
-  foldersCreated: ['folder created', 'folders created'],
-  foldersRemoved: ['folder removed', 'folders removed'],
-  foldersMoved: ['folder moved', 'folders moved'],
-  bookmarksCreated: ['bookmark created', 'bookmarks created'],
-  bookmarksUpdated: ['bookmark updated', 'bookmarks updated'],
-  bookmarksMoved: ['bookmark moved', 'bookmarks moved'],
-  bookmarksDeleted: ['bookmark deleted', 'bookmarks deleted'],
-};
 
 /**
  * Notify about the result of saving URLs to Unsorted.
@@ -1217,61 +788,7 @@ const MIRROR_STAT_LABELS = {
  * @returns {Promise<void>}
  */
 async function notifyUnsortedSaveOutcome(summary) {
-  if (!summary) {
-    return;
-  }
-
-  const preferences = await getNotificationPreferences();
-  if (
-    !preferences.enabled ||
-    !preferences.bookmark.enabled ||
-    !preferences.bookmark.unsortedSaved
-  ) {
-    return;
-  }
-
-  if (summary.ok) {
-    const createdCount = Number(summary.created || 0);
-    const updatedCount = Number(summary.updated || 0);
-    const savedCount = createdCount + updatedCount;
-    const title = 'Saved to Unsorted';
-    const message =
-      'Saved ' +
-      savedCount +
-      ' ' +
-      (savedCount === 1 ? 'URL' : 'URLs') +
-      ' to Raindrop Unsorted.';
-    const contextParts = [];
-
-    if (savedCount === 0) {
-      contextParts.push('All provided URLs were already saved.');
-    }
-
-    if (summary.skipped > 0) {
-      contextParts.push(formatCountLabel(summary.skipped, 'duplicate'));
-    }
-
-    const contextMessage =
-      contextParts.length > 0 ? contextParts.join(', ') : undefined;
-    await pushNotification(
-      'unsorted-success',
-      title,
-      message,
-      RAINDROP_UNSORTED_URL,
-      contextMessage,
-    );
-    return;
-  }
-
-  const reason =
-    summary.error ||
-    (Array.isArray(summary.errors) ? summary.errors[0] : '') ||
-    'Unknown error.';
-  await pushNotification(
-    'unsorted-failure',
-    'Failed to Save URLs',
-    sanitizeNotificationMessage(reason),
-  );
+  return;
 }
 
 /**
@@ -1330,8 +847,6 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
   };
 
   try {
-    const shouldProcessUrl = options.skipUrlProcessing !== true;
-
     if (!Array.isArray(entries)) {
       summary.error = 'No URLs provided.';
       return finalize();
@@ -1354,11 +869,7 @@ export async function saveUrlsToUnsorted(entries, options = {}) {
         continue;
       }
 
-      const processedUrl = shouldProcessUrl
-        ? await processUrl(normalizedUrl, 'save-to-raindrop')
-        : normalizedUrl;
-
-      const finalUrl = processedUrl;
+      const finalUrl = normalizedUrl;
 
       if (seenUrls.has(finalUrl)) {
         summary.skipped += 1;

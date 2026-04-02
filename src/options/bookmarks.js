@@ -1,7 +1,5 @@
 /* global chrome */
 
-
-import { updateNotificationSectionsVisibility } from './notifications.js';
 import { setBackupConnectionState, refreshBackupStatus } from './backup.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 import { getValidTokens, areTokensExpired } from '../shared/tokenRefresh.js';
@@ -353,9 +351,7 @@ function renderProviderState() {
   disconnectButton.hidden = !hasSelection || !storedTokens;
   connectButton.textContent = storedTokens ? 'Reconnect' : 'Connect';
 
-  // Update notification sections visibility based on login status
   const isLoggedIn = hasSelection && Boolean(storedTokens);
-  updateNotificationSectionsVisibility(isLoggedIn);
 
   // Show/hide sidebar based on login status (section visibility is controlled by NavigationManager)
   if (isLoggedIn) {

@@ -243,16 +243,7 @@
    * @returns {Promise<void>}
    */
   async function sendNotification(title, message, targetUrl) {
-    try {
-      await chrome.runtime.sendMessage({
-        type: 'auto-google-login-notification',
-        title,
-        message,
-        targetUrl,
-      });
-    } catch (error) {
-      console.warn('[auto-google-login] Failed to send notification:', error);
-    }
+    return;
   }
 
   /**

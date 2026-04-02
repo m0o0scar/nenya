@@ -4,24 +4,17 @@ import './bookmarks.js';
 import './notionIntegration.js';
 import './backup.js';
 import './pinnedShortcuts.js';
-import './notifications.js';
 import './importExport.js';
 import './autoReload.js';
 import './darkMode.js';
 import './brightMode.js';
 import './highlightText.js';
-import './videoEnhancements.js';
 import './blockElements.js';
 import './customCode.js';
 import './runCodeInPage.js';
 import './llmPrompts.js';
-import './urlProcessRules.js';
-import './titleTransformRules.js';
-import './screenshots.js';
 import './autoGoogleLogin.js';
 import './customSearchEngines.js';
-import './debug.js';
-import './clipboardHistory.js';
 
 /**
  * Navigation functionality for the options page

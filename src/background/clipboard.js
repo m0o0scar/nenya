@@ -4,11 +4,7 @@
 
 import {
   setActionBadge,
-  animateActionBadge,
-  getNotificationPreferences,
 } from './mirror.js';
-import { processUrl } from '../shared/urlProcessor.js';
-import { transformTitle } from '../shared/titleTransform.js';
 
 /**
  * @deprecated Use COPY_MENU_IDS from shared/contextMenus.js instead.
@@ -21,120 +17,6 @@ export const CLIPBOARD_CONTEXT_MENU_IDS = {
   COPY_MARKDOWN_LINK: 'nenya-copy-markdown-link',
   COPY_SCREENSHOT: 'nenya-copy-screenshot',
 };
-
-/**
- * New context menu IDs matching the centralized contextMenus.js.
- */
-const NEW_COPY_MENU_IDS = {
-  TITLE: 'nenya-copy-title',
-  TITLE_URL: 'nenya-copy-title-url',
-  TITLE_DASH_URL: 'nenya-copy-title-dash-url',
-  MARKDOWN_LINK: 'nenya-copy-markdown-link',
-  SCREENSHOT: 'nenya-copy-screenshot',
-};
-
-/**
- * Storage key for screenshot settings.
- */
-const SCREENSHOT_SETTINGS_KEY = 'screenshotSettings';
-
-/**
- * @typedef {Object} ScreenshotSettings
- * @property {boolean} autoSave - Whether to automatically save screenshots to Downloads folder.
- */
-
-/**
- * Get default screenshot settings.
- * @returns {ScreenshotSettings} Default screenshot settings.
- */
-function getDefaultScreenshotSettings() {
-  return {
-    autoSave: false,
-  };
-}
-
-/**
- * Normalize screenshot settings to ensure valid values.
- * @param {*} settings - Settings to normalize.
- * @returns {ScreenshotSettings} Normalized screenshot settings.
- */
-function normalizeScreenshotSettings(settings) {
-  if (!settings || typeof settings !== 'object') {
-    return getDefaultScreenshotSettings();
-  }
-
-  return {
-    autoSave:
-      typeof settings.autoSave === 'boolean' ? settings.autoSave : false,
-  };
-}
-
-/**
- * Get screenshot settings from storage.
- * @returns {Promise<ScreenshotSettings>} Screenshot settings.
- */
-async function getScreenshotSettings() {
-  try {
-    const result = await chrome.storage.local.get(SCREENSHOT_SETTINGS_KEY);
-    return normalizeScreenshotSettings(result[SCREENSHOT_SETTINGS_KEY]);
-  } catch (error) {
-    console.warn('[clipboard] Failed to get screenshot settings:', error);
-    return getDefaultScreenshotSettings();
-  }
-}
-
-/**
- * Check if screenshots should be automatically saved to file system.
- * @returns {Promise<boolean>} True if auto-save is enabled.
- */
-async function shouldAutoSaveScreenshots() {
-  const settings = await getScreenshotSettings();
-  return settings.autoSave;
-}
-
-/**
- * Download a screenshot to the Downloads folder.
- * @param {string} dataUrl - The data URL of the screenshot.
- * @returns {Promise<boolean>} True if download was successful, false otherwise.
- */
-async function downloadScreenshot(dataUrl) {
-  try {
-    // Generate filename with timestamp
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    const filename = `screenshot-${year}-${month}-${day}-${hours}${minutes}${seconds}.png`;
-
-    // Start the download
-    await chrome.downloads.download({
-      url: dataUrl,
-      filename: filename,
-      saveAs: false, // Don't prompt, just save to default Downloads folder
-    });
-
-    return true;
-  } catch (error) {
-    console.warn('[clipboard] Failed to download screenshot:', error);
-    return false;
-  }
-}
-
-/**
- * Get the notification icon URL using chrome.runtime.getURL.
- * @returns {string} - The icon URL.
- */
-function getNotificationIconUrl() {
-  try {
-    return chrome.runtime.getURL('assets/icons/icon-48x48.png');
-  } catch (error) {
-    console.warn('[clipboard] Failed to resolve icon URL:', error);
-    return 'assets/icons/icon-48x48.png';
-  }
-}
 
 export function setCopySuccessBadge() {
   try {
@@ -213,16 +95,9 @@ async function getTabData(tabs) {
 
   const tabData = await Promise.all(
     validTabs.map(async (tab) => {
-      const originalTitle = typeof tab.title === 'string' ? tab.title : '';
-
-      const [processedUrl, transformedTitle] = await Promise.all([
-        processUrl(tab.url, 'copy-to-clipboard'),
-        transformTitle(originalTitle, tab.url),
-      ]);
-
       return {
-        title: transformedTitle,
-        url: processedUrl,
+        title: typeof tab.title === 'string' ? tab.title : '',
+        url: tab.url,
       };
     }),
   );
@@ -457,13 +332,6 @@ export async function handleScreenshotCopy(tabId) {
     return false;
   }
 
-  // Check if auto-save is enabled and download if so
-  const autoSave = await shouldAutoSaveScreenshots();
-  if (autoSave) {
-    // Download screenshot - don't fail if download fails
-    await downloadScreenshot(dataUrl);
-  }
-
   try {
     // Save to storage
     await chrome.storage.local.set({ editorScreenshot: dataUrl });
@@ -553,39 +421,6 @@ export async function handleClipboardContextMenuClick(info, tab) {
       setCopyFailureBadge();
     }
 
-    // Show notification based on result
-    if (success) {
-      // Check preferences before showing success notification
-      const prefs = await getNotificationPreferences();
-      const shouldShowSuccess =
-        prefs.enabled &&
-        prefs.clipboard?.enabled &&
-        prefs.clipboard?.copySuccess;
-
-      if (shouldShowSuccess) {
-        const message =
-          menuItemId === CLIPBOARD_CONTEXT_MENU_IDS.COPY_SCREENSHOT
-            ? 'Screenshot opened in editor'
-            : `Copied ${tabs.length} tab${
-                tabs.length > 1 ? 's' : ''
-              } to clipboard`;
-
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: getNotificationIconUrl(),
-          title: 'Nenya',
-          message,
-        });
-      }
-    } else {
-      // Always show error notifications regardless of preferences
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: getNotificationIconUrl(),
-        title: 'Nenya',
-        message: 'Failed to copy to clipboard',
-      });
-    }
   } catch (error) {
     console.error('[clipboard] Context menu click failed:', error);
     setCopyFailureBadge();
@@ -620,13 +455,6 @@ export async function handleClipboardCommand(command) {
       if (tabs.length === 1 && typeof tabs[0].id === 'number') {
         success = await handleScreenshotCopy(tabs[0].id);
       } else {
-        // Show notification for multiple tabs
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: getNotificationIconUrl(),
-          title: 'Nenya',
-          message: 'Screenshot only works with single tab',
-        });
         setCopyFailureBadge();
         return;
       }
@@ -656,40 +484,8 @@ export async function handleClipboardCommand(command) {
     // Set badge based on result
     if (success) {
       setCopySuccessBadge();
-
-      // Check preferences before showing success notification
-      const prefs = await getNotificationPreferences();
-      const shouldShowSuccess =
-        prefs.enabled &&
-        prefs.clipboard?.enabled &&
-        prefs.clipboard?.copySuccess;
-
-      if (shouldShowSuccess) {
-        // Show notification
-        const message =
-          command === 'copy-screenshot'
-            ? 'Screenshot opened in editor'
-            : `Copied ${tabs.length} tab${
-                tabs.length > 1 ? 's' : ''
-              } to clipboard`;
-
-        chrome.notifications.create({
-          type: 'basic',
-          iconUrl: getNotificationIconUrl(),
-          title: 'Nenya',
-          message,
-        });
-      }
     } else {
       setCopyFailureBadge();
-
-      // Always show error notifications regardless of preferences
-      chrome.notifications.create({
-        type: 'basic',
-        iconUrl: getNotificationIconUrl(),
-        title: 'Nenya',
-        message: 'Failed to copy to clipboard',
-      });
     }
   } catch (error) {
     console.error('[clipboard] Command failed:', error);
