@@ -274,18 +274,6 @@ const SHORTCUT_CONFIG = {
     handler: () => void handleScreenRecording(),
     key: 's',
   },
-  openInPopup: {
-    emoji: '↗️',
-    tooltip: 'Open in popup',
-    handler: () => handleOpenInPopup(),
-    key: 'o',
-  },
-  renameTab: {
-    emoji: '🏷️',
-    tooltip: 'Rename tab',
-    handler: () => void handleRenameTab(),
-    key: 'n',
-  },
   emojiPicker: {
     emoji: '😀',
     tooltip: 'Emoji Picker',
@@ -327,7 +315,6 @@ const DEFAULT_PINNED_SHORTCUTS = [
   'encryptSave', // Encrypt & save to unsorted
   'saveClipboardToUnsorted', // Save clipboard link to unsorted
   'customFilter', // Hide elements in page
-  'openInPopup', // Open in popup
   'emojiPicker', // Emoji Picker
 ];
 
@@ -405,55 +392,6 @@ const customSearchSuggestions = /** @type {HTMLDivElement | null} */ (
 const mirrorSection = /** @type {HTMLElement | null} */ (
   document.querySelector('article[aria-labelledby="mirror-heading"]')
 );
-
-/**
- * Handle opening the current tab in a small popup window.
- * @returns {Promise<void>}
- */
-async function handleOpenInPopup() {
-  try {
-    await chrome.runtime.sendMessage({ type: 'open-in-popup' });
-    closeCurrentSurface();
-  } catch (error) {
-    console.error('[popup] Error opening in popup window:', error);
-    if (statusMessage) {
-      concludeStatus(
-        'Unable to open in popup window.',
-        'error',
-        3000,
-        statusMessage,
-      );
-    }
-  }
-}
-
-/**
- * Handle renaming the current tab title.
- * @returns {Promise<void>}
- */
-async function handleRenameTab() {
-  try {
-    const response = await chrome.runtime.sendMessage({ type: 'rename-tab' });
-    if (response?.success) {
-      closeCurrentSurface();
-      return;
-    }
-
-    if (!response?.cancelled && statusMessage) {
-      concludeStatus(
-        response?.error || 'Unable to rename tab.',
-        'error',
-        3000,
-        statusMessage,
-      );
-    }
-  } catch (error) {
-    console.error('[popup] Error renaming tab:', error);
-    if (statusMessage) {
-      concludeStatus('Unable to rename tab.', 'error', 3000, statusMessage);
-    }
-  }
-}
 
 /**
  * Load pinned shortcuts from storage and render buttons

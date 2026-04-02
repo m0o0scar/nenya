@@ -126,103 +126,61 @@
       "description": "Open popup"
     },
     "bookmarks-save-to-unsorted": {
-      "description": "💧 Save to Unsorted"
+      "description": "\ud83d\udca7 Save to Unsorted"
     },
     "bookmarks-save-to-unsorted-encrypted": {
-      "description": "💧 Encrypt & Save to Unsorted"
+      "description": "\ud83d\udca7 Encrypt & Save to Unsorted"
     },
     "bookmarks-save-clipboard-to-unsorted": {
-      "description": "💧 Save clipboard link to Unsorted"
+      "description": "\ud83d\udca7 Save clipboard link to Unsorted"
     },
     "copy-title": {
-      "description": "📋 Copy Title"
+      "description": "\ud83d\udccb Copy Title"
     },
     "copy-title-url": {
-      "description": "📋 Copy Title\\nURL"
+      "description": "\ud83d\udccb Copy Title\\nURL"
     },
     "copy-title-dash-url": {
-      "description": "📋 Copy Title - URL"
+      "description": "\ud83d\udccb Copy Title - URL"
     },
     "copy-markdown-link": {
-      "description": "📋 Copy [Title](URL)"
+      "description": "\ud83d\udccb Copy [Title](URL)"
     },
     "copy-screenshot": {
-      "description": "📋 Copy Screenshot"
+      "description": "\ud83d\udccb Copy Screenshot"
     },
     "pip-quit": {
       "suggested_key": {
         "default": "Alt+Q"
       },
-      "description": "🎥 Quit PiP"
+      "description": "\ud83c\udfa5 Quit PiP"
     },
     "tabs-activate-left-tab": {
-      "description": "🗂️ Activate left tab"
+      "description": "\ud83d\uddc2\ufe0f Activate left tab"
     },
     "tabs-activate-right-tab": {
-      "description": "🗂️ Activate right tab"
-    },
-    "tabs-new-tab": {
-      "description": "🗂️ New tab (to the right)"
-    },
-    "tabs-close-tab": {
-      "description": "🗂️ Close active or highlighted tabs"
+      "description": "\ud83d\uddc2\ufe0f Activate right tab"
     },
     "split": {
-      "description": "🪟 Split"
-    },
-    "window-resize-fullscreen": {
-      "description": "🖥️ Resize window to full screen"
-    },
-    "window-resize-left-half": {
-      "description": "🖥️ Resize window to left half"
-    },
-    "window-resize-right-half": {
-      "description": "🖥️ Resize window to right half"
-    },
-    "window-resize-top-half": {
-      "description": "🖥️ Resize window to top half"
-    },
-    "window-resize-bottom-half": {
-      "description": "🖥️ Resize window to bottom half"
+      "description": "\ud83e\ude9f Split"
     },
     "merge": {
-      "description": "🪟 Merge"
+      "description": "\ud83e\ude9f Merge"
     },
     "block-element-picker": {
-      "description": "🎯 Element Picker"
+      "description": "\ud83c\udfaf Element Picker"
     },
     "llm-chat-with-llm": {
-      "description": "🤖 Chat with LLM"
+      "description": "\ud83e\udd16 Chat with LLM"
     },
     "llm-download-markdown": {
-      "description": "📥 Download as markdown"
+      "description": "\ud83d\udce5 Download as markdown"
     },
     "emoji-picker-show": {
-      "description": "😀 Show Emoji Picker"
-    },
-    "open-in-popup": {
-      "description": "↗️ Open in popup"
-    },
-    "rename-tab": {
-      "description": "🏷️ Rename tab"
+      "description": "\ud83d\ude00 Show Emoji Picker"
     },
     "screen-recording-start": {
-      "description": "⏺️ Start screen recording"
-    },
-    "open-pinned-shortcut-1": {
-      "description": "📌 Open 1st pinned shortcut in new tab"
-    },
-    "open-pinned-shortcut-2": {
-      "description": "📌 Open 2nd pinned shortcut in new tab"
-    },
-    "open-pinned-shortcut-3": {
-      "description": "📌 Open 3rd pinned shortcut in new tab"
-    },
-    "open-pinned-shortcut-4": {
-      "description": "📌 Open 4th pinned shortcut in new tab"
-    },
-    "open-pinned-shortcut-5": {
-      "description": "📌 Open 5th pinned shortcut in new tab"
+      "description": "\u23fa\ufe0f Start screen recording"
     }
   }
 }

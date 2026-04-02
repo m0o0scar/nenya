@@ -56,8 +56,6 @@ export const NENYA_MENU_IDS = {
   DEVELOPER_PARENT: 'nenya-developer-parent',
 
   // Tools
-  OPEN_IN_POPUP: 'nenya-open-in-popup',
-  RENAME_TAB: 'nenya-rename-tab',
   EMOJI_PICKER: 'nenya-emoji-picker',
   TAKE_SCREENSHOT: 'nenya-take-screenshot',
   SPLIT: 'nenya-split',
@@ -79,7 +77,6 @@ export const NENYA_MENU_IDS = {
 
 // Deprecated export for backward compatibility during migration
 export const OTHER_MENU_IDS = {
-  OPEN_IN_POPUP: NENYA_MENU_IDS.OPEN_IN_POPUP,
   TAKE_SCREENSHOT: NENYA_MENU_IDS.TAKE_SCREENSHOT,
 };
 
@@ -298,19 +295,6 @@ async function createRootMenus() {
     contexts: contexts,
   });
 
-  await createMenuItem({
-    id: NENYA_MENU_IDS.OPEN_IN_POPUP,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '↗️ Open in popup',
-    contexts: contexts,
-  });
-
-  await createMenuItem({
-    id: NENYA_MENU_IDS.RENAME_TAB,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🏷️ Rename tab',
-    contexts: contexts,
-  });
 
   await createMenuItem({
     id: NENYA_MENU_IDS.EMOJI_PICKER,

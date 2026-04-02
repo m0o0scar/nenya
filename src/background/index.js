@@ -65,7 +65,6 @@ import {
   getLLMProviderFromURL,
 } from '../shared/llmProviders.js';
 import { processUrl } from '../shared/urlProcessor.js';
-import { handleOpenInPopup } from './popup.js';
 import { addClipboardItem } from './clipboardHistory.js';
 import { handlePictureInPicture } from './pip-handler.js';
 import {
@@ -79,7 +78,6 @@ const SAVE_UNSORTED_MESSAGE = 'mirror:saveToUnsorted';
 const ENCRYPT_AND_SAVE_MESSAGE = 'mirror:encryptAndSave';
 const CLIPBOARD_SAVE_TO_UNSORTED_MESSAGE = 'clipboard:saveToUnsorted';
 const TAKE_SCREENSHOT_MESSAGE = 'clipboard:takeScreenshot';
-const RENAME_TAB_MESSAGE = 'rename-tab';
 const RENAMED_TAB_TITLES_STORAGE_KEY = 'renamedTabTitles';
 const SHOW_SAVE_TO_UNSORTED_DIALOG_MESSAGE =
   'showSaveToUnsortedDialog';
@@ -109,35 +107,10 @@ const TAB_CONTENT_MODE_PAGE = 'page-content';
 const TAB_CONTENT_MODE_HTML = 'html-source';
 const ENCRYPT_SERVICE_URL = 'https://oh-auth.vercel.app/secret/encrypt';
 const ENCRYPT_COVER_URL = 'https://picsum.photos/640/360';
-const PINNED_SEARCH_RESULTS_STORAGE_KEY = 'pinnedSearchResults';
-const OPEN_PINNED_SHORTCUT_COMMAND_PREFIX = 'open-pinned-shortcut-';
-const MAX_PINNED_SHORTCUT_COMMAND_POSITION = 5;
 
 /**
  * @typedef {'page-content' | 'html-source'} TabContentMode
  */
-
-/**
- * Resolve 0-based pinned shortcut index for command-based shortcut open.
- * @param {string} command
- * @returns {number | null}
- */
-function getPinnedShortcutIndexFromCommand(command) {
-  if (!command.startsWith(OPEN_PINNED_SHORTCUT_COMMAND_PREFIX)) {
-    return null;
-  }
-
-  const rawPosition = command.slice(OPEN_PINNED_SHORTCUT_COMMAND_PREFIX.length);
-  const position = Number.parseInt(rawPosition, 10);
-  if (!Number.isInteger(position)) {
-    return null;
-  }
-  if (position < 1 || position > MAX_PINNED_SHORTCUT_COMMAND_POSITION) {
-    return null;
-  }
-
-  return position - 1;
-}
 
 /**
  * Create a tab immediately to the right of the active tab in the last focused window.
@@ -184,62 +157,6 @@ async function createTabNextToActive(tabCreateProperties) {
   return newTab;
 }
 
-/**
- * Close highlighted tabs in current window, or fall back to the active tab.
- * @returns {Promise<void>}
- */
-async function closeHighlightedOrActiveTabs() {
-  const highlightedTabs = await chrome.tabs.query({
-    currentWindow: true,
-    highlighted: true,
-  });
-  const highlightedTabIds = (highlightedTabs || [])
-    .map((tab) => tab.id)
-    .filter((tabId) => typeof tabId === 'number');
-
-  if (highlightedTabIds.length > 0) {
-    await chrome.tabs.remove(highlightedTabIds);
-    return;
-  }
-
-  const activeTabs = await chrome.tabs.query({
-    currentWindow: true,
-    active: true,
-  });
-  const activeTabId = activeTabs[0]?.id;
-  if (typeof activeTabId === 'number') {
-    await chrome.tabs.remove(activeTabId);
-  }
-}
-
-/**
- * Open a pinned search item in a new tab by 0-based index.
- * @param {number} pinnedIndex
- * @returns {Promise<void>}
- */
-async function handleOpenPinnedShortcutCommand(pinnedIndex) {
-  try {
-    const stored = await chrome.storage.local.get(PINNED_SEARCH_RESULTS_STORAGE_KEY);
-    const pinnedItems = Array.isArray(stored?.[PINNED_SEARCH_RESULTS_STORAGE_KEY])
-      ? stored[PINNED_SEARCH_RESULTS_STORAGE_KEY]
-      : [];
-
-    if (pinnedIndex < 0 || pinnedIndex >= pinnedItems.length) {
-      return;
-    }
-
-    const pinnedItem = pinnedItems[pinnedIndex];
-    const url = typeof pinnedItem?.url === 'string' ? pinnedItem.url.trim() : '';
-    if (!url) {
-      return;
-    }
-
-    await createTabNextToActive({ url, active: true });
-  } catch (error) {
-    console.warn('[commands] Open pinned shortcut failed:', error);
-  }
-}
-
 // ============================================================================
 // KEYBOARD SHORTCUTS (COMMANDS)
 // Set up command listeners as early as possible to ensure they're ready
@@ -254,12 +171,6 @@ async function handleOpenPinnedShortcutCommand(pinnedIndex) {
  * @returns {void}
  */
 chrome.commands.onCommand.addListener((command) => {
-  const pinnedShortcutIndex = getPinnedShortcutIndexFromCommand(command);
-  if (pinnedShortcutIndex !== null) {
-    void handleOpenPinnedShortcutCommand(pinnedShortcutIndex);
-    return;
-  }
-
   if (
     command === 'tabs-activate-left-tab' ||
     command === 'tabs-activate-right-tab'
@@ -290,28 +201,6 @@ chrome.commands.onCommand.addListener((command) => {
         }
       } catch (error) {
         console.warn('[commands] Tab activation failed:', error);
-      }
-    })();
-    return;
-  }
-
-  if (command === 'tabs-new-tab') {
-    void (async () => {
-      try {
-        await createTabNextToActive({ active: true });
-      } catch (error) {
-        console.warn('[commands] New tab failed:', error);
-      }
-    })();
-    return;
-  }
-
-  if (command === 'tabs-close-tab') {
-    void (async () => {
-      try {
-        await closeHighlightedOrActiveTabs();
-      } catch (error) {
-        console.warn('[commands] Close tab failed:', error);
       }
     })();
     return;
@@ -429,31 +318,6 @@ chrome.commands.onCommand.addListener((command) => {
 
   if (command === 'split') {
     void handleSplitCommand();
-    return;
-  }
-
-  if (command === 'window-resize-fullscreen') {
-    void handleResizeCurrentWindowToFullscreenCommand();
-    return;
-  }
-
-  if (command === 'window-resize-left-half') {
-    void handleResizeCurrentWindowToHalfCommand('left');
-    return;
-  }
-
-  if (command === 'window-resize-right-half') {
-    void handleResizeCurrentWindowToHalfCommand('right');
-    return;
-  }
-
-  if (command === 'window-resize-top-half') {
-    void handleResizeCurrentWindowToHalfCommand('top');
-    return;
-  }
-
-  if (command === 'window-resize-bottom-half') {
-    void handleResizeCurrentWindowToHalfCommand('bottom');
     return;
   }
 
@@ -609,25 +473,6 @@ chrome.commands.onCommand.addListener((command) => {
     })();
     return;
   }
-  if (command === 'open-in-popup') {
-    void handleOpenInPopup();
-    return;
-  }
-
-  if (command === 'rename-tab') {
-    void (async () => {
-      try {
-        const result = await handleRenameTabRequest();
-        if (!result.success && !result.cancelled && result.error) {
-          console.warn('[commands] Rename tab failed:', result.error);
-        }
-      } catch (error) {
-        console.warn('[commands] Rename tab failed:', error);
-      }
-    })();
-    return;
-  }
-
   if (command === 'screen-recording-start') {
     void (async () => {
       try {
@@ -1164,27 +1009,6 @@ async function handleSplitCommand() {
 }
 
 /**
- * Resize the current window to the full display work area without maximizing.
- * @returns {Promise<void>}
- */
-async function handleResizeCurrentWindowToFullscreenCommand() {
-  try {
-    const currentWindow = await getCurrentActiveWindowForResize();
-    if (!currentWindow) {
-      return;
-    }
-
-    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
-    await setWindowLayout(currentWindow.id, screenBounds, true);
-  } catch (error) {
-    console.warn(
-      '[commands] Resize current window to full screen failed:',
-      error,
-    );
-  }
-}
-
-/**
  * Resolve the current active window for resize commands.
  * @returns {Promise<chrome.windows.Window | null>}
  */
@@ -1206,65 +1030,6 @@ async function getCurrentActiveWindowForResize() {
   }
 
   return currentWindow;
-}
-
-/**
- * Resize the current window to a screen half.
- * @param {'left' | 'right' | 'top' | 'bottom'} side
- * @returns {Promise<void>}
- */
-async function handleResizeCurrentWindowToHalfCommand(side) {
-  try {
-    const currentWindow = await getCurrentActiveWindowForResize();
-    if (!currentWindow) {
-      return;
-    }
-
-    const screenBounds = await getDisplayWorkAreaForWindow(currentWindow);
-    const leftWidth = Math.floor(screenBounds.width / 2);
-    const rightWidth = screenBounds.width - leftWidth;
-    const topHeight = Math.floor(screenBounds.height / 2);
-    const bottomHeight = screenBounds.height - topHeight;
-
-    /** @type {WindowLayoutBounds} */
-    let targetBounds;
-    if (side === 'left') {
-      targetBounds = {
-        left: screenBounds.left,
-        top: screenBounds.top,
-        width: leftWidth,
-        height: screenBounds.height,
-      };
-    } else if (side === 'right') {
-      targetBounds = {
-        left: screenBounds.left + leftWidth,
-        top: screenBounds.top,
-        width: rightWidth,
-        height: screenBounds.height,
-      };
-    } else if (side === 'top') {
-      targetBounds = {
-        left: screenBounds.left,
-        top: screenBounds.top,
-        width: screenBounds.width,
-        height: topHeight,
-      };
-    } else {
-      targetBounds = {
-        left: screenBounds.left,
-        top: screenBounds.top + topHeight,
-        width: screenBounds.width,
-        height: bottomHeight,
-      };
-    }
-
-    await setWindowLayout(currentWindow.id, targetBounds, true);
-  } catch (error) {
-    console.warn(
-      `[commands] Resize current window to ${side} half failed:`,
-      error,
-    );
-  }
 }
 
 /**
@@ -3990,20 +3755,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === RENAME_TAB_MESSAGE) {
-    const requestedTabId =
-      typeof message.tabId === 'number' ? message.tabId : null;
-    void handleRenameTabRequest(requestedTabId)
-      .then((result) => {
-        sendResponse(result);
-      })
-      .catch((error) => {
-        console.error('[background] Failed to rename tab:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-    return true;
-  }
-
   if (message.type === 'launchElementPicker') {
     const tabId = typeof message.tabId === 'number' ? message.tabId : null;
     if (tabId === null) {
@@ -4416,10 +4167,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === 'open-in-popup') {
-    void handleOpenInPopup();
-    return true;
-  }
   if (message.type === 'auto-google-login:checkTabActive') {
     void (async () => {
       try {
@@ -4688,22 +4435,6 @@ if (chrome.contextMenus) {
     // NENYA MENU HANDLERS
     // ========================================================================
 
-    // Open in popup
-    if (menuItemId === NENYA_MENU_IDS.OPEN_IN_POPUP) {
-      void handleOpenInPopup();
-      return;
-    }
-
-    // Rename tab
-    if (menuItemId === NENYA_MENU_IDS.RENAME_TAB) {
-      const targetTabId = typeof tab?.id === 'number' ? tab.id : null;
-      void handleRenameTabRequest(targetTabId).then((result) => {
-        if (!result.success && !result.cancelled && result.error) {
-          console.warn('[contextMenu] Rename tab failed:', result.error);
-        }
-      });
-      return;
-    }
 
     // Emoji Picker
     if (menuItemId === NENYA_MENU_IDS.EMOJI_PICKER) {

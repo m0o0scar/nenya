@@ -1351,7 +1351,6 @@ function normalizePinnedShortcuts(value) {
     'pictureInPicture',
     'takeScreenshot',
     'screenRecording',
-    'openInPopup',
     'emojiPicker',
   ];
 
