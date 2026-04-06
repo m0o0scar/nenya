@@ -62,6 +62,7 @@ export const NENYA_MENU_IDS = {
   PIP: 'nenya-pip',
   CUSTOM_FILTER: 'nenya-custom-filter',
   AUTO_RELOAD: 'nenya-auto-reload',
+  DOWNLOAD_MARKDOWN: 'nenya-download-markdown',
 
   // Appearance
   BRIGHT_MODE: 'nenya-bright-mode',
@@ -333,6 +334,13 @@ async function createRootMenus() {
     parentId: NENYA_MENU_IDS.TOOLS_PARENT,
     title: '🔁 Auto reload',
     contexts: contexts,
+  });
+
+  await createMenuItem({
+    id: NENYA_MENU_IDS.DOWNLOAD_MARKDOWN,
+    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+    title: '📥 Download as markdown',
+    contexts: ['page', 'frame', 'selection', 'editable', 'image'],
   });
 
   // --- Appearance Submenu (Root Level) ---

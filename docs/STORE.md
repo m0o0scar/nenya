@@ -41,7 +41,8 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 ✓ General web pages (Readability)
 ✓ YouTube (title, description, transcript)
 ✓ Notion pages (full content)
-• Download pages as markdown files
+✓ Confluence pages (page-aware markdown conversion)
+• Download pages as markdown files, including Confluence-aware exports
 • Automatic screenshot attachment for visual context
 
 📋 Clipboard Tools

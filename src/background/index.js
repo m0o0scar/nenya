@@ -356,89 +356,7 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === 'llm-download-markdown') {
     void (async () => {
       try {
-        // Get highlighted tabs or active tab
-        /** @type {chrome.tabs.Tab[]} */
-        let tabs = await chrome.tabs.query({
-          currentWindow: true,
-          highlighted: true,
-        });
-        if (!tabs || tabs.length === 0) {
-          tabs = await chrome.tabs.query({ currentWindow: true, active: true });
-        }
-
-        // Filter to only include tabs with http/https URLs
-        const filteredTabs = (tabs || []).filter((tab) => {
-          const url = tab.url || '';
-          return url.startsWith('http://') || url.startsWith('https://');
-        });
-
-        if (filteredTabs.length === 0) {
-          console.warn('[commands] No valid tabs available for download');
-          return;
-        }
-
-        // Get tab IDs
-        const tabIds = filteredTabs
-          .map((t) => t.id)
-          .filter((id) => typeof id === 'number');
-
-        // Collect content from tabs
-        const contents = await collectPageContentFromTabs(tabIds);
-
-        if (contents.length === 0) {
-          console.warn('[commands] No content collected from tabs');
-          return;
-        }
-
-        // Build the markdown content
-        let markdownContent = '';
-
-        // Add page contents
-        contents.forEach((content, index) => {
-          markdownContent += `## Page ${index + 1}: ${content.title}\n\n`;
-          markdownContent += `**URL:** ${content.url}\n\n`;
-          markdownContent += content.content;
-          markdownContent += '\n\n---\n\n';
-        });
-
-        // Get active tab to inject download script
-        const activeTabs = await chrome.tabs.query({
-          currentWindow: true,
-          active: true,
-        });
-        const activeTab = activeTabs && activeTabs[0];
-
-        if (!activeTab || typeof activeTab.id !== 'number') {
-          console.warn('[commands] No active tab found for download');
-          return;
-        }
-
-        // Generate filename with timestamp
-        const now = new Date();
-        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
-        const filename = `page-content-${timestamp}.md`;
-
-        // Inject script to trigger download in the active tab
-        await chrome.scripting.executeScript({
-          target: { tabId: activeTab.id },
-          func: (markdown, fileName) => {
-            // Create a blob and download it
-            const blob = new Blob([markdown], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
-
-            // Create a temporary link and trigger download
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-
-            // Clean up
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-          },
-          args: [markdownContent, filename],
-        });
+        await handleMarkdownDownload();
       } catch (error) {
         console.warn('[commands] Download markdown failed:', error);
       }
@@ -2495,6 +2413,87 @@ async function handleSendToLLM(providerId, currentTab) {
   }
 }
 
+/**
+ * Get highlighted tabs in the current window, falling back to the active tab.
+ * @returns {Promise<chrome.tabs.Tab[]>}
+ */
+async function getHighlightedOrActiveHttpTabs() {
+  /** @type {chrome.tabs.Tab[]} */
+  let tabs = await chrome.tabs.query({
+    currentWindow: true,
+    highlighted: true,
+  });
+  if (!tabs || tabs.length === 0) {
+    tabs = await chrome.tabs.query({ currentWindow: true, active: true });
+  }
+
+  return (tabs || []).filter((tab) => {
+    const url = tab.url || '';
+    return url.startsWith('http://') || url.startsWith('https://');
+  });
+}
+
+/**
+ * Trigger a Markdown download for the highlighted tabs or the active tab.
+ * @returns {Promise<void>}
+ */
+async function handleMarkdownDownload() {
+  const filteredTabs = await getHighlightedOrActiveHttpTabs();
+  if (filteredTabs.length === 0) {
+    console.warn('[markdown] No valid tabs available for download');
+    return;
+  }
+
+  const tabIds = filteredTabs
+    .map((tab) => tab.id)
+    .filter((tabId) => typeof tabId === 'number');
+  const contents = await collectPageContentFromTabs(tabIds);
+
+  if (contents.length === 0) {
+    console.warn('[markdown] No content collected from tabs');
+    return;
+  }
+
+  let markdownContent = '';
+  contents.forEach((content, index) => {
+    markdownContent += `## Page ${index + 1}: ${content.title}\n\n`;
+    markdownContent += `**URL:** ${content.url}\n\n`;
+    markdownContent += content.content;
+    markdownContent += '\n\n---\n\n';
+  });
+
+  const activeTabs = await chrome.tabs.query({
+    currentWindow: true,
+    active: true,
+  });
+  const activeTab = activeTabs && activeTabs[0];
+
+  if (!activeTab || typeof activeTab.id !== 'number') {
+    console.warn('[markdown] No active tab found for download');
+    return;
+  }
+
+  const now = new Date();
+  const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+  const filename = `page-content-${timestamp}.md`;
+
+  await chrome.scripting.executeScript({
+    target: { tabId: activeTab.id },
+    func: (markdown, fileName) => {
+      const blob = new Blob([markdown], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    },
+    args: [markdownContent, filename],
+  });
+}
+
 // ============================================================================
 // MESSAGE LISTENER
 // ============================================================================
@@ -3724,6 +3723,14 @@ if (chrome.contextMenus) {
         await chrome.storage.local.set({ autoReloadPrefillUrl: tab.url });
         chrome.runtime.openOptionsPage();
       }
+      return;
+    }
+
+    // Download as markdown
+    if (menuItemId === NENYA_MENU_IDS.DOWNLOAD_MARKDOWN) {
+      void handleMarkdownDownload().catch((error) => {
+        console.error('[contextMenu] Download markdown failed:', error);
+      });
       return;
     }
 

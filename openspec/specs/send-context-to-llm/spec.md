@@ -28,6 +28,7 @@
 - **BUT** if `reuseLLMTabs()` marks `sessionsWithSentContent`, the cleanup logic MUST leave those tabs open for the user after the popup closes.
 
 ### Requirement: Sending or downloading context SHALL validate prerequisites before contacting the background
+Sending or downloading context SHALL remain available through the popup and keyboard flows, and Markdown download SHALL also be invokable from the extension context menu without changing the underlying collection pipeline.
 
 #### Scenario: Send workflow validates state and dispatches `collect-and-send-to-llm`
 - **GIVEN** the operator clicks “Send” (or presses Cmd/Ctrl+Enter),
@@ -35,20 +36,28 @@
 - **AND** the popup MUST re-enable the button after the promise settles and surface `alert()` errors coming from the response.
 
 #### Scenario: Download workflow returns a markdown bundle
-- **GIVEN** the operator clicks the download button,
-- **WHEN** tabs are eligible, **THEN** `handleDownload()` MUST request `collect-page-content-as-markdown`, prepend the current prompt as `# Prompt`, append one `## Page N` section per collected tab (with `**URL:**` metadata and the captured body markdown), and trigger a file download named `page-content-<timestamp>.md`.
+- **GIVEN** the operator clicks the popup download button or triggers the `llm-download-markdown` command,
+- **WHEN** tabs are eligible, **THEN** the extension MUST request `collect-page-content-as-markdown`, prepend the current prompt as `# Prompt` when one exists, append one `## Page N` section per collected tab (with `**URL:**` metadata and the captured body markdown), and trigger a file download named `page-content-<timestamp>.md`.
+
+#### Scenario: Context menu triggers markdown download
+- **GIVEN** the user opens the extension context menu on a page,
+- **WHEN** they choose `Download as markdown`,
+- **THEN** the background MUST run the same highlighted-tabs-or-active-tab selection logic used by the `llm-download-markdown` command,
+- **AND** it MUST reuse the same `collect-page-content-as-markdown` pipeline and generated `page-content-<timestamp>.md` file format instead of maintaining a separate export path.
 
 ### Requirement: The background page SHALL assemble sanitized context packages
+The background page SHALL continue to collect page content through the shared extractor pipeline, while preserving Confluence-specific structure by letting the general extractor switch to a Confluence-aware conversion path before Readability fallback.
 
 #### Scenario: Collect page content before injecting into LLM tabs
 - **GIVEN** a `collect-and-send-to-llm` message arrives,
-- **THEN** the background MUST derive at least one tab id (falling back to highlighted or active tabs), reject the call when none are found or `llmProviders` is empty, sequentially run `collectPageContentFromTabs()` so each tab loads the correct extractor (`getContent-youtube.js`, `getContent-notion.js`, or the general Readability/Turndown pipeline plus `pageContentCollector.js`), and store the resulting `{ title, url, content }` list as `collectedContents`,
+- **THEN** the background MUST derive at least one tab id (falling back to highlighted or active tabs), reject the call when none are found or `llmProviders` is empty, sequentially run `collectPageContentFromTabs()` so each tab loads the correct extractor (`getContent-youtube.js`, `getContent-notion.js`, or the general page pipeline plus `pageContentCollector.js`), and store the resulting `{ title, url, content }` list as `collectedContents`,
+- **AND** the general page pipeline MUST detect Confluence page DOM (`#main-content`, `.wiki-content`, or `.confluence-content`) before invoking Readability and convert that content through a Confluence-specific Turndown path that preserves page title, nested lists, tables, code blocks, and Confluence images,
 - **AND** when a single active tab is being sent, it MUST attempt to capture a JPEG screenshot via `chrome.tabs.captureVisibleTab()` and unshift that blob metadata into `selectedLocalFiles`,
 - **AND** once the content is ready it MUST either call `reuseLLMTabs(sessionId, llmProviders, collectedContents)` (marking `sessionsWithSentContent`) or fall back to `openOrReuseLLMTabs()` to open new tabs when reuse is impossible, returning `{ success: true }` only after every provider injection has been triggered.
 
 #### Scenario: Serve markdown payloads for downloads
 - **GIVEN** a `collect-page-content-as-markdown` request,
-- **THEN** the background MUST run the same `collectPageContentFromTabs()` pipeline and respond with `{ success: true, contents }` so the popup can compose the `.md` file without duplicating extraction logic.
+- **THEN** the background MUST run the same `collectPageContentFromTabs()` pipeline, including the Confluence-aware fast path in the general extractor when the page DOM matches Confluence, and respond with `{ success: true, contents }` so the popup can compose the `.md` file without duplicating extraction logic.
 
 ### Requirement: The LLM page injector SHALL attach files and prompts, then optionally auto-send
 
@@ -80,4 +89,3 @@
 - **GIVEN** `collectLLMPrompts()` runs as part of backup,
 - **THEN** it MUST call `normalizeLLMPrompts()` to drop invalid entries, trim whitespace, auto-generate IDs when missing, and sort by `name`; if normalization changed the array it MUST store the sanitized version back into sync storage before returning it for the payload,
 - **AND WHEN** `applyLLMPrompts()` receives prompts from a restore, **THEN** it MUST run the same normalization and write the sanitized list into `chrome.storage.sync.llmPrompts` (suppressing recursive backups) so the popup and options UI immediately see consistent data via their storage listeners.
-
