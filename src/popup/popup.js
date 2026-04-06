@@ -244,12 +244,6 @@ const SHORTCUT_CONFIG = {
     handler: () => void handleDarkMode(),
     key: 'd',
   },
-  highlightText: {
-    emoji: '🟨',
-    tooltip: 'Highlight text in this page',
-    handler: () => void handleHighlightText(),
-    key: 't',
-  },
   customCode: {
     emoji: '📑',
     tooltip: 'Inject js/css into this page',
@@ -363,7 +357,6 @@ let importCustomCodeButton = null;
 let autoReloadButton = null;
 let brightModeButton = null;
 let darkModeButton = null;
-let highlightTextButton = null;
 let customCodeButton = null;
 let pictureInPictureButton = null;
 let takeScreenshotButton = null;
@@ -439,7 +432,6 @@ async function loadAndRenderShortcuts() {
     autoReloadButton = null;
     brightModeButton = null;
     darkModeButton = null;
-    highlightTextButton = null;
     customCodeButton = null;
     pictureInPictureButton = null;
 
@@ -506,9 +498,6 @@ async function loadAndRenderShortcuts() {
           break;
         case 'darkMode':
           darkModeButton = button;
-          break;
-        case 'highlightText':
-          highlightTextButton = button;
           break;
         case 'customCode':
           customCodeButton = button;
@@ -2867,72 +2856,6 @@ async function handleBrightMode() {
     if (statusMessage) {
       concludeStatus(
         'Unable to open bright mode options.',
-        'error',
-        3000,
-        statusMessage,
-      );
-    }
-  }
-}
-
-/**
- * Handle opening highlight text options with current tab URL prefilled.
- * @returns {Promise<void>}
- */
-async function handleHighlightText() {
-  try {
-    // Get the current active tab
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tabs || tabs.length === 0) {
-      if (statusMessage) {
-        concludeStatus('No active tab found.', 'error', 3000, statusMessage);
-      }
-      return;
-    }
-
-    const currentTab = tabs[0];
-    const currentUrl = typeof currentTab.url === 'string' ? currentTab.url : '';
-
-    if (!currentUrl) {
-      if (statusMessage) {
-        concludeStatus(
-          'No URL found for current tab.',
-          'error',
-          3000,
-          statusMessage,
-        );
-      }
-      return;
-    }
-
-    // Store the URL to prefill in options page
-    await chrome.storage.local.set({
-      highlightTextPrefillUrl: currentUrl,
-    });
-
-    // Open options page with highlight text section hash
-    chrome.runtime.openOptionsPage(() => {
-      const error = chrome.runtime.lastError;
-      if (error) {
-        console.error('[popup] Unable to open options page.', error);
-        if (statusMessage) {
-          concludeStatus(
-            'Unable to open options page.',
-            'error',
-            3000,
-            statusMessage,
-          );
-        }
-      } else {
-        // Close the popup
-        closeCurrentSurface();
-      }
-    });
-  } catch (error) {
-    console.error('[popup] Error opening highlight text options:', error);
-    if (statusMessage) {
-      concludeStatus(
-        'Unable to open highlight text options.',
         'error',
         3000,
         statusMessage,

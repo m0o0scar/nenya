@@ -55,12 +55,6 @@ const AVAILABLE_SHORTCUTS = [
     key: 'd',
   },
   {
-    id: 'highlightText',
-    emoji: '🟨',
-    tooltip: 'Highlight text in this page',
-    key: 't',
-  },
-  {
     id: 'customCode',
     emoji: '📑',
     tooltip: 'Inject js/css into this page',

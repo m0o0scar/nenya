@@ -548,10 +548,6 @@
           <span class="nav-icon text-lg">🔄</span>
           <span>Auto Reload Rules</span>
         </a>
-        <a href="#highlight-text-heading" class="nav-item nav-link" data-section="highlight-text-heading">
-          <span class="nav-icon text-lg">✨</span>
-          <span>Highlight Text</span>
-        </a>
         <a href="#block-elements-heading" class="nav-item nav-link" data-section="block-elements-heading">
           <span class="nav-icon text-lg">🚫</span>
           <span>Block Elements</span>
@@ -843,87 +839,6 @@
                     <div>
                       <dt class="form-label">Last Updated</dt>
                       <dd id="autoReloadRuleUpdatedDetail"></dd>
-                    </div>
-                  </div>
-                </dl>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- Highlight Text Section -->
-        <section class="section-content" data-section="highlight-text-heading" id="section-highlight">
-          <div class="animate-in">
-            <div class="section-header">
-              <h1 id="highlight-text-heading" class="section-title">Highlight Text</h1>
-              <p class="section-description">Automatically highlight key information on specific pages.</p>
-            </div>
-
-            <div class="options-card mb-6">
-              <form id="highlightTextRuleForm" class="space-y-4" novalidate>
-                <!-- URL Patterns Section -->
-                <div>
-                  <label class="form-label">URL Patterns</label>
-                  <div id="highlightTextPatternsChips" class="flex flex-wrap gap-2 mb-2"></div>
-                  <div class="flex items-center gap-2">
-                    <input id="highlightTextPatternInput" class="nenya-input font-mono text-sm flex-1" type="text"
-                      autocomplete="off" placeholder="https://example.com/*">
-                    <button id="highlightTextAddPatternBtn" type="button" class="btn btn-sm btn-outline">Add</button>
-                  </div>
-                  <p id="highlightTextPatternError" class="text-xs text-error mt-1" hidden></p>
-                </div>
-
-                <!-- Highlights Accordion Section -->
-                <div>
-                  <div class="flex items-center justify-between mb-2">
-                    <label class="form-label mb-0">Highlights</label>
-                    <button id="highlightTextAddHighlightBtn" type="button" class="btn btn-xs btn-ghost gap-1">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path>
-                      </svg>
-                      Add highlight
-                    </button>
-                  </div>
-                  <div id="highlightTextHighlightsAccordion" class="space-y-2"></div>
-                </div>
-
-                <p id="highlightTextFormError" class="text-sm text-error" hidden></p>
-                <div class="flex gap-3">
-                  <button id="highlightTextSaveButton" class="nenya-btn nenya-btn-vibrant" type="submit">Add
-                    Rule</button>
-                  <button id="highlightTextCancelEditButton" class="nenya-btn nenya-btn-secondary" type="button"
-                    hidden>Cancel</button>
-                </div>
-              </form>
-            </div>
-
-            <div class="options-card">
-              <h3 class="text-xs font-bold text-base-content/40 uppercase tracking-wider mb-4">Saved Rules</h3>
-              <div id="highlightTextRulesEmpty" class="empty-state">No highlight text rules yet. Add one above to start.
-              </div>
-              <div id="highlightTextRulesList" class="space-y-3" role="list"></div>
-
-              <div id="highlightTextRuleDetails" class="mt-6 pt-6 border-t border-base-300" hidden>
-                <div class="flex items-center justify-between mb-4">
-                  <h3 class="text-lg font-semibold">Rule Details</h3>
-                </div>
-                <dl class="space-y-3 text-sm">
-                  <div>
-                    <dt class="form-label">Patterns</dt>
-                    <dd id="highlightTextRulePatternsDetail" class="font-mono"></dd>
-                  </div>
-                  <div>
-                    <dt class="form-label">Highlights</dt>
-                    <dd id="highlightTextRuleHighlightsDetail"></dd>
-                  </div>
-                  <div class="grid grid-cols-2 gap-4">
-                    <div>
-                      <dt class="form-label">Created</dt>
-                      <dd id="highlightTextRuleCreatedDetail"></dd>
-                    </div>
-                    <div>
-                      <dt class="form-label">Last Updated</dt>
-                      <dd id="highlightTextRuleUpdatedDetail"></dd>
                     </div>
                   </div>
                 </dl>
