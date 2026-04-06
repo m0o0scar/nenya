@@ -41,7 +41,6 @@
     "downloads",
     "tabCapture",
     "desktopCapture",
-    "system.display",
     "offscreen"
   ],
   "content_security_policy": {
@@ -93,7 +92,6 @@
       ],
       "js": [
         "src/contentScript/video-controller.js",
-        "src/contentScript/highlight-text.js",
         "src/contentScript/auto-google-login.js"
       ],
       "css": [
@@ -150,12 +148,6 @@
     },
     "tabs-activate-right-tab": {
       "description": "🗂️ Activate right tab"
-    },
-    "split": {
-      "description": "🪟 Split"
-    },
-    "merge": {
-      "description": "🪟 Merge"
     },
     "block-element-picker": {
       "description": "🎯 Element Picker"

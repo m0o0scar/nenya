@@ -9,8 +9,6 @@ import {
   setPatterns,
   isValidUrlPattern,
 } from './brightMode.js';
-import { loadRules as loadHighlightTextRules } from './highlightText.js';
-import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 import { loadLLMPrompts } from './llmPrompts.js';
 import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 
@@ -81,11 +79,6 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 /**
  * @typedef {Object} BrightModeSettings
  * @property {BrightModePatternSettings[]} whitelist
- */
-
-/**
- * @typedef {import('../shared/highlightTextMigration.js').HighlightEntry} HighlightEntry
- * @typedef {import('../shared/highlightTextMigration.js').HighlightTextRuleSettings} HighlightTextRuleSettings
  */
 
 /**
@@ -208,7 +201,6 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  * @property {RootFolderBackupSettings} mirrorRootFolderSettings
  * @property {AutoReloadRuleSettings[]} autoReloadRules
  * @property {BrightModeSettings} brightModeSettings
- * @property {HighlightTextRuleSettings[]} highlightTextRules
  * @property {BlockElementRuleSettings[]} blockElementRules
  * @property {CustomCodeRuleSettings[]} customCodeRules
  * @property {RunCodeInPageRuleSettings[]} runCodeInPageRules
@@ -226,11 +218,10 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
  */
 
 const PROVIDER_ID = 'raindrop';
-const EXPORT_VERSION = 13;
+const EXPORT_VERSION = 14;
 const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
-const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
@@ -494,136 +485,6 @@ function normalizeBrightModePatterns(value) {
   });
 
   return sanitized.sort((a, b) => a.pattern.localeCompare(b.pattern));
-}
-
-/**
- * Normalize highlight text rules from storage or input.
- * Handles both legacy single-pattern format and new multi-pattern/highlight format.
- * @param {unknown} value
- * @returns {HighlightTextRuleSettings[]}
- */
-function normalizeHighlightTextRules(value) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  // First, migrate any legacy rules to the new format
-  const { rules: migratedRules } = migrateHighlightRules(value);
-
-  /** @type {HighlightTextRuleSettings[]} */
-  const sanitized = [];
-
-  migratedRules.forEach((entry) => {
-    if (!entry || typeof entry !== 'object') {
-      return;
-    }
-
-    // Validate required fields for new format
-    if (!Array.isArray(entry.patterns) || entry.patterns.length === 0) {
-      return;
-    }
-    if (!Array.isArray(entry.highlights) || entry.highlights.length === 0) {
-      return;
-    }
-
-    // Validate all patterns
-    const validPatterns = entry.patterns.filter((p) => {
-      if (typeof p !== 'string' || !p.trim()) {
-        return false;
-      }
-      if (!isValidUrlPattern(p)) {
-        console.warn(
-          '[importExport:highlightText] Ignoring invalid pattern:',
-          p,
-        );
-        return false;
-      }
-      return true;
-    });
-
-    if (validPatterns.length === 0) {
-      return;
-    }
-
-    // Validate all highlights
-    const validHighlights = entry.highlights
-      .filter((h) => {
-        if (!h || typeof h !== 'object') {
-          return false;
-        }
-        if (typeof h.value !== 'string' || !h.value.trim()) {
-          return false;
-        }
-        const validTypes = ['whole-phrase', 'comma-separated', 'regex'];
-        if (!validTypes.includes(h.type)) {
-          console.warn(
-            '[importExport:highlightText] Ignoring invalid type:',
-            h.type,
-          );
-          return false;
-        }
-        if (h.type === 'regex') {
-          try {
-            new RegExp(h.value);
-          } catch (error) {
-            console.warn(
-              '[importExport:highlightText] Ignoring invalid regex:',
-              h.value,
-              error,
-            );
-            return false;
-          }
-        }
-        return true;
-      })
-      .map((h) => ({
-        id:
-          typeof h.id === 'string' && h.id.trim()
-            ? h.id.trim()
-            : generateRuleId(),
-        type: /** @type {'whole-phrase' | 'comma-separated' | 'regex'} */ (
-          h.type
-        ),
-        value: h.value.trim(),
-        textColor: typeof h.textColor === 'string' ? h.textColor : '#000000',
-        backgroundColor:
-          typeof h.backgroundColor === 'string' ? h.backgroundColor : '#ffff00',
-        bold: typeof h.bold === 'boolean' ? h.bold : false,
-        italic: typeof h.italic === 'boolean' ? h.italic : false,
-        underline: typeof h.underline === 'boolean' ? h.underline : false,
-        ignoreCase: typeof h.ignoreCase === 'boolean' ? h.ignoreCase : false,
-      }));
-
-    if (validHighlights.length === 0) {
-      return;
-    }
-
-    const id =
-      typeof entry.id === 'string' && entry.id.trim()
-        ? entry.id.trim()
-        : generateRuleId();
-
-    /** @type {HighlightTextRuleSettings} */
-    const normalized = {
-      id,
-      patterns: validPatterns,
-      highlights: validHighlights,
-    };
-
-    if (typeof entry.disabled === 'boolean') {
-      normalized.disabled = entry.disabled;
-    }
-    if (typeof entry.createdAt === 'string') {
-      normalized.createdAt = entry.createdAt;
-    }
-    if (typeof entry.updatedAt === 'string') {
-      normalized.updatedAt = entry.updatedAt;
-    }
-
-    sanitized.push(normalized);
-  });
-
-  return sanitized.sort((a, b) => a.patterns[0].localeCompare(b.patterns[0]));
 }
 
 /**
@@ -1333,7 +1194,6 @@ function normalizePinnedShortcuts(value) {
     'autoReload',
     'brightMode',
     'darkMode',
-    'highlightText',
     'customCode',
     'pictureInPicture',
     'takeScreenshot',
@@ -1490,14 +1350,13 @@ function normalizePreferences(value) {
 
 /**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, highlightTextRules: HighlightTextRuleSettings[], blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
+ * @returns {Promise<{ rootFolder: RootFolderBackupSettings, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
  */
 async function readCurrentOptions() {
   const [
     rootResp,
     reloadResp,
     whitelistPatterns,
-    highlightTextRules,
     blockElementResp,
     customCodeResp,
     runCodeInPageResp,
@@ -1511,7 +1370,6 @@ async function readCurrentOptions() {
     chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY),
     chrome.storage.local.get(AUTO_RELOAD_RULES_KEY),
     getWhitelistPatterns(),
-    loadHighlightTextRules(),
     chrome.storage.local.get(BLOCK_ELEMENT_RULES_KEY),
     chrome.storage.local.get(CUSTOM_CODE_RULES_KEY),
     chrome.storage.local.get(RUN_CODE_IN_PAGE_RULES_KEY),
@@ -1601,7 +1459,6 @@ async function readCurrentOptions() {
     rootFolder,
     autoReloadRules,
     brightModeSettings,
-    highlightTextRules,
     blockElementRules,
     customCodeRules,
     runCodeInPageRules,
@@ -1645,7 +1502,6 @@ async function handleExportClick() {
       rootFolder,
       autoReloadRules,
       brightModeSettings,
-      highlightTextRules,
       blockElementRules,
       customCodeRules,
       runCodeInPageRules,
@@ -1664,7 +1520,6 @@ async function handleExportClick() {
         mirrorRootFolderSettings: rootFolder,
         autoReloadRules,
         brightModeSettings,
-        highlightTextRules,
         blockElementRules,
         customCodeRules,
         runCodeInPageRules,
@@ -1697,7 +1552,6 @@ async function handleExportClick() {
  * @param {RootFolderImportSettings} rootFolder
  * @param {AutoReloadRuleSettings[]} autoReloadRules
  * @param {BrightModeSettings} brightModeSettings
- * @param {HighlightTextRuleSettings[]} highlightTextRules
  * @param {BlockElementRuleSettings[]} blockElementRules
  * @param {CustomCodeRuleSettings[]} customCodeRules
  * @param {RunCodeInPageRuleSettings[]} runCodeInPageRules
@@ -1713,7 +1567,6 @@ async function applyImportedOptions(
   rootFolder,
   autoReloadRules,
   brightModeSettings,
-  highlightTextRules,
   blockElementRules,
   customCodeRules,
   runCodeInPageRules,
@@ -1766,9 +1619,6 @@ async function applyImportedOptions(
         : 'Raindrop',
   };
   const sanitizedRules = normalizeAutoReloadRules(autoReloadRules);
-  const sanitizedHighlightTextRules = normalizeHighlightTextRules(
-    highlightTextRules || [],
-  );
   const sanitizedBlockElementRules = normalizeBlockElementRules(
     blockElementRules || [],
   );
@@ -1827,7 +1677,6 @@ async function applyImportedOptions(
       [ROOT_FOLDER_SETTINGS_KEY]: map,
       [AUTO_RELOAD_RULES_KEY]: sanitizedRules,
       [BRIGHT_MODE_WHITELIST_KEY]: sanitizedWhitelist,
-      [HIGHLIGHT_TEXT_RULES_KEY]: sanitizedHighlightTextRules,
       [BLOCK_ELEMENT_RULES_KEY]: sanitizedBlockElementRules,
       [LLM_PROMPTS_KEY]: sanitizedLLMPrompts,
       [AUTO_GOOGLE_LOGIN_RULES_KEY]: sanitizedAutoGoogleLoginRules,
@@ -1870,9 +1719,6 @@ async function handleFileChosen() {
     );
     const autoReloadRules = /** @type {AutoReloadRuleSettings[]} */ (
       data.autoReloadRules
-    );
-    const highlightTextRules = /** @type {HighlightTextRuleSettings[]} */ (
-      data.highlightTextRules || []
     );
     const blockElementRules = /** @type {BlockElementRuleSettings[]} */ (
       data.blockElementRules || []
@@ -1920,7 +1766,6 @@ async function handleFileChosen() {
       root,
       autoReloadRules,
       brightModeSettings,
-      highlightTextRules,
       blockElementRules,
       customCodeRules,
       runCodeInPageRules,

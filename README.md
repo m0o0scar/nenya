@@ -13,7 +13,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 - **Tab Rename:** Rename the current tab instantly from popup or keyboard shortcut
 - **Screen Recording:** Start/stop screen recording with one shortcut, then preview and download recordings
 - **Faster Raindrop Saves:** Optimized Unsorted saving with batch APIs and parallel processing
-- **Performance Improvements:** Faster highlight matching and session export cover uploads
+- **Performance Improvements:** Faster session export cover uploads
 
 ### 🗂️ Tab & Project Management
 
@@ -37,7 +37,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 ### 🖥️ Advanced Tab Features
 
-- **Split Screen:** View up to 4 web pages simultaneously in a single tab with resizable split-screen view
 - **Auto Reload:** Automatically reload specific pages based on URL patterns and intervals
 - **Bookmark Search:** Fast popup search across Raindrop and shared Notion content with keyboard navigation
 - **Custom Search Engines:** Add your own search shortcuts (`keyword + query`) directly from options
@@ -67,11 +66,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 - **Video Controller:** Enhanced video playback controls with keyboard shortcuts and per-site auto fullscreen rules
 - **Picture-in-Picture:** Quick PiP mode for any video on the page
-- **Text Highlighting:** Persistent text highlights on web pages with powerful rule management
-  - Multiple patterns per rule to target similar content across different pages
-  - Multiple highlight styles per rule with individual color settings
-  - Pattern chip UI for easy pattern management
-  - Collapsible accordion UI for highlight configuration
 - **Bright Mode:** Force light/bright mode on any website (override dark themes)
 - **Dark Mode:** Force dark mode rendering on websites when needed
 - **Element Blocker:** Visual element picker to permanently hide distracting page elements (instant apply—no refresh needed)
@@ -93,7 +87,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 ### 🔧 URL Processing
 
 - **URL Processing Rules:** Transform URLs when opening in new tabs or saving to Raindrop
-- **Split URL Conversion:** Special handling for split screen URLs across sessions
 
 ### ⚙️ Customization
 

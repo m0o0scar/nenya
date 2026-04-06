@@ -8,7 +8,6 @@ import './importExport.js';
 import './autoReload.js';
 import './darkMode.js';
 import './brightMode.js';
-import './highlightText.js';
 import './blockElements.js';
 import './customCode.js';
 import './runCodeInPage.js';

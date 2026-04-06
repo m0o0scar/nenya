@@ -30,7 +30,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 • Backup & restore all extension settings with conflict-free Automerge sync
 
 🖥️ Advanced Tab Features
-• Split Screen: View up to 4 web pages simultaneously in one tab
 • Auto Reload: Automatically reload pages based on URL patterns
 • Bookmark Search: Fast search with keyboard navigation
 • Custom Search Engines: Add your own keyword + query search shortcuts
@@ -57,10 +56,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 ✨ Content Enhancement
 • Video Controller: Enhanced playback controls with keyboard shortcuts
 • Picture-in-Picture: Quick PiP mode for any video
-• Text Highlighting: Persistent highlights with powerful rule management
-✓ Multiple patterns per rule for flexible matching
-✓ Multiple highlight styles per rule with individual colors
-✓ Intuitive chip and accordion UI for easy configuration
 • Bright Mode: Force light mode on any website
 • Dark Mode: Force dark mode rendering on websites when needed
 • Element Blocker: Visual picker to hide distracting elements (instant apply)
@@ -79,7 +74,6 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 🔧 URL Processing
 • Transform URLs when opening or saving
-• Smart handling of split screen URLs
 
 ⚙️ Customization
 • Theme support (adapts to system preferences)
@@ -97,7 +91,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   Essential for saving user projects, settings, and preferences. Uses both `chrome.storage.sync` for cross-device synchronization of settings (shortcuts, rules, configurations) and `chrome.storage.local` for tab snapshots, project data, and LLM prompts that don't need to sync.
 
 - **tabs**:
-  Core functionality for project management - creates, queries, updates, and manages browser tabs. Enables saving entire browsing sessions as "projects" and restoring them later, plus features like tab switching, screenshots, split-screen functionality, and auto-reload.
+  Core functionality for project management - creates, queries, updates, and manages browser tabs. Enables saving entire browsing sessions as "projects" and restoring them later, plus features like tab switching, screenshots, and auto-reload.
 
 - **tabGroups**:
   Used in conjunction with tab management to organize related tabs into groups when saving and restoring projects. Helps maintain logical organization of browsing sessions and preserves tab group structure across project saves/restores.
@@ -106,26 +100,26 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   Provides user feedback for important actions like successful Raindrop synchronization, backup completion, auto-reload events, auto-login notifications, and error states. Keeps users informed about background operations without interrupting their browsing.
 
 - **contextMenus**:
-  Adds right-click menu options for quick access to extension features including clipboard tools (copy title/URL, screenshots), Raindrop save actions, split-screen toggle, and unsplit functionality. Provides convenient access to frequently used features.
+  Adds right-click menu options for quick access to extension features including clipboard tools (copy title/URL, screenshots) and Raindrop save actions. Provides convenient access to frequently used features.
 
 - **alarms**:
   Enables scheduled background tasks including automatic Raindrop synchronization at regular intervals, and auto-reload functionality for specific tabs based on user-defined URL patterns and time intervals.
 
 - **scripting**:
-  Required for content script injection to implement features like element blocking, custom CSS/JS injection, video controls, picture-in-picture, text highlighting, bright mode, split-screen functionality, and LLM page content extraction across all websites.
+  Required for content script injection to implement features like element blocking, custom CSS/JS injection, video controls, picture-in-picture, bright mode, and LLM page content extraction across all websites.
 
 - **activeTab**:
-  Allows the extension to interact with the currently active tab for features like video controls, text highlighting, element picker, bright mode toggle, and clipboard operations without requiring broad host permissions. Used for popup-triggered actions on the current tab.
+  Allows the extension to interact with the currently active tab for features like video controls, element picker, bright mode toggle, and clipboard operations without requiring broad host permissions. Used for popup-triggered actions on the current tab.
 
 - **clipboardWrite**:
   Enables copying various content to clipboard including page titles, URLs (various formats), markdown links, and screenshots. Essential for the extension's productivity and sharing features.
 
 - **declarativeNetRequest**:
-  Used for two purposes: (1) implementing content filtering and blocking rules through the visual element picker interface, and (2) removing X-Frame-Options and CSP headers to enable split-screen iframe functionality across different websites.
+  Used for implementing content filtering and blocking rules through the visual element picker interface.
 
 - **webNavigation**:
-  Required for monitoring page navigation events to implement several features: (1) auto-reload functionality based on URL patterns, (2) URL processing rules that transform URLs when opening in new tabs, (3) intercepting and converting nenya.local split URLs, and (4) tracking tab state changes for project management features.
+  Required for monitoring page navigation events to implement several features: (1) auto-reload functionality based on URL patterns, (2) URL processing rules that transform URLs when opening in new tabs, and (3) tracking tab state changes for project management features.
 
 - **host permissions** (`<all_urls>`, `https://api.raindrop.io/*`):
-  - `<all_urls>`: Required for content script injection across all websites to provide universal features like element blocking, custom styling (CSS), custom code (JS), video controls, text highlighting, bright mode, split-screen functionality, auto Google login, and LLM page content extraction.
+  - `<all_urls>`: Required for content script injection across all websites to provide universal features like element blocking, custom styling (CSS), custom code (JS), video controls, bright mode, auto Google login, and LLM page content extraction.
   - `https://api.raindrop.io/*`: Essential for Raindrop.io integration to sync bookmarks, collections, and user data with the cloud service. Used for pulling collections, pushing new bookmarks, and maintaining two-way synchronization.

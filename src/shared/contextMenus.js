@@ -58,12 +58,9 @@ export const NENYA_MENU_IDS = {
   // Tools
   EMOJI_PICKER: 'nenya-emoji-picker',
   TAKE_SCREENSHOT: 'nenya-take-screenshot',
-  SPLIT: 'nenya-split',
-  MERGE: 'nenya-merge',
   SCREEN_RECORDING: 'nenya-screen-recording',
   PIP: 'nenya-pip',
   CUSTOM_FILTER: 'nenya-custom-filter',
-  HIGHLIGHT_TEXT: 'nenya-highlight-text',
   AUTO_RELOAD: 'nenya-auto-reload',
 
   // Appearance
@@ -311,20 +308,6 @@ async function createRootMenus() {
   });
 
   await createMenuItem({
-    id: NENYA_MENU_IDS.SPLIT,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🪟 Split',
-    contexts: contexts,
-  });
-
-  await createMenuItem({
-    id: NENYA_MENU_IDS.MERGE,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🪟 Merge',
-    contexts: contexts,
-  });
-
-  await createMenuItem({
     id: NENYA_MENU_IDS.SCREEN_RECORDING,
     parentId: NENYA_MENU_IDS.TOOLS_PARENT,
     title: '⏺️ Screen recording',
@@ -342,13 +325,6 @@ async function createRootMenus() {
     id: NENYA_MENU_IDS.CUSTOM_FILTER,
     parentId: NENYA_MENU_IDS.TOOLS_PARENT,
     title: '⚡️ Hide elements',
-    contexts: contexts,
-  });
-
-  await createMenuItem({
-    id: NENYA_MENU_IDS.HIGHLIGHT_TEXT,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '🟨 Highlight text',
     contexts: contexts,
   });
 

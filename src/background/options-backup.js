@@ -12,7 +12,6 @@ import {
   ensureBookmarkFolderPath,
 } from '../shared/bookmarkFolders.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
-import { migrateHighlightRules } from '../shared/highlightTextMigration.js';
 
 const PROVIDER_ID = 'raindrop';
 const BACKUP_COLLECTION_TITLE = 'nenya / backup';
@@ -27,7 +26,6 @@ const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const DARK_MODE_RULES_KEY = 'darkModeRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
-const HIGHLIGHT_TEXT_RULES_KEY = 'highlightTextRules';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
 const CUSTOM_CODE_RULES_KEY = 'customCodeRules';
 const RUN_CODE_IN_PAGE_RULES_KEY = 'runCodeInPageRules';
@@ -43,7 +41,6 @@ const OPTION_KEYS = [
   AUTO_RELOAD_RULES_KEY,
   DARK_MODE_RULES_KEY,
   BRIGHT_MODE_WHITELIST_KEY,
-  HIGHLIGHT_TEXT_RULES_KEY,
   BLOCK_ELEMENT_RULES_KEY,
   CUSTOM_CODE_RULES_KEY,
   RUN_CODE_IN_PAGE_RULES_KEY,
@@ -89,7 +86,6 @@ let isRestoring = false;
  * @property {any[]} autoReloadRules
  * @property {any[]} darkModeRules
  * @property {any[]} brightModeWhitelist
- * @property {any[]} highlightTextRules
  * @property {any[]} blockElementRules
  * @property {any[]} customCodeRules
  * @property {any[]} runCodeInPageRules
@@ -232,7 +228,6 @@ async function buildBackupPayload() {
     autoReloadRules: stored?.[AUTO_RELOAD_RULES_KEY] || [],
     darkModeRules: stored?.[DARK_MODE_RULES_KEY] || [],
     brightModeWhitelist: stored?.[BRIGHT_MODE_WHITELIST_KEY] || [],
-    highlightTextRules: stored?.[HIGHLIGHT_TEXT_RULES_KEY] || [],
     blockElementRules: stored?.[BLOCK_ELEMENT_RULES_KEY] || [],
     customCodeRules: encodeCustomCodeRules(
       stored?.[CUSTOM_CODE_RULES_KEY] || [],
@@ -306,18 +301,12 @@ async function applyBackupPayload(payload) {
       : {};
   map[PROVIDER_ID] = { parentFolderId, rootFolderName };
 
-  // Migrate legacy highlight text rules to new format
-  const { rules: migratedHighlightRules } = migrateHighlightRules(
-    payload.highlightTextRules || [],
-  );
-
   /** @type {Record<string, any>} */
   const updates = {
     [ROOT_FOLDER_SETTINGS_KEY]: map,
     [AUTO_RELOAD_RULES_KEY]: payload.autoReloadRules || [],
     [DARK_MODE_RULES_KEY]: payload.darkModeRules || [],
     [BRIGHT_MODE_WHITELIST_KEY]: payload.brightModeWhitelist || [],
-    [HIGHLIGHT_TEXT_RULES_KEY]: migratedHighlightRules,
     [BLOCK_ELEMENT_RULES_KEY]: payload.blockElementRules || [],
     [CUSTOM_CODE_RULES_KEY]: decodeCustomCodeRules(
       payload.customCodeRules || [],
@@ -893,7 +882,6 @@ export async function resetOptionsToDefaults() {
     [AUTO_RELOAD_RULES_KEY]: [],
     [DARK_MODE_RULES_KEY]: [],
     [BRIGHT_MODE_WHITELIST_KEY]: [],
-    [HIGHLIGHT_TEXT_RULES_KEY]: [],
     [BLOCK_ELEMENT_RULES_KEY]: [],
     [CUSTOM_CODE_RULES_KEY]: [],
     [RUN_CODE_IN_PAGE_RULES_KEY]: [],
