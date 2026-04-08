@@ -1215,7 +1215,7 @@ function ensureHomeWidgetEntry(widget) {
   const title = document.createElement('button');
   title.type = 'button';
   title.className = 'home-widget-title';
-  title.textContent = getHomeWidgetTitle(widget);
+  title.textContent = 'Drag · ' + getHomeWidgetTitle(widget);
   title.addEventListener('pointerdown', (event) => {
     if (!homeEditMode) {
       return;
@@ -1287,7 +1287,7 @@ function ensureHomeWidgetEntry(widget) {
 function updateHomeWidgetEntry(widget, entry) {
   const title = entry.shell.querySelector('.home-widget-title');
   if (title) {
-    title.textContent = getHomeWidgetTitle(widget);
+    title.textContent = 'Drag · ' + getHomeWidgetTitle(widget);
   }
 
   if (widget.type === 'webpage') {
@@ -1494,7 +1494,6 @@ function startHomeWidgetInteraction(event, widgetId, mode) {
   };
 
   shell.classList.add('is-active');
-  shell.setPointerCapture?.(event.pointerId);
 }
 
 /**
@@ -1510,7 +1509,6 @@ async function finishHomeWidgetInteraction(event) {
   const interaction = homeWidgetInteraction;
   homeWidgetInteraction = null;
   interaction.shell.classList.remove('is-active');
-  interaction.shell.releasePointerCapture?.(event.pointerId);
 
   const metrics = getHomeGridMetrics();
   const rect = {
