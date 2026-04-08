@@ -21,42 +21,45 @@
         <img id="extensionIcon" src="../../assets/icons/icon-48x48.png" alt="Nenya" class="home-brand-icon" />
         <span>Nenya</span>
       </div>
-      <div id="shortcutsContainer" class="home-shortcuts" aria-label="Action shortcuts"></div>
+      <div class="home-header-actions">
+        <div class="home-header-toolbar">
+          <button
+            id="homeEditLayoutButton"
+            type="button"
+            class="btn btn-sm btn-outline home-edit-toggle"
+            aria-expanded="false"
+            aria-controls="homeEditPanel">
+            Edit layout
+          </button>
+          <div id="shortcutsContainer" class="home-shortcuts" aria-label="Action shortcuts"></div>
+        </div>
+        <div class="home-header-meta">
+          <span id="autoReloadStatus" class="text-xs text-base-content/70" hidden></span>
+          <div id="homeEditPanel" class="home-edit-panel hidden" aria-label="Home layout controls">
+            <span class="home-edit-label">Add widget</span>
+            <button type="button" class="btn btn-sm btn-ghost home-add-widget-button" data-home-add-widget="search">
+              Search
+            </button>
+            <button type="button" class="btn btn-sm btn-ghost home-add-widget-button" data-home-add-widget="sessions">
+              Sessions
+            </button>
+            <button type="button" class="btn btn-sm btn-primary home-add-widget-button" data-home-add-widget="webpage">
+              Webpage
+            </button>
+          </div>
+        </div>
+      </div>
     </header>
 
-    <div class="home-content">
-      <div class="home-status-row">
-        <span id="autoReloadStatus" class="text-xs text-base-content/70" hidden></span>
+    <main class="home-main">
+      <div id="homeWidgetBoard" class="home-widget-board" aria-label="Custom home widgets"></div>
+      <div id="homeWidgetEmptyState" class="home-empty-state hidden">
+        <div class="home-empty-state-card bg-base-100 nenya-soft-surface">
+          <p class="home-empty-title">No widgets on this page.</p>
+          <p class="home-empty-copy">Use Edit layout to add search, sessions, or webpage widgets.</p>
+        </div>
       </div>
-
-      <main class="home-main">
-        <article class="home-card home-search-card bg-base-100 nenya-soft-surface" aria-labelledby="bookmarks-search-heading">
-          <h1 id="bookmarks-search-heading" class="sr-only">Bookmarks Search</h1>
-          <div class="space-y-3">
-            <div class="relative">
-              <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
-                class="input input-bordered w-full nenya-soft-input" autofocus />
-              <div
-                id="customSearchSuggestions"
-                class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-base-100/95 border border-base-300 rounded-md shadow-md max-h-56 overflow-y-auto"
-                role="listbox"
-                aria-label="Custom search engines">
-              </div>
-            </div>
-            <div id="pinnedItemsContainer" class="flex flex-wrap gap-2 mt-2 empty:mt-0"></div>
-            <div id="bookmarksSearchResults" class="space-y-2" role="list"></div>
-          </div>
-        </article>
-
-        <article id="sessionsSection" class="home-card hidden bg-base-100 nenya-soft-surface" aria-labelledby="sessions-heading">
-          <div class="flex items-center justify-between mb-3">
-            <h2 id="sessions-heading" class="text-xs font-bold text-base-content/60 uppercase tracking-[0.2em]">Sessions</h2>
-            <span id="sessionsLoadingIndicator" class="text-[10px] text-base-content/40 hidden italic">loading...</span>
-          </div>
-          <div id="sessionsList" class="space-y-2" role="list"></div>
-        </article>
-      </main>
-    </div>
+    </main>
   </div>
 
   <div id="statusMessage"
@@ -66,7 +69,63 @@
 
   <input id="importCustomCodeFileInput" type="file" accept="application/json" class="hidden" />
 
+  <template id="homeSearchWidgetTemplate">
+    <div class="home-card home-search-card bg-base-100 nenya-soft-surface home-widget-surface">
+      <h1 id="bookmarks-search-heading" class="sr-only">Bookmarks Search</h1>
+      <div class="space-y-3">
+        <div class="relative">
+          <input id="bookmarksSearchInput" type="search" placeholder="Search bookmarks..."
+            class="input input-bordered w-full nenya-soft-input" autofocus />
+          <div
+            id="customSearchSuggestions"
+            class="hidden absolute left-0 right-0 top-full mt-1 z-20 bg-base-100/95 border border-base-300 rounded-md shadow-md max-h-56 overflow-y-auto"
+            role="listbox"
+            aria-label="Custom search engines">
+          </div>
+        </div>
+        <div id="pinnedItemsContainer" class="flex flex-wrap gap-2 mt-2 empty:mt-0"></div>
+        <div id="bookmarksSearchResults" class="space-y-2" role="list"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="homeSessionsWidgetTemplate">
+    <article id="sessionsSection" class="home-card bg-base-100 nenya-soft-surface home-widget-surface" aria-labelledby="sessions-heading">
+      <div class="flex items-center justify-between mb-3">
+        <h2 id="sessions-heading" class="text-xs font-bold text-base-content/60 uppercase tracking-[0.2em]">Sessions</h2>
+        <span id="sessionsLoadingIndicator" class="text-[10px] text-base-content/40 hidden italic">loading...</span>
+      </div>
+      <div id="sessionsList" class="space-y-2" role="list"></div>
+    </article>
+  </template>
+
   <script src="../popup/popup.js" type="module"></script>
+
+  <dialog id="homeWidgetUrlDialog" class="modal">
+    <div class="modal-box">
+      <h3 id="homeWidgetUrlDialogTitle" class="font-bold text-lg">Webpage widget</h3>
+      <div class="py-4 space-y-4">
+        <div>
+          <label class="label" for="homeWidgetUrlInput">
+            <span class="label-text">URL</span>
+          </label>
+          <input
+            id="homeWidgetUrlInput"
+            type="url"
+            placeholder="https://example.com"
+            class="input input-bordered w-full"
+            autocomplete="off" />
+          <p class="mt-2 text-xs text-base-content/60">
+            Any HTTP or HTTPS page can be added. Some sites block iframe embedding and will show a fallback card instead.
+          </p>
+        </div>
+      </div>
+      <div class="modal-action">
+        <button id="homeWidgetUrlCancelButton" class="btn" type="button">Cancel</button>
+        <button id="homeWidgetUrlConfirmButton" class="btn btn-primary" type="button">Save</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog id="saveToUnsortedModal" class="modal">
     <div class="modal-box">

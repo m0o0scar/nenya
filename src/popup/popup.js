@@ -341,7 +341,8 @@ const shortcutsContainer = /** @type {HTMLDivElement | null} */ (
   document.getElementById('shortcutsContainer')
 );
 
-const pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
+/** @type {HTMLElement | null} */
+let pinnedItemsContainer = document.getElementById('pinnedItemsContainer');
 /** @type {number} */
 let draggedItemIndex = -1;
 /** @type {number} */
@@ -373,18 +374,1300 @@ const autoReloadStatusElement = /** @type {HTMLSpanElement | null} */ (
   document.getElementById('autoReloadStatus')
 );
 
-const bookmarksSearchInput = /** @type {HTMLInputElement | null} */ (
+/** @type {HTMLInputElement | null} */
+let bookmarksSearchInput = /** @type {HTMLInputElement | null} */ (
   document.getElementById('bookmarksSearchInput')
 );
-const bookmarksSearchResults = /** @type {HTMLDivElement | null} */ (
+/** @type {HTMLDivElement | null} */
+let bookmarksSearchResults = /** @type {HTMLDivElement | null} */ (
   document.getElementById('bookmarksSearchResults')
 );
-const customSearchSuggestions = /** @type {HTMLDivElement | null} */ (
+/** @type {HTMLDivElement | null} */
+let customSearchSuggestions = /** @type {HTMLDivElement | null} */ (
   document.getElementById('customSearchSuggestions')
 );
 const mirrorSection = /** @type {HTMLElement | null} */ (
   document.querySelector('article[aria-labelledby="mirror-heading"]')
 );
+const homeWidgetBoard = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('homeWidgetBoard')
+);
+const homeWidgetEmptyState = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('homeWidgetEmptyState')
+);
+const homeEditLayoutButton = /** @type {HTMLButtonElement | null} */ (
+  document.getElementById('homeEditLayoutButton')
+);
+const homeEditPanel = /** @type {HTMLDivElement | null} */ (
+  document.getElementById('homeEditPanel')
+);
+const homeSearchWidgetTemplate = /** @type {HTMLTemplateElement | null} */ (
+  document.getElementById('homeSearchWidgetTemplate')
+);
+const homeSessionsWidgetTemplate = /** @type {HTMLTemplateElement | null} */ (
+  document.getElementById('homeSessionsWidgetTemplate')
+);
+const homeWidgetUrlDialog = /** @type {HTMLDialogElement | null} */ (
+  document.getElementById('homeWidgetUrlDialog')
+);
+const homeWidgetUrlDialogTitle = /** @type {HTMLHeadingElement | null} */ (
+  document.getElementById('homeWidgetUrlDialogTitle')
+);
+const homeWidgetUrlInput = /** @type {HTMLInputElement | null} */ (
+  document.getElementById('homeWidgetUrlInput')
+);
+const homeWidgetUrlCancelButton = /** @type {HTMLButtonElement | null} */ (
+  document.getElementById('homeWidgetUrlCancelButton')
+);
+const homeWidgetUrlConfirmButton = /** @type {HTMLButtonElement | null} */ (
+  document.getElementById('homeWidgetUrlConfirmButton')
+);
+
+const HOME_WIDGET_CONFIG_KEY = 'homeWidgetConfig';
+const HOME_WIDGET_DEFAULT_COLUMNS = 6;
+const HOME_WIDGET_DEFAULT_GAP = 16;
+const HOME_WIDGET_DEFAULT_ROW_HEIGHT = 44;
+const HOME_WEBPAGE_LOAD_TIMEOUT_MS = 4500;
+
+/**
+ * @typedef {'search'|'sessions'|'webpage'} HomeWidgetType
+ */
+
+/**
+ * @typedef {{
+ *   id: string,
+ *   type: HomeWidgetType,
+ *   x: number,
+ *   y: number,
+ *   w: number,
+ *   h: number,
+ *   settings?: { url?: string }
+ * }} HomeWidgetConfig
+ */
+
+/**
+ * @typedef {{
+ *   shell: HTMLDivElement,
+ *   content: HTMLElement,
+ *   type: HomeWidgetType,
+ *   url?: string,
+ *   iframe?: HTMLIFrameElement,
+ *   loadingState?: HTMLElement,
+ *   fallbackState?: HTMLElement,
+ *   fallbackUrl?: HTMLElement,
+ *   fallbackCopy?: HTMLElement,
+ *   fallbackTimer?: number
+ * }} HomeWidgetEntry
+ */
+
+/**
+ * @typedef {{
+ *   mode: 'move' | 'resize',
+ *   widgetId: string,
+ *   pointerId: number,
+ *   startX: number,
+ *   startY: number,
+ *   startRect: { left: number, top: number, width: number, height: number },
+ *   shell: HTMLDivElement
+ * }} HomeWidgetInteraction
+ */
+
+const HOME_WIDGET_TYPE_DEFS = {
+  search: {
+    title: 'Bookmark search',
+    minW: 2,
+    minH: 4,
+    defaultRect: { x: 0, y: 0, w: 6, h: 5 },
+    singleton: true,
+  },
+  sessions: {
+    title: 'Sessions',
+    minW: 2,
+    minH: 5,
+    defaultRect: { x: 0, y: 5, w: 6, h: 7 },
+    singleton: true,
+  },
+  webpage: {
+    title: 'Webpage',
+    minW: 2,
+    minH: 4,
+    defaultRect: { x: 0, y: 0, w: 3, h: 5 },
+    singleton: false,
+  },
+};
+
+/** @type {HomeWidgetConfig[]} */
+let homeWidgetConfig = [];
+/** @type {Map<string, HomeWidgetEntry>} */
+const homeWidgetEntries = new Map();
+/** @type {HomeWidgetInteraction | null} */
+let homeWidgetInteraction = null;
+let homeEditMode = false;
+let homeWidgetUrlDialogResolver = null;
+/** @type {HTMLInputElement | null} */
+let initializedSearchInput = null;
+let searchOutsideClickListenerBound = false;
+
+/**
+ * Generate a stable widget identifier.
+ * @returns {string}
+ */
+function generateHomeWidgetId() {
+  if (typeof crypto?.randomUUID === 'function') {
+    return 'widget-' + crypto.randomUUID();
+  }
+  return 'widget-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
+}
+
+/**
+ * Read the current board column count from CSS.
+ * @returns {number}
+ */
+function getHomeGridColumnCount() {
+  const value = Number.parseInt(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      '--home-grid-columns',
+    ),
+    10,
+  );
+  return Number.isFinite(value) && value > 0
+    ? value
+    : HOME_WIDGET_DEFAULT_COLUMNS;
+}
+
+/**
+ * Read the current board gap from CSS.
+ * @returns {number}
+ */
+function getHomeGridGap() {
+  const value = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      '--home-grid-gap',
+    ),
+  );
+  return Number.isFinite(value) ? value : HOME_WIDGET_DEFAULT_GAP;
+}
+
+/**
+ * Read the current board row height from CSS.
+ * @returns {number}
+ */
+function getHomeGridRowHeight() {
+  const value = Number.parseFloat(
+    getComputedStyle(document.documentElement).getPropertyValue(
+      '--home-grid-row-height',
+    ),
+  );
+  return Number.isFinite(value) ? value : HOME_WIDGET_DEFAULT_ROW_HEIGHT;
+}
+
+/**
+ * Normalize an arbitrary value to a positive integer.
+ * @param {unknown} value
+ * @param {number} fallback
+ * @returns {number}
+ */
+function toPositiveInteger(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ''), 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+/**
+ * Normalize a webpage widget URL.
+ * @param {unknown} value
+ * @returns {string}
+ */
+function normalizeHomeWidgetUrl(value) {
+  const raw = typeof value === 'string' ? value.trim() : '';
+  if (!raw) {
+    return '';
+  }
+
+  const candidate = /^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(raw)
+    ? raw
+    : 'https://' + raw;
+
+  try {
+    const normalized = new URL(candidate);
+    if (
+      normalized.protocol !== 'http:' &&
+      normalized.protocol !== 'https:'
+    ) {
+      return '';
+    }
+    return normalized.toString();
+  } catch (error) {
+    return '';
+  }
+}
+
+/**
+ * Create the default custom home layout.
+ * @returns {HomeWidgetConfig[]}
+ */
+function createDefaultHomeWidgetConfig() {
+  return ['search', 'sessions'].map((type) => {
+    const definition = HOME_WIDGET_TYPE_DEFS[type];
+    return {
+      id: generateHomeWidgetId(),
+      type,
+      ...definition.defaultRect,
+    };
+  });
+}
+
+/**
+ * Whether two widget rectangles overlap.
+ * @param {{x: number, y: number, w: number, h: number}} a
+ * @param {{x: number, y: number, w: number, h: number}} b
+ * @returns {boolean}
+ */
+function doHomeWidgetRectsOverlap(a, b) {
+  return (
+    a.x < b.x + b.w &&
+    a.x + a.w > b.x &&
+    a.y < b.y + b.h &&
+    a.y + a.h > b.y
+  );
+}
+
+/**
+ * Clamp a widget rectangle to the active column count and minimum size.
+ * @param {HomeWidgetType} type
+ * @param {{x: number, y: number, w: number, h: number}} rect
+ * @param {number} columns
+ * @returns {{x: number, y: number, w: number, h: number}}
+ */
+function clampHomeWidgetRect(type, rect, columns) {
+  const definition = HOME_WIDGET_TYPE_DEFS[type];
+  const maxColumns = Math.max(1, columns);
+  const width = Math.min(
+    maxColumns,
+    Math.max(definition.minW, rect.w),
+  );
+  const height = Math.max(definition.minH, rect.h);
+  const x = Math.min(Math.max(0, rect.x), Math.max(0, maxColumns - width));
+  const y = Math.max(0, rect.y);
+  return { x, y, w: width, h: height };
+}
+
+/**
+ * Resolve a widget rectangle so it does not overlap with existing widgets.
+ * @param {string} widgetId
+ * @param {HomeWidgetType} type
+ * @param {{x: number, y: number, w: number, h: number}} rect
+ * @param {HomeWidgetConfig[]} widgets
+ * @param {number} columns
+ * @returns {{x: number, y: number, w: number, h: number}}
+ */
+function resolveHomeWidgetRect(widgetId, type, rect, widgets, columns) {
+  const candidate = clampHomeWidgetRect(type, rect, columns);
+  const siblings = widgets.filter((widget) => widget.id !== widgetId);
+
+  if (
+    !siblings.some((widget) => doHomeWidgetRectsOverlap(candidate, widget))
+  ) {
+    return candidate;
+  }
+
+  for (let row = candidate.y; row < 300; row += 1) {
+    const startColumn = row === candidate.y ? candidate.x : 0;
+    for (
+      let column = startColumn;
+      column <= Math.max(0, columns - candidate.w);
+      column += 1
+    ) {
+      const next = { ...candidate, x: column, y: row };
+      if (
+        !siblings.some((widget) => doHomeWidgetRectsOverlap(next, widget))
+      ) {
+        return next;
+      }
+    }
+  }
+
+  return candidate;
+}
+
+/**
+ * Normalize home widget config entries.
+ * @param {unknown} value
+ * @returns {HomeWidgetConfig[]}
+ */
+function normalizeHomeWidgetConfig(value) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const columns = HOME_WIDGET_DEFAULT_COLUMNS;
+  const singletons = new Set();
+  /** @type {HomeWidgetConfig[]} */
+  const normalized = [];
+
+  value.forEach((item) => {
+    if (!item || typeof item !== 'object') {
+      return;
+    }
+
+    const type = item.type;
+    if (!HOME_WIDGET_TYPE_DEFS[type]) {
+      return;
+    }
+
+    const definition = HOME_WIDGET_TYPE_DEFS[type];
+    if (definition.singleton && singletons.has(type)) {
+      return;
+    }
+
+    const rawRect = {
+      x: toPositiveInteger(item.x, definition.defaultRect.x),
+      y: toPositiveInteger(item.y, definition.defaultRect.y),
+      w: toPositiveInteger(item.w, definition.defaultRect.w),
+      h: toPositiveInteger(item.h, definition.defaultRect.h),
+    };
+    const resolvedRect = resolveHomeWidgetRect(
+      typeof item.id === 'string' ? item.id : generateHomeWidgetId(),
+      type,
+      rawRect,
+      normalized,
+      columns,
+    );
+
+    /** @type {HomeWidgetConfig} */
+    const widget = {
+      id:
+        typeof item.id === 'string' && item.id.trim()
+          ? item.id.trim()
+          : generateHomeWidgetId(),
+      type,
+      x: resolvedRect.x,
+      y: resolvedRect.y,
+      w: resolvedRect.w,
+      h: resolvedRect.h,
+    };
+
+    if (type === 'webpage') {
+      const url = normalizeHomeWidgetUrl(item?.settings?.url ?? item?.url);
+      if (!url) {
+        return;
+      }
+      widget.settings = { url };
+    }
+
+    normalized.push(widget);
+    if (definition.singleton) {
+      singletons.add(type);
+    }
+  });
+
+  return normalized;
+}
+
+/**
+ * Persist the current home widget config.
+ * @returns {Promise<void>}
+ */
+async function persistHomeWidgetConfig() {
+  await chrome.storage.local.set({
+    [HOME_WIDGET_CONFIG_KEY]: normalizeHomeWidgetConfig(homeWidgetConfig),
+  });
+}
+
+/**
+ * Return the active home board metrics.
+ * @returns {{ columns: number, gap: number, rowHeight: number, width: number, columnWidth: number }}
+ */
+function getHomeGridMetrics() {
+  const columns = getHomeGridColumnCount();
+  const gap = getHomeGridGap();
+  const rowHeight = getHomeGridRowHeight();
+  const width = homeWidgetBoard?.clientWidth || 0;
+  const availableWidth = Math.max(0, width - gap * (columns - 1));
+  const columnWidth = columns > 0 ? availableWidth / columns : width;
+
+  return { columns, gap, rowHeight, width, columnWidth };
+}
+
+/**
+ * Translate a widget config into the currently visible grid rect.
+ * On narrow layouts, wide widgets are rendered full-width without mutating
+ * their persisted desktop coordinates.
+ * @param {HomeWidgetConfig} widget
+ * @param {number} columns
+ * @returns {{x: number, y: number, w: number, h: number}}
+ */
+function getVisibleHomeWidgetRect(widget, columns) {
+  return clampHomeWidgetRect(widget.type, widget, columns);
+}
+
+/**
+ * Convert a widget config into pixel geometry.
+ * @param {HomeWidgetConfig} widget
+ * @returns {{ left: number, top: number, width: number, height: number }}
+ */
+function getHomeWidgetPixelRect(widget) {
+  const metrics = getHomeGridMetrics();
+  const rect = getVisibleHomeWidgetRect(widget, metrics.columns);
+  return {
+    left: rect.x * (metrics.columnWidth + metrics.gap),
+    top: rect.y * (metrics.rowHeight + metrics.gap),
+    width:
+      rect.w * metrics.columnWidth + Math.max(0, rect.w - 1) * metrics.gap,
+    height:
+      rect.h * metrics.rowHeight + Math.max(0, rect.h - 1) * metrics.gap,
+  };
+}
+
+/**
+ * Apply pixel geometry to a widget shell.
+ * @param {HTMLDivElement} shell
+ * @param {{ left: number, top: number, width: number, height: number }} rect
+ * @returns {void}
+ */
+function applyHomeWidgetPixelRect(shell, rect) {
+  shell.style.left = rect.left + 'px';
+  shell.style.top = rect.top + 'px';
+  shell.style.width = rect.width + 'px';
+  shell.style.height = rect.height + 'px';
+}
+
+/**
+ * Compute the board height for the current layout.
+ * @returns {number}
+ */
+function getHomeBoardHeight() {
+  const metrics = getHomeGridMetrics();
+  const bottom = homeWidgetConfig.reduce((maxBottom, widget) => {
+    const rect = getVisibleHomeWidgetRect(widget, metrics.columns);
+    return Math.max(maxBottom, rect.y + rect.h);
+  }, 0);
+
+  if (bottom === 0) {
+    return metrics.rowHeight * 4;
+  }
+
+  return (
+    bottom * metrics.rowHeight +
+    Math.max(0, bottom - 1) * metrics.gap
+  );
+}
+
+/**
+ * Update board UI that depends on edit mode and widget count.
+ * @returns {void}
+ */
+function updateHomeBoardUiState() {
+  if (homeWidgetBoard) {
+    homeWidgetBoard.dataset.editing = String(homeEditMode);
+    homeWidgetBoard.style.height = getHomeBoardHeight() + 'px';
+  }
+  if (homeWidgetEmptyState) {
+    homeWidgetEmptyState.classList.toggle(
+      'hidden',
+      homeWidgetConfig.length > 0,
+    );
+  }
+  if (homeEditPanel) {
+    homeEditPanel.classList.toggle('hidden', !homeEditMode);
+  }
+  if (homeEditLayoutButton) {
+    homeEditLayoutButton.textContent = homeEditMode ? 'Done layout' : 'Edit layout';
+    homeEditLayoutButton.setAttribute('aria-expanded', String(homeEditMode));
+  }
+}
+
+/**
+ * Format a widget title for its edit overlay.
+ * @param {HomeWidgetConfig} widget
+ * @returns {string}
+ */
+function getHomeWidgetTitle(widget) {
+  if (widget.type !== 'webpage') {
+    return HOME_WIDGET_TYPE_DEFS[widget.type].title;
+  }
+
+  const url = widget.settings?.url || '';
+  if (!url) {
+    return 'Webpage';
+  }
+
+  try {
+    return new URL(url).hostname || 'Webpage';
+  } catch (error) {
+    return 'Webpage';
+  }
+}
+
+/**
+ * Show the webpage widget configuration dialog.
+ * @param {{ title: string, value?: string }} options
+ * @returns {Promise<string | null>}
+ */
+function promptForHomeWidgetUrl(options) {
+  if (
+    !homeWidgetUrlDialog ||
+    !homeWidgetUrlDialogTitle ||
+    !homeWidgetUrlInput ||
+    !homeWidgetUrlConfirmButton ||
+    !homeWidgetUrlCancelButton
+  ) {
+    return Promise.resolve(null);
+  }
+
+  homeWidgetUrlDialogTitle.textContent = options.title;
+  homeWidgetUrlInput.value = options.value || '';
+
+  return new Promise((resolve) => {
+    homeWidgetUrlDialogResolver = resolve;
+    homeWidgetUrlDialog.showModal();
+    requestAnimationFrame(() => {
+      homeWidgetUrlInput.focus();
+      homeWidgetUrlInput.select();
+    });
+  });
+}
+
+/**
+ * Close the webpage widget dialog with a value.
+ * @param {string | null} value
+ * @returns {void}
+ */
+function resolveHomeWidgetUrlDialog(value) {
+  if (!homeWidgetUrlDialog) {
+    return;
+  }
+  if (homeWidgetUrlDialog.open) {
+    homeWidgetUrlDialog.close();
+  }
+  if (typeof homeWidgetUrlDialogResolver === 'function') {
+    homeWidgetUrlDialogResolver(value);
+  }
+  homeWidgetUrlDialogResolver = null;
+}
+
+/**
+ * Build the DOM content for the search widget.
+ * @returns {HTMLElement}
+ */
+function createHomeSearchWidgetContent() {
+  if (!homeSearchWidgetTemplate) {
+    return document.createElement('div');
+  }
+  const fragment = homeSearchWidgetTemplate.content.cloneNode(true);
+  const container = /** @type {HTMLElement} */ (fragment.firstElementChild);
+  pinnedItemsContainer = container.querySelector('#pinnedItemsContainer');
+  bookmarksSearchInput = container.querySelector('#bookmarksSearchInput');
+  bookmarksSearchResults = container.querySelector('#bookmarksSearchResults');
+  customSearchSuggestions = container.querySelector('#customSearchSuggestions');
+
+  if (
+    bookmarksSearchInput &&
+    bookmarksSearchResults &&
+    customSearchSuggestions &&
+    initializedSearchInput !== bookmarksSearchInput
+  ) {
+    initializedSearchInput = bookmarksSearchInput;
+    void initializeBookmarksSearch(
+      bookmarksSearchInput,
+      bookmarksSearchResults,
+      customSearchSuggestions,
+    );
+  }
+
+  return container;
+}
+
+/**
+ * Build the DOM content for the sessions widget.
+ * @returns {HTMLElement}
+ */
+function createHomeSessionsWidgetContent() {
+  if (!homeSessionsWidgetTemplate) {
+    return document.createElement('div');
+  }
+  const fragment = homeSessionsWidgetTemplate.content.cloneNode(true);
+  return /** @type {HTMLElement} */ (fragment.firstElementChild);
+}
+
+/**
+ * Show a status message for the home surface.
+ * @param {string} message
+ * @param {'success'|'error'|'info'} tone
+ * @param {number} timeout
+ * @returns {void}
+ */
+function showHomeStatus(message, tone = 'info', timeout = 2600) {
+  if (!statusMessage) {
+    return;
+  }
+  concludeStatus(message, tone, timeout, statusMessage);
+}
+
+/**
+ * Render the fallback state for a webpage widget.
+ * @param {HomeWidgetConfig} widget
+ * @param {HomeWidgetEntry} entry
+ * @param {string} message
+ * @returns {void}
+ */
+function showWebpageWidgetFallback(widget, entry, message) {
+  if (entry.loadingState) {
+    entry.loadingState.hidden = true;
+  }
+  if (entry.fallbackState) {
+    entry.fallbackState.hidden = false;
+  }
+  if (entry.fallbackUrl) {
+    entry.fallbackUrl.textContent = widget.settings?.url || '';
+  }
+  if (entry.fallbackCopy) {
+    entry.fallbackCopy.textContent = message;
+  }
+}
+
+/**
+ * Refresh the iframe-backed webpage widget content.
+ * @param {HomeWidgetConfig} widget
+ * @param {HomeWidgetEntry} entry
+ * @returns {void}
+ */
+function loadWebpageWidget(widget, entry) {
+  if (!entry.iframe) {
+    return;
+  }
+
+  if (entry.fallbackTimer) {
+    window.clearTimeout(entry.fallbackTimer);
+  }
+
+  if (entry.loadingState) {
+    entry.loadingState.hidden = false;
+  }
+  if (entry.fallbackState) {
+    entry.fallbackState.hidden = true;
+  }
+  const loadingUrl = entry.loadingState?.querySelector('.home-webpage-state-url');
+  if (loadingUrl) {
+    loadingUrl.textContent = widget.settings?.url || '';
+  }
+  if (entry.fallbackUrl) {
+    entry.fallbackUrl.textContent = widget.settings?.url || '';
+  }
+
+  entry.iframe.onload = () => {
+    if (entry.loadingState) {
+      entry.loadingState.hidden = true;
+    }
+    if (entry.fallbackState) {
+      entry.fallbackState.hidden = true;
+    }
+    if (entry.fallbackTimer) {
+      window.clearTimeout(entry.fallbackTimer);
+      entry.fallbackTimer = 0;
+    }
+  };
+
+  entry.iframe.onerror = () => {
+    showWebpageWidgetFallback(
+      widget,
+      entry,
+      'This page could not be loaded in an embedded frame.',
+    );
+  };
+
+  entry.fallbackTimer = window.setTimeout(() => {
+    showWebpageWidgetFallback(
+      widget,
+      entry,
+      'This page is likely blocking iframe embedding. Open it in a tab instead.',
+    );
+  }, HOME_WEBPAGE_LOAD_TIMEOUT_MS);
+
+  entry.iframe.src = widget.settings?.url || 'about:blank';
+}
+
+/**
+ * Build the DOM content for a webpage widget.
+ * @param {HomeWidgetConfig} widget
+ * @returns {HomeWidgetEntry}
+ */
+function createHomeWebpageWidgetEntry(widget) {
+  const shell = document.createElement('div');
+  shell.className =
+    'home-card bg-base-100 nenya-soft-surface home-widget-surface home-webpage-widget';
+
+  const frameShell = document.createElement('div');
+  frameShell.className = 'home-webpage-frame-shell';
+
+  const iframe = document.createElement('iframe');
+  iframe.className = 'home-webpage-frame';
+  iframe.loading = 'lazy';
+  iframe.referrerPolicy = 'strict-origin-when-cross-origin';
+
+  const loadingState = document.createElement('div');
+  loadingState.className = 'home-webpage-state';
+  loadingState.innerHTML = `
+    <div class="home-webpage-state-card">
+      <p class="home-webpage-state-title">Loading page</p>
+      <p class="home-webpage-state-copy">Attempting to render this site inside the widget.</p>
+      <span class="home-webpage-state-url"></span>
+    </div>
+  `;
+
+  const fallbackState = document.createElement('div');
+  fallbackState.className = 'home-webpage-state';
+  fallbackState.hidden = true;
+  fallbackState.innerHTML = `
+    <div class="home-webpage-state-card">
+      <p class="home-webpage-state-title">This page could not be embedded</p>
+      <p class="home-webpage-state-copy"></p>
+      <span class="home-webpage-state-url"></span>
+      <div class="home-webpage-state-actions">
+        <button type="button" class="btn btn-sm btn-primary" data-home-open-webpage>
+          Open in tab
+        </button>
+        <button type="button" class="btn btn-sm btn-ghost" data-home-edit-webpage>
+          Change URL
+        </button>
+      </div>
+    </div>
+  `;
+
+  const loadingUrl = loadingState.querySelector('.home-webpage-state-url');
+  if (loadingUrl) {
+    loadingUrl.textContent = widget.settings?.url || '';
+  }
+
+  frameShell.appendChild(iframe);
+  frameShell.appendChild(loadingState);
+  frameShell.appendChild(fallbackState);
+  shell.appendChild(frameShell);
+
+  const entry = {
+    shell: document.createElement('div'),
+    content: shell,
+    type: 'webpage',
+    url: widget.settings?.url || '',
+    iframe,
+    loadingState,
+    fallbackState,
+    fallbackUrl: fallbackState.querySelector('.home-webpage-state-url'),
+    fallbackCopy: fallbackState.querySelector('.home-webpage-state-copy'),
+    fallbackTimer: 0,
+  };
+
+  const openButton = fallbackState.querySelector('[data-home-open-webpage]');
+  if (openButton instanceof HTMLButtonElement) {
+    openButton.addEventListener('click', () => {
+      void openBookmark(widget.settings?.url || '');
+    });
+  }
+
+  const editButton = fallbackState.querySelector('[data-home-edit-webpage]');
+  if (editButton instanceof HTMLButtonElement) {
+    editButton.addEventListener('click', () => {
+      void editHomeWebpageWidgetUrl(widget.id);
+    });
+  }
+
+  loadWebpageWidget(widget, entry);
+  return entry;
+}
+
+/**
+ * Create or reuse a widget entry.
+ * @param {HomeWidgetConfig} widget
+ * @returns {HomeWidgetEntry}
+ */
+function ensureHomeWidgetEntry(widget) {
+  const existing = homeWidgetEntries.get(widget.id);
+  if (existing) {
+    return existing;
+  }
+
+  const shell = document.createElement('div');
+  shell.className = 'home-widget';
+  shell.dataset.widgetId = widget.id;
+
+  let content = document.createElement('div');
+  /** @type {HomeWidgetEntry} */
+  let entry = {
+    shell,
+    content,
+    type: widget.type,
+  };
+
+  if (widget.type === 'search') {
+    content = createHomeSearchWidgetContent();
+    entry = { shell, content, type: widget.type };
+  } else if (widget.type === 'sessions') {
+    content = createHomeSessionsWidgetContent();
+    entry = { shell, content, type: widget.type };
+  } else {
+    const webpageEntry = createHomeWebpageWidgetEntry(widget);
+    content = webpageEntry.content;
+    entry = { ...webpageEntry, shell };
+  }
+
+  const controls = document.createElement('div');
+  controls.className = 'home-widget-controls';
+
+  const title = document.createElement('button');
+  title.type = 'button';
+  title.className = 'home-widget-title';
+  title.textContent = getHomeWidgetTitle(widget);
+  title.addEventListener('pointerdown', (event) => {
+    if (!homeEditMode) {
+      return;
+    }
+    startHomeWidgetInteraction(event, widget.id, 'move');
+  });
+
+  const actions = document.createElement('div');
+  actions.className = 'home-widget-actions';
+
+  if (widget.type === 'webpage') {
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.className = 'btn btn-ghost btn-xs home-widget-action';
+    editButton.title = 'Edit URL';
+    editButton.textContent = '✏️';
+    editButton.addEventListener('click', () => {
+      void editHomeWebpageWidgetUrl(widget.id);
+    });
+    actions.appendChild(editButton);
+
+    const openButton = document.createElement('button');
+    openButton.type = 'button';
+    openButton.className = 'btn btn-ghost btn-xs home-widget-action';
+    openButton.title = 'Open in tab';
+    openButton.textContent = '↗';
+    openButton.addEventListener('click', () => {
+      void openBookmark(widget.settings?.url || '');
+    });
+    actions.appendChild(openButton);
+  }
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn btn-ghost btn-xs home-widget-action';
+  removeButton.title = 'Remove widget';
+  removeButton.textContent = '✕';
+  removeButton.addEventListener('click', () => {
+    void removeHomeWidget(widget.id);
+  });
+  actions.appendChild(removeButton);
+
+  controls.appendChild(title);
+  controls.appendChild(actions);
+
+  const resizeHandle = document.createElement('div');
+  resizeHandle.className = 'home-widget-resize-handle';
+  resizeHandle.addEventListener('pointerdown', (event) => {
+    if (!homeEditMode) {
+      return;
+    }
+    startHomeWidgetInteraction(event, widget.id, 'resize');
+  });
+
+  shell.appendChild(controls);
+  shell.appendChild(content);
+  shell.appendChild(resizeHandle);
+  homeWidgetEntries.set(widget.id, entry);
+
+  return entry;
+}
+
+/**
+ * Refresh widget labels and iframe content after config changes.
+ * @param {HomeWidgetConfig} widget
+ * @param {HomeWidgetEntry} entry
+ * @returns {void}
+ */
+function updateHomeWidgetEntry(widget, entry) {
+  const title = entry.shell.querySelector('.home-widget-title');
+  if (title) {
+    title.textContent = getHomeWidgetTitle(widget);
+  }
+
+  if (widget.type === 'webpage') {
+    const url = widget.settings?.url || '';
+    if (entry.url !== url) {
+      entry.url = url;
+      if (entry.iframe) {
+        loadWebpageWidget(widget, entry);
+      }
+    }
+  }
+
+  applyHomeWidgetPixelRect(entry.shell, getHomeWidgetPixelRect(widget));
+}
+
+/**
+ * Synchronize widget DOM with the stored config.
+ * @returns {void}
+ */
+function syncHomeWidgetBoard() {
+  if (!homeWidgetBoard) {
+    return;
+  }
+
+  const activeIds = new Set(homeWidgetConfig.map((widget) => widget.id));
+  homeWidgetEntries.forEach((entry, widgetId) => {
+    if (activeIds.has(widgetId)) {
+      return;
+    }
+    if (entry.fallbackTimer) {
+      window.clearTimeout(entry.fallbackTimer);
+    }
+    entry.shell.remove();
+    homeWidgetEntries.delete(widgetId);
+  });
+
+  homeWidgetConfig.forEach((widget) => {
+    const entry = ensureHomeWidgetEntry(widget);
+    updateHomeWidgetEntry(widget, entry);
+    homeWidgetBoard.appendChild(entry.shell);
+  });
+
+  updateHomeBoardUiState();
+}
+
+/**
+ * Replace the in-memory widget config and optionally persist it.
+ * @param {HomeWidgetConfig[]} widgets
+ * @param {{ persist?: boolean }} [options]
+ * @returns {Promise<void>}
+ */
+async function setHomeWidgetConfig(widgets, options = {}) {
+  homeWidgetConfig = normalizeHomeWidgetConfig(widgets);
+  syncHomeWidgetBoard();
+  if (options.persist !== false) {
+    await persistHomeWidgetConfig();
+  }
+}
+
+/**
+ * Add a widget to the custom home board.
+ * @param {HomeWidgetType} type
+ * @returns {Promise<void>}
+ */
+async function addHomeWidget(type) {
+  const definition = HOME_WIDGET_TYPE_DEFS[type];
+  if (
+    definition.singleton &&
+    homeWidgetConfig.some((widget) => widget.type === type)
+  ) {
+    showHomeStatus(`${definition.title} is already on the page.`, 'info');
+    return;
+  }
+
+  /** @type {HomeWidgetConfig | null} */
+  let widget = null;
+
+  if (type === 'webpage') {
+    const result = await promptForHomeWidgetUrl({
+      title: 'Add webpage widget',
+    });
+    const url = normalizeHomeWidgetUrl(result);
+    if (!url) {
+      if (result !== null) {
+        showHomeStatus('Enter a valid HTTP or HTTPS URL.', 'error');
+      }
+      return;
+    }
+    widget = {
+      id: generateHomeWidgetId(),
+      type,
+      ...definition.defaultRect,
+      settings: { url },
+    };
+  } else {
+    widget = {
+      id: generateHomeWidgetId(),
+      type,
+      ...definition.defaultRect,
+    };
+  }
+
+  const columns = HOME_WIDGET_DEFAULT_COLUMNS;
+  const resolvedRect = resolveHomeWidgetRect(
+    widget.id,
+    widget.type,
+    widget,
+    homeWidgetConfig,
+    columns,
+  );
+  widget.x = resolvedRect.x;
+  widget.y = resolvedRect.y;
+  widget.w = resolvedRect.w;
+  widget.h = resolvedRect.h;
+
+  await setHomeWidgetConfig([...homeWidgetConfig, widget]);
+
+  if (type === 'sessions') {
+    void initializeSessions();
+  }
+}
+
+/**
+ * Remove a widget by id.
+ * @param {string} widgetId
+ * @returns {Promise<void>}
+ */
+async function removeHomeWidget(widgetId) {
+  const next = homeWidgetConfig.filter((widget) => widget.id !== widgetId);
+  await setHomeWidgetConfig(next);
+}
+
+/**
+ * Open the webpage widget URL editor.
+ * @param {string} widgetId
+ * @returns {Promise<void>}
+ */
+async function editHomeWebpageWidgetUrl(widgetId) {
+  const widget = homeWidgetConfig.find((item) => item.id === widgetId);
+  if (!widget || widget.type !== 'webpage') {
+    return;
+  }
+
+  const result = await promptForHomeWidgetUrl({
+    title: 'Edit webpage widget',
+    value: widget.settings?.url || '',
+  });
+  if (result === null) {
+    return;
+  }
+
+  const url = normalizeHomeWidgetUrl(result);
+  if (!url) {
+    showHomeStatus('Enter a valid HTTP or HTTPS URL.', 'error');
+    return;
+  }
+
+  const next = homeWidgetConfig.map((item) =>
+    item.id === widgetId
+      ? {
+          ...item,
+          settings: { url },
+        }
+      : item,
+  );
+  await setHomeWidgetConfig(next);
+}
+
+/**
+ * Start moving or resizing a widget.
+ * @param {PointerEvent} event
+ * @param {string} widgetId
+ * @param {'move'|'resize'} mode
+ * @returns {void}
+ */
+function startHomeWidgetInteraction(event, widgetId, mode) {
+  if (!homeWidgetBoard) {
+    return;
+  }
+
+  const shell = /** @type {HTMLDivElement | null} */ (
+    homeWidgetBoard.querySelector(`[data-widget-id="${widgetId}"]`)
+  );
+  if (!shell) {
+    return;
+  }
+
+  event.preventDefault();
+
+  const computed = window.getComputedStyle(shell);
+  homeWidgetInteraction = {
+    mode,
+    widgetId,
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    startY: event.clientY,
+    startRect: {
+      left: Number.parseFloat(computed.left) || 0,
+      top: Number.parseFloat(computed.top) || 0,
+      width: Number.parseFloat(computed.width) || shell.offsetWidth,
+      height: Number.parseFloat(computed.height) || shell.offsetHeight,
+    },
+    shell,
+  };
+
+  shell.classList.add('is-active');
+  shell.setPointerCapture?.(event.pointerId);
+}
+
+/**
+ * Finish widget movement/resizing and persist the snapped layout.
+ * @param {PointerEvent} event
+ * @returns {Promise<void>}
+ */
+async function finishHomeWidgetInteraction(event) {
+  if (!homeWidgetInteraction) {
+    return;
+  }
+
+  const interaction = homeWidgetInteraction;
+  homeWidgetInteraction = null;
+  interaction.shell.classList.remove('is-active');
+  interaction.shell.releasePointerCapture?.(event.pointerId);
+
+  const metrics = getHomeGridMetrics();
+  const rect = {
+    left: Number.parseFloat(interaction.shell.style.left) || 0,
+    top: Number.parseFloat(interaction.shell.style.top) || 0,
+    width: Number.parseFloat(interaction.shell.style.width) || interaction.shell.offsetWidth,
+    height: Number.parseFloat(interaction.shell.style.height) || interaction.shell.offsetHeight,
+  };
+
+  const desired = {
+    x: Math.round(rect.left / (metrics.columnWidth + metrics.gap)),
+    y: Math.round(rect.top / (metrics.rowHeight + metrics.gap)),
+    w: Math.round((rect.width + metrics.gap) / (metrics.columnWidth + metrics.gap)),
+    h: Math.round((rect.height + metrics.gap) / (metrics.rowHeight + metrics.gap)),
+  };
+
+  const next = homeWidgetConfig.map((widget) => {
+    if (widget.id !== interaction.widgetId) {
+      return widget;
+    }
+
+    const resolved = resolveHomeWidgetRect(
+      widget.id,
+      widget.type,
+      desired,
+      homeWidgetConfig,
+      HOME_WIDGET_DEFAULT_COLUMNS,
+    );
+
+    return {
+      ...widget,
+      x: resolved.x,
+      y: resolved.y,
+      w: resolved.w,
+      h: resolved.h,
+    };
+  });
+
+  await setHomeWidgetConfig(next);
+}
+
+/**
+ * Handle pointer movement for widget interactions.
+ * @param {PointerEvent} event
+ * @returns {void}
+ */
+function updateHomeWidgetInteraction(event) {
+  if (!homeWidgetInteraction || !homeWidgetBoard) {
+    return;
+  }
+
+  const interaction = homeWidgetInteraction;
+  const deltaX = event.clientX - interaction.startX;
+  const deltaY = event.clientY - interaction.startY;
+  const metrics = getHomeGridMetrics();
+  const minRect = HOME_WIDGET_TYPE_DEFS[
+    homeWidgetConfig.find((widget) => widget.id === interaction.widgetId)?.type || 'webpage'
+  ];
+
+  const nextRect = {
+    ...interaction.startRect,
+  };
+
+  if (interaction.mode === 'move') {
+    nextRect.left = Math.max(0, interaction.startRect.left + deltaX);
+    nextRect.top = Math.max(0, interaction.startRect.top + deltaY);
+  } else {
+    const minWidth =
+      minRect.minW * metrics.columnWidth + (minRect.minW - 1) * metrics.gap;
+    const minHeight =
+      minRect.minH * metrics.rowHeight + (minRect.minH - 1) * metrics.gap;
+    nextRect.width = Math.min(
+      metrics.width,
+      Math.max(minWidth, interaction.startRect.width + deltaX),
+    );
+    nextRect.height = Math.max(minHeight, interaction.startRect.height + deltaY);
+  }
+
+  applyHomeWidgetPixelRect(interaction.shell, nextRect);
+}
+
+/**
+ * Initialize the custom home board.
+ * @returns {Promise<void>}
+ */
+async function initializeHomeSurface() {
+  if (!IS_HOME_SURFACE || !homeWidgetBoard) {
+    return;
+  }
+
+  const stored = await chrome.storage.local.get(HOME_WIDGET_CONFIG_KEY);
+  const hasStoredLayout = Array.isArray(stored?.[HOME_WIDGET_CONFIG_KEY]);
+  homeWidgetConfig = hasStoredLayout
+    ? normalizeHomeWidgetConfig(stored[HOME_WIDGET_CONFIG_KEY])
+    : createDefaultHomeWidgetConfig();
+  syncHomeWidgetBoard();
+
+  if (!hasStoredLayout) {
+    await persistHomeWidgetConfig();
+  }
+
+  homeEditLayoutButton?.addEventListener('click', () => {
+    homeEditMode = !homeEditMode;
+    updateHomeBoardUiState();
+  });
+
+  document
+    .querySelectorAll('[data-home-add-widget]')
+    .forEach((button) => {
+      button.addEventListener('click', () => {
+        const type = button.getAttribute('data-home-add-widget');
+        if (type === 'search' || type === 'sessions' || type === 'webpage') {
+          void addHomeWidget(type);
+        }
+      });
+    });
+
+  if (
+    homeWidgetUrlConfirmButton &&
+    homeWidgetUrlCancelButton &&
+    homeWidgetUrlInput
+  ) {
+    homeWidgetUrlConfirmButton.addEventListener('click', () => {
+      resolveHomeWidgetUrlDialog(homeWidgetUrlInput.value);
+    });
+    homeWidgetUrlCancelButton.addEventListener('click', () => {
+      resolveHomeWidgetUrlDialog(null);
+    });
+    homeWidgetUrlDialog?.addEventListener('close', () => {
+      if (homeWidgetUrlDialogResolver) {
+        const resolve = homeWidgetUrlDialogResolver;
+        homeWidgetUrlDialogResolver = null;
+        resolve(null);
+      }
+    });
+    homeWidgetUrlInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        resolveHomeWidgetUrlDialog(homeWidgetUrlInput.value);
+      }
+    });
+  }
+
+  window.addEventListener('pointermove', (event) => {
+    updateHomeWidgetInteraction(event);
+  });
+  window.addEventListener('pointerup', (event) => {
+    void finishHomeWidgetInteraction(event);
+  });
+  window.addEventListener('pointercancel', (event) => {
+    void finishHomeWidgetInteraction(event);
+  });
+
+  window.addEventListener('resize', () => {
+    syncHomeWidgetBoard();
+  });
+}
 
 /**
  * Load pinned shortcuts from storage and render buttons
@@ -566,6 +1849,7 @@ async function loadAndRenderShortcuts() {
 
 // Initialize bookmarks search functionality
 if (bookmarksSearchInput && bookmarksSearchResults && customSearchSuggestions) {
+  initializedSearchInput = bookmarksSearchInput;
   void initializeBookmarksSearch(
     bookmarksSearchInput,
     bookmarksSearchResults,
@@ -589,6 +1873,12 @@ if (chrome?.storage?.onChanged) {
       }
       if (changes[PINNED_SEARCH_RESULTS_STORAGE_KEY]) {
         void renderPinnedItems();
+      }
+      if (IS_HOME_SURFACE && changes[HOME_WIDGET_CONFIG_KEY]) {
+        homeWidgetConfig = normalizeHomeWidgetConfig(
+          changes[HOME_WIDGET_CONFIG_KEY].newValue,
+        );
+        syncHomeWidgetBoard();
       }
     }
   });
@@ -2606,6 +3896,7 @@ async function handleCommandNavigationFlags(flags) {
 // Check if we should navigate to chat page or emoji page (triggered by keyboard shortcut)
 void (async () => {
   if (IS_HOME_SURFACE) {
+    await initializeHomeSurface();
     void initializePopup();
     return;
   }
@@ -4161,18 +5452,22 @@ async function initializeBookmarksSearch(
     }
   });
 
-  document.addEventListener('click', (event) => {
-    const target = /** @type {HTMLElement | null} */ (event.target);
-    if (!target) {
-      return;
-    }
-    if (
-      target !== inputElement &&
-      !customSearchSuggestionsElement.contains(target)
-    ) {
-      hideCustomSearchSuggestions();
-    }
-  });
+  if (!searchOutsideClickListenerBound) {
+    searchOutsideClickListenerBound = true;
+    document.addEventListener('click', (event) => {
+      const target = /** @type {HTMLElement | null} */ (event.target);
+      if (!target || !customSearchSuggestions) {
+        return;
+      }
+      if (
+        target !== bookmarksSearchInput &&
+        !customSearchSuggestions.contains(target)
+      ) {
+        customSearchSuggestions.innerHTML = '';
+        customSearchSuggestions.classList.add('hidden');
+      }
+    });
+  }
 
   inputElement.addEventListener('keydown', async (event) => {
     const suggestionsVisible = !customSearchSuggestionsElement.classList.contains('hidden');
