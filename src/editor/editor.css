@@ -69,10 +69,21 @@ body {
     border-bottom: 1px solid color-mix(in srgb, var(--color-base-content), transparent 90%);
 }
 
+.ocr-side-panel-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
 .ocr-side-panel-title {
     font-size: 13px;
     font-weight: 700;
     letter-spacing: 0.02em;
+}
+
+.ocr-copy-all-button {
+    flex-shrink: 0;
 }
 
 .ocr-side-panel-subtitle {

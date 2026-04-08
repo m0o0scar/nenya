@@ -304,7 +304,10 @@
 
         <aside id="ocr-side-panel" class="ocr-side-panel" aria-label="Recognized text blocks">
             <div class="ocr-side-panel-header">
-                <h2 class="ocr-side-panel-title">Recognized Text</h2>
+                <div class="ocr-side-panel-title-row">
+                    <h2 class="ocr-side-panel-title">Recognized Text</h2>
+                    <button id="ocr-copy-all" type="button" class="btn btn-xs btn-ghost ocr-copy-all-button" disabled>Copy all</button>
+                </div>
                 <p class="ocr-side-panel-subtitle">Hover to locate. Click to copy.</p>
             </div>
             <p id="ocr-block-empty" class="ocr-block-empty">No text blocks detected.</p>

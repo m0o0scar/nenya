@@ -929,6 +929,8 @@ class Editor {
         this.ocrSidePanel = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-side-panel'));
         /** @type {HTMLDivElement | null} */
         this.ocrBlockList = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-block-list'));
+        /** @type {HTMLButtonElement | null} */
+        this.ocrCopyAllButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('ocr-copy-all'));
         /** @type {HTMLParagraphElement | null} */
         this.ocrBlockEmpty = /** @type {HTMLParagraphElement | null} */ (document.getElementById('ocr-block-empty'));
         /** @type {HTMLDivElement | null} */
@@ -1016,9 +1018,15 @@ class Editor {
                 this.handleOcrAction();
             });
         }
+        if (this.ocrCopyAllButton) {
+            this.ocrCopyAllButton.addEventListener('click', () => {
+                this.copyAllOcrText();
+            });
+        }
         this.renderOcrBlockList();
         this.setOcrStatus('');
         this.updateOcrButtonState();
+        this.updateOcrCopyAllButtonState();
         this.updateOcrLayerTransform();
     }
 
@@ -1139,6 +1147,7 @@ class Editor {
         this.ocrBlockList.innerHTML = '';
 
         const hasBlocks = this.ocrBlocks.length > 0;
+        this.updateOcrCopyAllButtonState();
         if (this.ocrBlockEmpty) {
             this.ocrBlockEmpty.classList.toggle('hidden', hasBlocks);
         }
@@ -1205,15 +1214,30 @@ class Editor {
 
     /**
      * @param {string} text
+     * @param {string} [successMessage]
      */
-    async copyOcrBlockText(text) {
+    async copyOcrBlockText(text, successMessage = 'Copied to clipboard') {
         try {
             await navigator.clipboard.writeText(text);
-            this.showOcrToast('Copied to clipboard');
+            this.showOcrToast(successMessage);
         } catch (error) {
             console.error('Failed to copy OCR text block.', error);
             this.showOcrToast('Failed to copy text', true);
         }
+    }
+
+    updateOcrCopyAllButtonState() {
+        if (!this.ocrCopyAllButton) return;
+        this.ocrCopyAllButton.disabled = this.ocrBlocks.length === 0;
+    }
+
+    async copyAllOcrText() {
+        const text = this.ocrBlocks
+            .map((block) => block.text.trim())
+            .filter(Boolean)
+            .join('\n');
+        if (!text) return;
+        await this.copyOcrBlockText(text, 'All text copied to clipboard');
     }
 
     /**
