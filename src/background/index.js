@@ -1573,6 +1573,40 @@ async function collectLLMContextFromTabs(tabIds, tabContentModes) {
   return results.filter(Boolean);
 }
 
+/**
+ * Append collected source page URLs to the prompt that gets sent to LLM pages.
+ * @param {string} promptContent
+ * @param {Array<{url: string}>} contents
+ * @returns {string}
+ */
+function buildPromptWithSourceUrls(promptContent, contents) {
+  const basePrompt =
+    typeof promptContent === 'string' ? promptContent.trim() : '';
+  const sourceUrls = Array.from(
+    new Set(
+      (Array.isArray(contents) ? contents : [])
+        .map((item) => (typeof item?.url === 'string' ? item.url.trim() : ''))
+        .filter(Boolean),
+    ),
+  );
+
+  if (sourceUrls.length === 0) {
+    return basePrompt;
+  }
+
+  const sourceLine = `Source page${
+    sourceUrls.length === 1 ? ' URL' : ' URLs'
+  }: ${sourceUrls.join(' | ')}`;
+
+  const prefixedSourceLine = `\n\n${sourceLine}`;
+
+  if (!basePrompt) {
+    return prefixedSourceLine;
+  }
+
+  return `${basePrompt}${prefixedSourceLine}`;
+}
+
 // ============================================================================
 // LLM TAB MANAGEMENT
 // ============================================================================
@@ -3310,7 +3344,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           tabIds,
           tabContentModes,
         );
-        selectedPromptContent = promptContent;
+        selectedPromptContent = buildPromptWithSourceUrls(
+          promptContent,
+          collectedContents,
+        );
         selectedLocalFiles = [];
 
         // Get current tab

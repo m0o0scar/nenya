@@ -316,7 +316,10 @@ ${content || '<no content>'}`;
 
     // 3. Inject prompt content into editor
     if (promptContent) {
-      const normalizedPrompt = promptContent.replace(/[\r\n]+/g, ' ');
+      const normalizedPrompt = promptContent
+        .replace(/\r\n/g, '\n')
+        .replace(/\n{2,}/g, ' | ')
+        .replace(/\n/g, ' ');
       injectPromptContent(editor, normalizedPrompt);
 
       // 4. Auto-trigger send button
