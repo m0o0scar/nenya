@@ -272,6 +272,54 @@ function findRule(ruleId) {
 }
 
 /**
+ * Build a readable title for a duplicated rule.
+ * @param {string} sourceTitle
+ * @returns {string}
+ */
+function createDuplicateTitle(sourceTitle) {
+  const baseTitle = sourceTitle.replace(/ \(copy(?: \d+)?\)$/i, '');
+  const existingTitles = new Set(
+    rules.map((rule) => rule.title.trim().toLowerCase()),
+  );
+
+  let nextTitle = baseTitle + ' (copy)';
+  let copyIndex = 2;
+  while (existingTitles.has(nextTitle.toLowerCase())) {
+    nextTitle = baseTitle + ' (copy ' + copyIndex + ')';
+    copyIndex += 1;
+  }
+
+  return nextTitle;
+}
+
+/**
+ * Create a persisted copy of an existing rule.
+ * @param {string} ruleId
+ * @returns {void}
+ */
+function duplicateRule(ruleId) {
+  const existing = findRule(ruleId);
+  if (!existing) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const duplicate = {
+    id: generateRuleId(),
+    title: createDuplicateTitle(existing.title),
+    patterns: [...existing.patterns],
+    code: existing.code,
+    disabled: existing.disabled,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  rules = sortRules([...rules, duplicate]);
+  void saveRules(rules);
+  render();
+}
+
+/**
  * Resize Ace editors to match their containers.
  * @returns {void}
  */
@@ -542,6 +590,15 @@ function renderList() {
       }
     });
     actions.appendChild(editButton);
+
+    const duplicateButton = document.createElement('button');
+    duplicateButton.type = 'button';
+    duplicateButton.className = 'btn btn-sm btn-outline';
+    duplicateButton.textContent = 'Duplicate';
+    duplicateButton.addEventListener('click', () => {
+      duplicateRule(rule.id);
+    });
+    actions.appendChild(duplicateButton);
 
     const deleteButton = document.createElement('button');
     deleteButton.type = 'button';
