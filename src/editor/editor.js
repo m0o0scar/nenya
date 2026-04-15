@@ -2,7 +2,6 @@
  * Screenshot Editor Logic
  */
 const chrome = /** @type {any} */ (window).chrome;
-const tesseractApi = /** @type {any} */ (window).Tesseract;
 
 class Shape {
     /**
@@ -849,14 +848,6 @@ function drawSelectionBox(ctx, x, y, w, h) {
     ctx.restore();
 }
 
-/**
- * @typedef {Object} OcrBlock
- * @property {number} id
- * @property {string} text
- * @property {{x: number, y: number, width: number, height: number}} bbox
- * @property {number} confidence
- */
-
 class Editor {
     /**
      * @param {string} canvasId
@@ -915,34 +906,6 @@ class Editor {
         this.redoStack = [];
         this.maxHistory = 50;
 
-        /** @type {any | null} */
-        this.ocrWorker = null;
-        this.isOcrRunning = false;
-        this.isOcrLayerVisible = false;
-        /** @type {OcrBlock[]} */
-        this.ocrBlocks = [];
-        /** @type {number | null} */
-        this.activeOcrBlockId = null;
-        /** @type {HTMLDivElement | null} */
-        this.ocrTextLayer = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-text-layer'));
-        /** @type {HTMLDivElement | null} */
-        this.ocrSidePanel = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-side-panel'));
-        /** @type {HTMLDivElement | null} */
-        this.ocrBlockList = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-block-list'));
-        /** @type {HTMLParagraphElement | null} */
-        this.ocrBlockEmpty = /** @type {HTMLParagraphElement | null} */ (document.getElementById('ocr-block-empty'));
-        /** @type {HTMLDivElement | null} */
-        this.ocrToast = /** @type {HTMLDivElement | null} */ (document.getElementById('ocr-toast'));
-        /** @type {number | null} */
-        this.ocrToastTimer = null;
-        /** @type {number | null} */
-        this.ocrLayoutTimer = null;
-        /** @type {HTMLButtonElement | null} */
-        this.ocrButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('action-ocr'));
-        /** @type {HTMLSpanElement | null} */
-        this.ocrButtonLabel = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-button-label'));
-        /** @type {HTMLSpanElement | null} */
-        this.ocrStatus = /** @type {HTMLSpanElement | null} */ (document.getElementById('ocr-status'));
         /** @type {Record<string, number>} */
         this.actionFeedbackTimers = {};
         /** @type {number | null} */
@@ -958,7 +921,6 @@ class Editor {
         this.attachCanvasListeners();
         this.initTextDialog();
         this.initTheme();
-        this.initOcr();
         await this.loadSettings();
         await this.ensureFontLoaded(this.fontFamily, this.fontSize, this.isBold, this.isItalic);
         await this.loadImage();
@@ -981,17 +943,10 @@ class Editor {
                 window.clearTimeout(this.resizeFitTimer);
                 this.resizeFitTimer = null;
             }
-            if (this.ocrToastTimer !== null) {
-                window.clearTimeout(this.ocrToastTimer);
-            }
-            if (this.ocrLayoutTimer !== null) {
-                window.clearTimeout(this.ocrLayoutTimer);
-            }
             Object.values(this.actionFeedbackTimers).forEach((timerId) => {
                 window.clearTimeout(timerId);
             });
             this.actionFeedbackTimers = {};
-            this.disposeOcrWorker();
         });
     }
 
@@ -1008,372 +963,6 @@ class Editor {
             this.render();
             this.resizeFitTimer = null;
         }, 120);
-    }
-
-    initOcr() {
-        if (this.ocrButton) {
-            this.ocrButton.addEventListener('click', () => {
-                this.handleOcrAction();
-            });
-        }
-        this.renderOcrBlockList();
-        this.setOcrStatus('');
-        this.updateOcrButtonState();
-        this.updateOcrLayerTransform();
-    }
-
-    updateOcrButtonState() {
-        if (this.ocrButton) {
-            const isImageReady = !!this.backgroundImage && this.backgroundImage.complete;
-            this.ocrButton.disabled = this.isOcrRunning || !isImageReady;
-        }
-        if (!this.ocrButtonLabel) return;
-        if (this.isOcrRunning) {
-            this.ocrButtonLabel.textContent = 'OCR...';
-        } else if (this.isOcrLayerVisible) {
-            this.ocrButtonLabel.textContent = 'Hide';
-        } else if (this.ocrBlocks.length > 0) {
-            this.ocrButtonLabel.textContent = 'Show';
-        } else {
-            this.ocrButtonLabel.textContent = 'OCR';
-        }
-    }
-
-    /**
-     * @param {string} text
-     * @param {boolean} [isError]
-     */
-    setOcrStatus(text, isError = false) {
-        if (!this.ocrStatus) return;
-        this.ocrStatus.textContent = text;
-        this.ocrStatus.title = text;
-        this.ocrStatus.classList.toggle('text-error', isError);
-    }
-
-    /**
-     * @param {boolean} visible
-     * @param {{fitViewport?: boolean}} [options]
-     */
-    setOcrLayerVisible(visible, options = {}) {
-        const shouldShow = visible && this.ocrBlocks.length > 0;
-        const visibilityChanged = this.isOcrLayerVisible !== shouldShow;
-        this.isOcrLayerVisible = shouldShow;
-        if (this.ocrTextLayer) {
-            this.ocrTextLayer.classList.toggle('hidden', !shouldShow);
-        }
-        if (this.ocrSidePanel) {
-            this.ocrSidePanel.classList.toggle('ocr-side-panel-visible', shouldShow);
-        }
-        if (!shouldShow) {
-            this.setActiveOcrBlock(null);
-        }
-        if (options.fitViewport !== false && visibilityChanged) {
-            this.scheduleOcrViewportFit();
-        }
-        this.updateOcrButtonState();
-    }
-
-    clearOcrLayer() {
-        const wasVisible = this.isOcrLayerVisible;
-        this.ocrBlocks = [];
-        this.activeOcrBlockId = null;
-        if (this.ocrTextLayer) {
-            this.ocrTextLayer.innerHTML = '';
-        }
-        this.renderOcrBlockList();
-        this.setOcrLayerVisible(false, { fitViewport: wasVisible });
-        this.setOcrStatus('');
-    }
-
-    updateOcrLayerTransform() {
-        if (!this.ocrTextLayer || !this.canvas) return;
-        this.ocrTextLayer.style.width = `${this.canvas.width}px`;
-        this.ocrTextLayer.style.height = `${this.canvas.height}px`;
-        this.ocrTextLayer.style.transformOrigin = getComputedStyle(this.canvas).transformOrigin;
-        this.ocrTextLayer.style.transform = `translate(${this.panX}px, ${this.panY}px) scale(${this.scale})`;
-    }
-
-    scheduleOcrViewportFit() {
-        if (!this.backgroundImage) return;
-        if (this.ocrLayoutTimer !== null) {
-            window.clearTimeout(this.ocrLayoutTimer);
-        }
-
-        window.requestAnimationFrame(() => {
-            this.fitToScreen();
-            this.render();
-        });
-
-        this.ocrLayoutTimer = window.setTimeout(() => {
-            this.fitToScreen();
-            this.render();
-            this.ocrLayoutTimer = null;
-        }, 260);
-    }
-
-    /**
-     * @param {number | null} blockId
-     */
-    setActiveOcrBlock(blockId) {
-        this.activeOcrBlockId = blockId;
-
-        if (this.ocrTextLayer) {
-            this.ocrTextLayer.querySelectorAll('.ocr-highlight-box').forEach((element) => {
-                const htmlElement = /** @type {HTMLElement} */ (element);
-                const itemId = Number(htmlElement.dataset.ocrBlockId);
-                htmlElement.classList.toggle('ocr-highlight-box-active', blockId !== null && itemId === blockId);
-            });
-        }
-
-        if (this.ocrBlockList) {
-            this.ocrBlockList.querySelectorAll('.ocr-block-item').forEach((element) => {
-                const htmlElement = /** @type {HTMLElement} */ (element);
-                const itemId = Number(htmlElement.dataset.ocrBlockId);
-                htmlElement.classList.toggle('ocr-block-item-active', blockId !== null && itemId === blockId);
-            });
-        }
-    }
-
-    renderOcrBlockList() {
-        if (!this.ocrBlockList) return;
-        this.ocrBlockList.innerHTML = '';
-
-        const hasBlocks = this.ocrBlocks.length > 0;
-        if (this.ocrBlockEmpty) {
-            this.ocrBlockEmpty.classList.toggle('hidden', hasBlocks);
-        }
-
-        if (!hasBlocks) return;
-
-        this.ocrBlocks.forEach((block, index) => {
-            const item = document.createElement('button');
-            item.type = 'button';
-            item.className = 'ocr-block-item';
-            item.dataset.ocrBlockId = `${block.id}`;
-            item.setAttribute('role', 'listitem');
-            item.title = 'Click to copy this text block';
-
-            const badge = document.createElement('span');
-            badge.className = 'ocr-block-index';
-            badge.textContent = `${index + 1}`;
-
-            const text = document.createElement('span');
-            text.className = 'ocr-block-text';
-            text.textContent = block.text;
-
-            item.append(badge, text);
-
-            item.addEventListener('mouseenter', () => {
-                this.setActiveOcrBlock(block.id);
-            });
-            item.addEventListener('mouseleave', () => {
-                this.setActiveOcrBlock(null);
-            });
-            item.addEventListener('focus', () => {
-                this.setActiveOcrBlock(block.id);
-            });
-            item.addEventListener('blur', () => {
-                this.setActiveOcrBlock(null);
-            });
-            item.addEventListener('click', () => {
-                this.copyOcrBlockText(block.text);
-            });
-
-            this.ocrBlockList.appendChild(item);
-        });
-    }
-
-    /**
-     * @param {string} text
-     * @param {boolean} [isError]
-     */
-    showOcrToast(text, isError = false) {
-        if (!this.ocrToast) return;
-        this.ocrToast.textContent = text;
-        this.ocrToast.classList.toggle('ocr-toast-error', isError);
-        this.ocrToast.classList.add('ocr-toast-visible');
-
-        if (this.ocrToastTimer !== null) {
-            window.clearTimeout(this.ocrToastTimer);
-        }
-        this.ocrToastTimer = window.setTimeout(() => {
-            if (!this.ocrToast) return;
-            this.ocrToast.classList.remove('ocr-toast-visible');
-            this.ocrToastTimer = null;
-        }, 1800);
-    }
-
-    /**
-     * @param {string} text
-     */
-    async copyOcrBlockText(text) {
-        try {
-            await navigator.clipboard.writeText(text);
-            this.showOcrToast('Copied to clipboard');
-        } catch (error) {
-            console.error('Failed to copy OCR text block.', error);
-            this.showOcrToast('Failed to copy text', true);
-        }
-    }
-
-    /**
-     * @param {Array<{text?: string, bbox?: {x0: number, y0: number, x1: number, y1: number}, confidence?: number}>} items
-     * @returns {number}
-     */
-    buildOcrLayer(items) {
-        if (!this.ocrTextLayer) return 0;
-        this.ocrTextLayer.innerHTML = '';
-        this.ocrBlocks = [];
-        let nextBlockId = 1;
-
-        items.forEach((item) => {
-            const text = (item.text || '').trim();
-            const bbox = item.bbox;
-            if (!bbox || !text) return;
-            if (typeof item.confidence === 'number' && item.confidence < 35) return;
-
-            const x = Math.max(0, bbox.x0);
-            const y = Math.max(0, bbox.y0);
-            const width = Math.max(1, bbox.x1 - bbox.x0);
-            const height = Math.max(1, bbox.y1 - bbox.y0);
-
-            const block = {
-                id: nextBlockId++,
-                text,
-                bbox: { x, y, width, height },
-                confidence: typeof item.confidence === 'number' ? item.confidence : 100
-            };
-            this.ocrBlocks.push(block);
-
-            const highlightEl = document.createElement('div');
-            highlightEl.className = 'ocr-highlight-box';
-            highlightEl.dataset.ocrBlockId = `${block.id}`;
-            highlightEl.style.left = `${x}px`;
-            highlightEl.style.top = `${y}px`;
-            highlightEl.style.width = `${width}px`;
-            highlightEl.style.height = `${height}px`;
-            this.ocrTextLayer.appendChild(highlightEl);
-        });
-
-        this.setActiveOcrBlock(null);
-        this.renderOcrBlockList();
-        this.updateOcrLayerTransform();
-        return this.ocrBlocks.length;
-    }
-
-    getOcrSourceCanvas() {
-        const sourceCanvas = document.createElement('canvas');
-        sourceCanvas.width = this.canvas.width;
-        sourceCanvas.height = this.canvas.height;
-        const sourceCtx = sourceCanvas.getContext('2d');
-        if (!sourceCtx) return sourceCanvas;
-
-        const prevTool = this.tool;
-        const prevCrop = this.cropRect;
-        const selectedStates = this.shapes.map(shape => shape.selected);
-        this.shapes.forEach(shape => {
-            shape.selected = false;
-        });
-        this.tool = 'select';
-        this.cropRect = null;
-        this.render();
-        sourceCtx.drawImage(this.canvas, 0, 0);
-        this.tool = prevTool;
-        this.cropRect = prevCrop;
-        this.shapes.forEach((shape, index) => {
-            shape.selected = selectedStates[index];
-        });
-        this.render();
-
-        return sourceCanvas;
-    }
-
-    async ensureOcrWorker() {
-        if (this.ocrWorker) return this.ocrWorker;
-        if (!tesseractApi || typeof tesseractApi.createWorker !== 'function') {
-            throw new Error('Tesseract.js is not available.');
-        }
-
-        const getRuntimeUrl = (path) => {
-            if (chrome && chrome.runtime && typeof chrome.runtime.getURL === 'function') {
-                return chrome.runtime.getURL(path);
-            }
-            return path;
-        };
-
-        const workerPath = getRuntimeUrl('src/libs/tesseract/worker.min.js');
-        const corePath = getRuntimeUrl('src/libs/tesseract-core');
-        const langPath = getRuntimeUrl('src/libs/tesseract-lang/4.0.0');
-
-        this.ocrWorker = await tesseractApi.createWorker('eng', 1, {
-            workerBlobURL: false,
-            workerPath,
-            corePath,
-            langPath,
-            logger: (message) => {
-                if (!this.isOcrRunning) return;
-                const status = message.status || 'Processing';
-                const progress = typeof message.progress === 'number'
-                    ? ` ${Math.round(message.progress * 100)}%`
-                    : '';
-                this.setOcrStatus(`${status}${progress}`);
-            }
-        });
-
-        return this.ocrWorker;
-    }
-
-    disposeOcrWorker() {
-        if (!this.ocrWorker || typeof this.ocrWorker.terminate !== 'function') return;
-        this.ocrWorker.terminate().catch((error) => {
-            console.warn('Failed to terminate OCR worker.', error);
-        });
-        this.ocrWorker = null;
-    }
-
-    async handleOcrAction() {
-        const isImageReady = !!this.backgroundImage && this.backgroundImage.complete;
-        if (!isImageReady || this.isOcrRunning) return;
-
-        if (this.isOcrLayerVisible) {
-            this.setOcrLayerVisible(false);
-            this.setOcrStatus('OCR panel hidden');
-            return;
-        }
-
-        if (this.ocrBlocks.length > 0) {
-            this.setOcrLayerVisible(true);
-            this.setOcrStatus('OCR panel shown');
-            return;
-        }
-
-        this.isOcrRunning = true;
-        this.updateOcrButtonState();
-        this.setOcrStatus('Preparing OCR...');
-        this.setOcrLayerVisible(false, { fitViewport: false });
-
-        try {
-            const worker = await this.ensureOcrWorker();
-            const sourceCanvas = this.getOcrSourceCanvas();
-            const result = await worker.recognize(sourceCanvas);
-            const lines = result && result.data && Array.isArray(result.data.lines) ? result.data.lines : [];
-            const words = result && result.data && Array.isArray(result.data.words) ? result.data.words : [];
-            const detectedCount = this.buildOcrLayer(lines.length > 0 ? lines : words);
-
-            if (detectedCount > 0) {
-                this.setOcrLayerVisible(true);
-                this.setOcrStatus(`Detected ${detectedCount} text blocks`);
-            } else {
-                this.setOcrStatus('No text found');
-            }
-        } catch (error) {
-            console.error('OCR extraction failed.', error);
-            this.clearOcrLayer();
-            this.setOcrStatus('OCR failed', true);
-        } finally {
-            this.isOcrRunning = false;
-            this.updateOcrButtonState();
-        }
     }
 
     /**
@@ -1611,7 +1200,6 @@ class Editor {
             this.canvas.width = snapshot.canvasWidth;
             this.canvas.height = snapshot.canvasHeight;
         }
-        this.clearOcrLayer();
         this.fitToScreen();
         this.render();
         this.updateUI();
@@ -1637,10 +1225,8 @@ class Editor {
                         if (this.canvas && this.backgroundImage) {
                             this.canvas.width = this.backgroundImage.width;
                             this.canvas.height = this.backgroundImage.height;
-                            this.clearOcrLayer();
                             this.fitToScreen();
                             this.render();
-                            this.updateOcrButtonState();
                         }
                     };
                     img.src = dataUrl;
@@ -1688,7 +1274,6 @@ class Editor {
                 this.canvas.style.imageRendering = 'auto';
             }
         }
-        this.updateOcrLayerTransform();
     }
 
     attachToolbarListeners() {
@@ -2028,7 +1613,6 @@ class Editor {
             arrowBorderBtn.classList.toggle('btn-style-active', this.arrowHasBorder);
         }
 
-        this.updateOcrButtonState();
         this.updateToolbarUI(); // To update visibility of stroke prop
     }
 
@@ -2608,10 +2192,8 @@ class Editor {
             this.backgroundImage = newImg;
             this.shapes = [];
             this.cropRect = null;
-            this.clearOcrLayer();
             this.fitToScreen(); // Re-fit after crop
             this.render();
-            this.updateOcrButtonState();
         };
         newImg.src = this.canvas.toDataURL();
 
