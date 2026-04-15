@@ -17,8 +17,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Gloria+Hallelujah&family=Pacifico&family=SN+Pro:ital,wght@0,200..900;1,200..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="../libs/daisyui@5.css">
     <link rel="stylesheet" href="../libs/daisyui@5-themes.css">
+    <link rel="stylesheet" href="../shared/extension-utilities.css">
     <link rel="stylesheet" href="./editor.css">
-    <script src="../libs/tailwindcss@4.js"></script>
     <style>
         /* Removed image-rendering: pixelated for better preview quality */
     </style>
@@ -133,21 +133,6 @@
                 </button>
             </div>
 
-            <div class="divider-vertical opacity-50"></div>
-
-            <div class="toolbar-ocr flex items-center gap-2">
-                <button class="btn btn-sm btn-outline h-7 min-h-7 px-2 gap-1.5" id="action-ocr"
-                    title="Extract text from image">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-                        stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <rect width="14" height="14" x="5" y="5" rx="2"></rect>
-                        <path d="M8 10h8"></path>
-                        <path d="M8 14h6"></path>
-                    </svg>
-                    <span class="text-[10px] font-bold uppercase tracking-wide" id="ocr-button-label">OCR</span>
-                </button>
-                <span class="text-[10px] font-semibold opacity-70 min-w-[86px] max-w-[160px] truncate" id="ocr-status"></span>
-            </div>
         </div>
 
         <!-- Right: Properties & Actions -->
@@ -299,19 +284,7 @@
     <main class="flex-1 min-h-0 flex relative overflow-hidden bg-base-300/10" id="editor-main">
         <section class="relative flex-1 min-w-0 overflow-hidden" id="canvas-container">
             <canvas id="editor-canvas" class="shadow-2xl bg-white"></canvas>
-            <div id="ocr-text-layer" class="ocr-text-layer hidden" aria-label="OCR highlight overlay"></div>
         </section>
-
-        <aside id="ocr-side-panel" class="ocr-side-panel" aria-label="Recognized text blocks">
-            <div class="ocr-side-panel-header">
-                <h2 class="ocr-side-panel-title">Recognized Text</h2>
-                <p class="ocr-side-panel-subtitle">Hover to locate. Click to copy.</p>
-            </div>
-            <p id="ocr-block-empty" class="ocr-block-empty">No text blocks detected.</p>
-            <div id="ocr-block-list" class="ocr-block-list" role="list"></div>
-        </aside>
-
-        <div id="ocr-toast" class="ocr-toast" role="status" aria-live="polite"></div>
     </main>
 
     <!-- Text Input Dialog -->
@@ -334,8 +307,6 @@
             <button>close</button>
         </form>
     </dialog>
-
-    <script src="../libs/tesseract/tesseract.min.js"></script>
     <script src="./editor.js" type="module"></script>
 </body>
 
