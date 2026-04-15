@@ -12,6 +12,7 @@ import {
   handleUpdateSessionName,
   handleDeleteSession,
   handleUploadCollectionCover,
+  handleSetCurrentSessionIconPreference,
   handleUpdateRaindropUrl,
   exportCurrentSessionToRaindrop,
   ensureDeviceCollectionAndExport,
@@ -93,6 +94,8 @@ const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
+const SET_CURRENT_SESSION_ICON_PREFERENCE_MESSAGE =
+  'mirror:setCurrentSessionIconPreference';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const GET_AUTO_RELOAD_STATUS_MESSAGE = 'autoReload:getStatus';
 const AUTO_RELOAD_RE_EVALUATE_MESSAGE = 'autoReload:reEvaluate';
@@ -2999,6 +3002,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       })
       .catch((error) => {
         console.error('[background] Upload collection cover failed:', error);
+        sendResponse({ ok: false, error: error.message });
+      });
+    return true;
+  }
+
+  if (message.type === SET_CURRENT_SESSION_ICON_PREFERENCE_MESSAGE) {
+    const { iconPath } = message;
+    handleSetCurrentSessionIconPreference(iconPath)
+      .then((result) => {
+        sendResponse({ ok: true, ...result });
+      })
+      .catch((error) => {
+        console.error(
+          '[background] Persist current session icon preference failed:',
+          error,
+        );
         sendResponse({ ok: false, error: error.message });
       });
     return true;

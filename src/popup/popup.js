@@ -961,6 +961,8 @@ const OPEN_ALL_ITEMS_MESSAGE = 'mirror:openAllItems';
 const SAVE_SESSION_MESSAGE = 'mirror:saveSession';
 const UPDATE_SESSION_NAME_MESSAGE = 'mirror:updateSessionName';
 const DELETE_SESSION_MESSAGE = 'mirror:deleteSession';
+const SET_CURRENT_SESSION_ICON_PREFERENCE_MESSAGE =
+  'mirror:setCurrentSessionIconPreference';
 const UPDATE_RAINDROP_URL_MESSAGE = 'mirror:updateRaindropUrl';
 const SESSIONS_CACHE_KEY = 'sessionsCache';
 const EXPANDED_SESSIONS_STORAGE_KEY = 'popupExpandedSessionIds';
@@ -1888,6 +1890,18 @@ async function handleEditSessionName(collectionId, currentName, existingNames) {
 
           if (!uploadResponse || !uploadResponse.ok) {
             throw new Error(uploadResponse?.error || 'Failed to upload cover');
+          }
+
+          const persistIconResponse = await chrome.runtime.sendMessage({
+            type: SET_CURRENT_SESSION_ICON_PREFERENCE_MESSAGE,
+            iconPath: selectedIcon,
+          });
+
+          if (!persistIconResponse || !persistIconResponse.ok) {
+            throw new Error(
+              persistIconResponse?.error ||
+                'Failed to persist session icon preference',
+            );
           }
         }
 

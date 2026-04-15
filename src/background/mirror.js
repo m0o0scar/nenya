@@ -138,6 +138,7 @@ export {
   handleUpdateSessionName,
   handleDeleteSession,
   handleUploadCollectionCover,
+  handleSetCurrentSessionIconPreference,
   handleUpdateRaindropUrl,
 };
 
@@ -1729,6 +1730,149 @@ const BROWSER_ID_WORDS = [
   'Quest',
 ];
 
+const SESSION_ICON_PREFERENCES_STORAGE_KEY = 'sessionIconPreferences';
+const VALID_SESSION_ICON_PATHS = new Set([
+  'browser-arc.png',
+  'browser-brave.png',
+  'browser-chatgpt.png',
+  'browser-chrome.png',
+  'browser-comet.png',
+  'browser-dia.png',
+  'browser-edge.png',
+  'browser-vivaldi.png',
+]);
+
+/**
+ * Normalize a session icon path to a known bundled browser icon.
+ * @param {unknown} iconPath
+ * @returns {string}
+ */
+function normalizeSessionIconPath(iconPath) {
+  if (typeof iconPath !== 'string') {
+    return '';
+  }
+
+  const trimmedIconPath = iconPath.trim();
+  if (!VALID_SESSION_ICON_PATHS.has(trimmedIconPath)) {
+    return '';
+  }
+
+  return trimmedIconPath;
+}
+
+/**
+ * Load persisted session icon preferences keyed by browserId.
+ * @returns {Promise<Record<string, string>>}
+ */
+async function loadSessionIconPreferences() {
+  const result = await chrome.storage.local.get(
+    SESSION_ICON_PREFERENCES_STORAGE_KEY,
+  );
+  const storedPreferences = result[SESSION_ICON_PREFERENCES_STORAGE_KEY];
+  if (
+    !storedPreferences ||
+    typeof storedPreferences !== 'object' ||
+    Array.isArray(storedPreferences)
+  ) {
+    return {};
+  }
+
+  const normalizedPreferences = {};
+  for (const [browserId, iconPath] of Object.entries(storedPreferences)) {
+    if (typeof browserId !== 'string') {
+      continue;
+    }
+
+    const trimmedBrowserId = browserId.trim();
+    const normalizedIconPath = normalizeSessionIconPath(iconPath);
+    if (!trimmedBrowserId || !normalizedIconPath) {
+      continue;
+    }
+
+    normalizedPreferences[trimmedBrowserId] = normalizedIconPath;
+  }
+
+  return normalizedPreferences;
+}
+
+/**
+ * Persist the full session icon preference map.
+ * @param {Record<string, string>} preferences
+ * @returns {Promise<void>}
+ */
+async function writeSessionIconPreferences(preferences) {
+  await chrome.storage.local.set({
+    [SESSION_ICON_PREFERENCES_STORAGE_KEY]: preferences,
+  });
+}
+
+/**
+ * Save the preferred icon for a browserId.
+ * @param {string} browserId
+ * @param {string} iconPath
+ * @returns {Promise<void>}
+ */
+async function saveSessionIconPreference(browserId, iconPath) {
+  const trimmedBrowserId =
+    typeof browserId === 'string' ? browserId.trim() : '';
+  const normalizedIconPath = normalizeSessionIconPath(iconPath);
+  if (!trimmedBrowserId) {
+    throw new Error('Invalid browser ID');
+  }
+  if (!normalizedIconPath) {
+    throw new Error('Invalid icon path');
+  }
+
+  const preferences = await loadSessionIconPreferences();
+  preferences[trimmedBrowserId] = normalizedIconPath;
+  await writeSessionIconPreferences(preferences);
+}
+
+/**
+ * Read the preferred icon for a browserId.
+ * @param {string} browserId
+ * @returns {Promise<string>}
+ */
+async function getSessionIconPreference(browserId) {
+  const trimmedBrowserId =
+    typeof browserId === 'string' ? browserId.trim() : '';
+  if (!trimmedBrowserId) {
+    return '';
+  }
+
+  const preferences = await loadSessionIconPreferences();
+  return preferences[trimmedBrowserId] || '';
+}
+
+/**
+ * Move a stored icon preference to a renamed browserId.
+ * @param {string} oldBrowserId
+ * @param {string} newBrowserId
+ * @returns {Promise<void>}
+ */
+async function renameSessionIconPreference(oldBrowserId, newBrowserId) {
+  const trimmedOldBrowserId =
+    typeof oldBrowserId === 'string' ? oldBrowserId.trim() : '';
+  const trimmedNewBrowserId =
+    typeof newBrowserId === 'string' ? newBrowserId.trim() : '';
+  if (!trimmedOldBrowserId || !trimmedNewBrowserId) {
+    return;
+  }
+  if (trimmedOldBrowserId === trimmedNewBrowserId) {
+    return;
+  }
+
+  const preferences = await loadSessionIconPreferences();
+  const iconPath = preferences[trimmedOldBrowserId];
+  if (!iconPath) {
+    return;
+  }
+
+  preferences[trimmedNewBrowserId] = iconPath;
+  delete preferences[trimmedOldBrowserId];
+  await writeSessionIconPreferences(preferences);
+}
+
 /**
  * Generate a stable unique browser ID and save it to storage.
  * Format: "<Browser Brand> - <OS type> - <random word>"
@@ -1871,6 +2015,18 @@ async function ensureDeviceCollection(tokens) {
 
   if (!newCollectionId) {
     throw new Error('Failed to create device collection');
+  }
+
+  const preferredIconPath = await getSessionIconPreference(browserId);
+  if (preferredIconPath) {
+    try {
+      await uploadCollectionCover(newCollectionId, preferredIconPath, tokens);
+    } catch (error) {
+      console.warn(
+        `[mirror] Failed to reapply icon for collection ${newCollectionId}:`,
+        error,
+      );
+    }
   }
 
   return newCollectionId;
@@ -3841,10 +3997,42 @@ async function handleUpdateSessionName(collectionId, oldName, newName) {
   // If the old name was the browserId, update it
   const browserId = await getOrCreateBrowserId();
   if (oldName === browserId) {
+    await renameSessionIconPreference(oldName, newName);
     await chrome.storage.local.set({ browserId: newName });
   }
 
   return { success: true };
+}
+
+/**
+ * Upload a cover image to a Raindrop collection from a bundled browser icon.
+ * @param {number} collectionId
+ * @param {string} iconPath
+ * @param {StoredProviderTokens} tokens
+ * @returns {Promise<void>}
+ */
+async function uploadCollectionCover(collectionId, iconPath, tokens) {
+  const normalizedIconPath = normalizeSessionIconPath(iconPath);
+  if (!normalizedIconPath) {
+    throw new Error('Invalid icon path');
+  }
+
+  const iconUrl = chrome.runtime.getURL(
+    `assets/browser-icons/${normalizedIconPath}`,
+  );
+  const response = await fetch(iconUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to load icon: ${normalizedIconPath}`);
+  }
+
+  const blob = await response.blob();
+  const formData = new FormData();
+  formData.append('cover', blob, normalizedIconPath);
+
+  await raindropRequest(`/collection/${collectionId}/cover`, tokens, {
+    method: 'PUT',
+    body: formData,
+  });
 }
 
 /**
@@ -3859,22 +4047,19 @@ async function handleUploadCollectionCover(collectionId, iconPath) {
     throw new Error('No Raindrop connection found');
   }
 
-  // Fetch the icon file and convert to blob
-  const iconUrl = chrome.runtime.getURL(`assets/browser-icons/${iconPath}`);
-  const response = await fetch(iconUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to load icon: ${iconPath}`);
-  }
-  
-  const blob = await response.blob();
-  const formData = new FormData();
-  formData.append('cover', blob, iconPath);
+  await uploadCollectionCover(collectionId, iconPath, tokens);
 
-  // Upload the cover
-  await raindropRequest(`/collection/${collectionId}/cover`, tokens, {
-    method: 'PUT',
-    body: formData,
-  });
+  return { success: true };
+}
+
+/**
+ * Persist the current browser session's preferred icon.
+ * @param {string} iconPath
+ * @returns {Promise<{success: boolean}>}
+ */
+async function handleSetCurrentSessionIconPreference(iconPath) {
+  const browserId = await getOrCreateBrowserId();
+  await saveSessionIconPreference(browserId, iconPath);
 
   return { success: true };
 }
