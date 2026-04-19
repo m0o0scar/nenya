@@ -197,7 +197,98 @@ export function showLoginMessage(
  * @property {string} url
  * @property {string} [title]
  * @property {string} [excerpt]
+ * @property {boolean} [includeScreenshot]
+ * @property {number} [tabId]
+ * @property {number} [windowId]
  */
+
+const UNSORTED_SCREENSHOT_DISABLED_HOSTNAMES_STORAGE_KEY =
+  'unsortedScreenshotDisabledHostnames';
+
+/**
+ * Extract a normalized hostname for save-to-unsorted screenshot preferences.
+ * @param {string | undefined} url
+ * @returns {string}
+ */
+function getSaveToUnsortedHostname(url) {
+  if (!url) {
+    return '';
+  }
+
+  const normalizedUrl = normalizeUrlForSave(url) || url;
+
+  try {
+    return new URL(normalizedUrl).hostname.toLowerCase();
+  } catch (error) {
+    return '';
+  }
+}
+
+/**
+ * Load hostnames whose Save to Unsorted dialog should default to no screenshot.
+ * @returns {Promise<Set<string>>}
+ */
+async function loadDisabledScreenshotHostnames() {
+  try {
+    const result = await chrome.storage.local.get(
+      UNSORTED_SCREENSHOT_DISABLED_HOSTNAMES_STORAGE_KEY,
+    );
+    const stored =
+      result[UNSORTED_SCREENSHOT_DISABLED_HOSTNAMES_STORAGE_KEY];
+
+    if (!Array.isArray(stored)) {
+      return new Set();
+    }
+
+    return new Set(
+      stored
+        .filter((value) => typeof value === 'string' && value.length > 0)
+        .map((value) => value.toLowerCase()),
+    );
+  } catch (error) {
+    console.error(
+      '[popup] Failed to load Save to Unsorted screenshot preferences:',
+      error,
+    );
+    return new Set();
+  }
+}
+
+/**
+ * Persist the Save to Unsorted screenshot preference for a hostname.
+ * @param {string} hostname
+ * @param {boolean} includeScreenshot
+ * @returns {Promise<void>}
+ */
+async function saveScreenshotPreferenceForHostname(
+  hostname,
+  includeScreenshot,
+) {
+  if (!hostname) {
+    return;
+  }
+
+  try {
+    const disabledHostnames = await loadDisabledScreenshotHostnames();
+
+    if (includeScreenshot) {
+      disabledHostnames.delete(hostname);
+    } else {
+      disabledHostnames.add(hostname);
+    }
+
+    await chrome.storage.local.set({
+      [UNSORTED_SCREENSHOT_DISABLED_HOSTNAMES_STORAGE_KEY]: Array.from(
+        disabledHostnames,
+      ).sort(),
+    });
+  } catch (error) {
+    console.error(
+      '[popup] Failed to save Save to Unsorted screenshot preference:',
+      error,
+    );
+  }
+}
 
 /**
  * Show the save to Unsorted dialog.
@@ -228,7 +319,10 @@ export async function showSaveToUnsortedDialog(tab) {
 
   titleInput.value = tab.title || '';
   descriptionInput.value = '';
-  screenshotCheckbox.checked = true;
+
+  const hostname = getSaveToUnsortedHostname(tab?.url);
+  const disabledHostnames = await loadDisabledScreenshotHostnames();
+  screenshotCheckbox.checked = !disabledHostnames.has(hostname);
 
   // Store original button content for restoration
   const originalConfirmButtonContent = confirmButton.innerHTML;
@@ -244,6 +338,8 @@ export async function showSaveToUnsortedDialog(tab) {
     confirmButton.innerHTML = '<span class="loading loading-spinner loading-xs"></span> Saving...';
     confirmButton.disabled = true;
     cancelButton.disabled = true;
+
+    await saveScreenshotPreferenceForHostname(hostname, includeScreenshot);
 
     const entries = [
       {
