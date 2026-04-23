@@ -47,18 +47,15 @@ body {
 }
 
 #customSearchSuggestions,
-#bookmarksSearchResults,
-#sessionsList {
+#bookmarksSearchResults {
   scrollbar-width: thin;
 }
 
-#bookmarksSearchResults > div,
-#sessionsList .session-item > div:first-child {
+#bookmarksSearchResults > div {
   border-radius: var(--nenya-radius-md);
 }
 
-#bookmarksSearchResults > div:hover,
-#sessionsList .session-item > div:first-child:hover {
+#bookmarksSearchResults > div:hover {
   background: color-mix(in oklch, var(--nenya-accent) 12%, var(--color-base-200));
 }
 

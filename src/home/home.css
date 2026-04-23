@@ -97,13 +97,6 @@ body {
   overflow: auto;
 }
 
-#sessionsList {
-  max-height: min(55vh, 48rem);
-  overflow: auto;
-  padding: 0.5rem;
-  padding-right: 0.25rem;
-}
-
 #shortcutsContainer .btn {
   color: #2b211c;
 }

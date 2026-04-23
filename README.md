@@ -1,10 +1,10 @@
 # Nenya: Your Universal Browser Companion
 
-**Nenya empowers you to seamlessly manage your browsing sessions, bookmarks, and data across all your browsers, so you're never locked into a single ecosystem.**
+**Nenya empowers you to seamlessly manage your bookmarks, tabs, and data across all your browsers, so you're never locked into a single ecosystem.**
 
 ![](./docs/poster.jpeg)
 
-Nenya is the ultimate browser extension for users who refuse to be tied down to a single browser. It provides a comprehensive suite of tools to manage your tabs, sessions, and bookmarks, and makes it easy to take your data with you, no matter which browser you're using. With Nenya, you can create "projects" of tabs, integrate with Raindrop.io, and enjoy a variety of content interaction features that enhance your browsing experience.
+Nenya is the ultimate browser extension for users who refuse to be tied down to a single browser. It provides a comprehensive suite of tools to manage your tabs, bookmarks, and settings, and makes it easy to take your data with you, no matter which browser you're using. With Nenya, you can integrate with Raindrop.io and enjoy a variety of content interaction features that enhance your browsing experience.
 
 ## Features
 
@@ -13,11 +13,10 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 - **Tab Rename:** Rename the current tab instantly from popup or keyboard shortcut
 - **Screen Recording:** Start/stop screen recording with one shortcut, then preview and download recordings
 - **Faster Raindrop Saves:** Optimized Unsorted saving with batch APIs and parallel processing
-- **Performance Improvements:** Faster session export cover uploads
+- **Performance Improvements:** Faster Raindrop saves and content capture workflows
 
-### 🗂️ Tab & Project Management
+### 🗂️ Tab Management
 
-- **Project Management:** Save and restore entire browsing sessions as "projects"
 - **Tab Snapshots:** Automatic tab state preservation
 - **Tab Switching:** Quick keyboard shortcuts to navigate between tabs (left/right)
 - **Rename Tab:** Quickly rename the active tab title
@@ -25,7 +24,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 
 ### 🔄 Cross-Browser & Sync
 
-- **Cross-Browser Sync:** Seamlessly move your projects and data between different browsers
+- **Cross-Browser Sync:** Seamlessly move your bookmarks, settings, and data between different browsers
 - **Raindrop.io Integration:** Full two-way sync with Raindrop.io bookmarks
   - Pull collections from Raindrop
   - Save current tabs to Raindrop Unsorted (with optional custom title prompt)

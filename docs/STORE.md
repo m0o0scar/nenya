@@ -1,8 +1,8 @@
 # Nenya: Your Universal Browser Companion
 
-Nenya empowers you to seamlessly manage your browsing sessions, bookmarks, and data across all your browsers, so you're never locked into a single ecosystem.
+Nenya empowers you to seamlessly manage your bookmarks, tabs, and data across all your browsers, so you're never locked into a single ecosystem.
 
-Nenya is the ultimate browser extension for users who refuse to be tied down to a single browser. It provides a comprehensive suite of tools to manage your tabs, sessions, and bookmarks, and makes it easy to take your data with you, no matter which browser you're using. With Nenya, you can create "projects" of tabs, integrate with Raindrop.io, and enjoy a variety of content interaction features that enhance your browsing experience.
+Nenya is the ultimate browser extension for users who refuse to be tied down to a single browser. It provides a comprehensive suite of tools to manage your tabs, bookmarks, and settings, and makes it easy to take your data with you, no matter which browser you're using. With Nenya, you can integrate with Raindrop.io and enjoy a variety of content interaction features that enhance your browsing experience.
 
 🌟 Features
 
@@ -10,17 +10,16 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
 • Tab Rename: Rename the current tab instantly from popup or keyboard shortcut
 • Screen Recording: Start/stop recording with one shortcut, then preview and download
 • Faster Raindrop Saves: Optimized Unsorted saving with batch APIs and parallel processing
-• Performance Improvements: Faster highlight matching and session export cover uploads
+• Performance Improvements: Faster highlight matching, Raindrop saves, and content capture workflows
 
-🗂️ Tab & Project Management
-• Save and restore entire browsing sessions as "projects"
+🗂️ Tab Management
 • Automatic tab state preservation with snapshots
 • Quick keyboard shortcuts to navigate between tabs
 • Rename the active tab title directly from popup or shortcut
 • Customize your popup toolbar with pinned shortcuts
 
 🔄 Cross-Browser & Sync
-• Seamlessly move projects and data between browsers
+• Seamlessly move bookmarks, settings, and data between browsers
 • Full Raindrop.io integration with two-way sync
 ✓ Pull collections from Raindrop
 ✓ Save tabs to Raindrop Unsorted (with optional custom title)
@@ -89,13 +88,13 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   Required for Raindrop.io integration to mirror collections and items as browser bookmarks. The extension creates, updates, and manages bookmark folders to sync with your Raindrop account. Also enables the built-in bookmark search functionality allowing seamless cross-platform bookmark management.
 
 - **storage**:
-  Essential for saving user projects, settings, and preferences. Uses both `chrome.storage.sync` for cross-device synchronization of settings (shortcuts, rules, configurations) and `chrome.storage.local` for tab snapshots, project data, and LLM prompts that don't need to sync.
+  Essential for saving user settings and preferences. Uses both `chrome.storage.sync` for cross-device synchronization of settings (shortcuts, rules, configurations) and `chrome.storage.local` for tab snapshots and LLM prompts that don't need to sync.
 
 - **tabs**:
-  Core functionality for project management - creates, queries, updates, and manages browser tabs. Enables saving entire browsing sessions as "projects" and restoring them later, plus features like tab switching, screenshots, and auto-reload.
+  Core functionality for tab management - creates, queries, updates, and manages browser tabs. Enables features like tab switching, screenshots, content capture, and auto-reload.
 
 - **tabGroups**:
-  Used in conjunction with tab management to organize related tabs into groups when saving and restoring projects. Helps maintain logical organization of browsing sessions and preserves tab group structure across project saves/restores.
+  Used in conjunction with tab management to organize related tabs into groups for user workflows such as context-menu actions and split-tab operations.
 
 - **notifications**:
   Provides user feedback for important actions like successful Raindrop synchronization, backup completion, auto-reload events, auto-login notifications, and error states. Keeps users informed about background operations without interrupting their browsing.
@@ -119,7 +118,7 @@ Nenya is the ultimate browser extension for users who refuse to be tied down to 
   Used for implementing content filtering and blocking rules through the visual element picker interface.
 
 - **webNavigation**:
-  Required for monitoring page navigation events to implement several features: (1) auto-reload functionality based on URL patterns, (2) URL processing rules that transform URLs when opening in new tabs, and (3) tracking tab state changes for project management features.
+  Required for monitoring page navigation events to implement features such as auto-reload functionality based on URL patterns and URL processing rules that transform URLs when opening in new tabs.
 
 - **host permissions** (`<all_urls>`, `https://api.raindrop.io/*`):
   - `<all_urls>`: Required for content script injection across all websites to provide universal features like element blocking, custom styling (CSS), custom code (JS), video controls, bright mode, auto Google login, and LLM page content extraction.
