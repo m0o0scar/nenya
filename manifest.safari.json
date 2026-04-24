@@ -1,9 +1,8 @@
 {
   "manifest_version": 3,
-  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtpvO0tRT1thlVOMgoOlhlhBHZAQD4x3QJKyvFlEPHJ9RiazqqxqtRVXg8lSbzIS3KgsIlBjzCZQdITVP5CF8gxS7xbJqQzc2TwFXUUeiHuPe0lruViQPWgabbUscUNdD3je179/z9eNbILuKfLpp5WoDIxjZcW1fc9XJd22iUDciiedkkKOA37fq0IMYGNykkRtVU9phee2VJVyxU3YbBj7q5nD5fWwgJjXZng3uFeFEqzozl8VmYKn0B0sti/LB+wJ3/eqjJd2ejg5O1oGzLNSS5pSowZxxo5y4HuwsWfONr0vQSZSdtwti2/wozTcvOssJivO+b61tKznqO03yJQIDAQAB",
   "name": "Nenya",
   "version": "1.95.0",
-  "description": "",
+  "description": "Nenya browser companion for Raindrop saves, search, tab tools, and page workflows.",
   "icons": {
     "16": "assets/icons/icon-16x16.png",
     "32": "assets/icons/icon-32x32.png",
@@ -23,9 +22,6 @@
     "service_worker": "src/background/index.js",
     "type": "module"
   },
-  "chrome_url_overrides": {
-    "newtab": "src/home/index.html"
-  },
   "options_page": "src/options/index.html",
   "permissions": [
     "storage",
@@ -34,13 +30,10 @@
     "alarms",
     "scripting",
     "activeTab",
-    "clipboardWrite",
-    "clipboardRead",
-    "downloads",
-    "offscreen"
+    "clipboardWrite"
   ],
   "content_security_policy": {
-    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+    "extension_pages": "script-src 'self'; object-src 'self'"
   },
   "externally_connectable": {
     "matches": [
@@ -60,8 +53,7 @@
         "src/contentScript/epicker-ui.js",
         "src/contentScript/emoji-picker.js",
         "src/contentScript/emoji-picker-ui.html",
-        "src/contentScript/emoji-picker-ui.js",
-        "src/recording/*"
+        "src/contentScript/emoji-picker-ui.js"
       ],
       "matches": [
         "<all_urls>"
@@ -110,55 +102,49 @@
       "description": "Open popup"
     },
     "bookmarks-save-to-unsorted": {
-      "description": "💧 Save to Unsorted"
+      "description": "Save to Unsorted"
     },
     "bookmarks-save-to-unsorted-encrypted": {
-      "description": "💧 Encrypt & Save to Unsorted"
+      "description": "Encrypt and Save to Unsorted"
     },
     "bookmarks-save-clipboard-to-unsorted": {
-      "description": "💧 Save clipboard link to Unsorted"
+      "description": "Save clipboard link to Unsorted"
     },
     "copy-title": {
-      "description": "📋 Copy Title"
+      "description": "Copy Title"
     },
     "copy-title-url": {
-      "description": "📋 Copy Title\\nURL"
+      "description": "Copy Title and URL"
     },
     "copy-title-dash-url": {
-      "description": "📋 Copy Title - URL"
+      "description": "Copy Title - URL"
     },
     "copy-markdown-link": {
-      "description": "📋 Copy [Title](URL)"
+      "description": "Copy markdown link"
     },
     "copy-screenshot": {
-      "description": "📋 Copy Screenshot"
+      "description": "Copy Screenshot"
     },
     "pip-quit": {
-      "suggested_key": {
-        "default": "Alt+Q"
-      },
-      "description": "🎥 Quit PiP"
+      "description": "Quit PiP"
     },
     "tabs-activate-left-tab": {
-      "description": "🗂️ Activate left tab"
+      "description": "Activate left tab"
     },
     "tabs-activate-right-tab": {
-      "description": "🗂️ Activate right tab"
+      "description": "Activate right tab"
     },
     "block-element-picker": {
-      "description": "🎯 Element Picker"
+      "description": "Element Picker"
     },
     "llm-chat-with-llm": {
-      "description": "🤖 Chat with LLM"
+      "description": "Chat with LLM"
     },
     "llm-download-markdown": {
-      "description": "📥 Download as markdown"
+      "description": "Download as markdown"
     },
     "emoji-picker-show": {
-      "description": "😀 Show Emoji Picker"
-    },
-    "screen-recording-start": {
-      "description": "⏺️ Start screen recording"
+      "description": "Show Emoji Picker"
     }
   }
 }

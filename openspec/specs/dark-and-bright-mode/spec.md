@@ -1,8 +1,13 @@
-## Dark and Bright Mode Specification
+# Dark and Bright Mode Specification
+
+## Purpose
+Document the options and popup workflows for managing per-site dark mode, bright mode, and brightness override rules.
+
+## Requirements
 
 ### Requirement: Users SHALL manage URL-specific dark mode rules from the options page
 
-The Dark Mode section in `src/options/index.html` is responsible for capturing per-site rules stored under `chrome.storage.sync.darkModeRules`.
+The Dark Mode section in `src/options/index.html` MUST capture per-site rules stored under `chrome.storage.sync.darkModeRules`.
 
 #### Scenario: Render stored rules or the empty state
 
@@ -28,7 +33,7 @@ The Dark Mode section in `src/options/index.html` is responsible for capturing p
 
 ### Requirement: The dark mode content script SHALL enable Dark Reader on matching pages while the OS theme is dark
 
-`src/libs/darkreader.js` and `src/contentScript/darkMode.js` run on every page at `document_start`.
+`src/libs/darkreader.js` and `src/contentScript/darkMode.js` MUST run on every page at `document_start`.
 
 #### Scenario: Evaluate rules on load
 
@@ -49,7 +54,7 @@ The Dark Mode section in `src/options/index.html` is responsible for capturing p
 
 ### Requirement: Users SHALL maintain a validated bright mode whitelist from the options page
 
-`src/options/brightMode.js` manages `chrome.storage.sync.brightModeWhitelist` entries with metadata.
+`src/options/brightMode.js` MUST manage `chrome.storage.sync.brightModeWhitelist` entries with metadata.
 
 #### Scenario: Load and sanitize stored patterns
 
@@ -79,7 +84,7 @@ The Dark Mode section in `src/options/index.html` is responsible for capturing p
 
 ### Requirement: The bright mode content script SHALL enforce light-mode rendering for matching pages while the OS theme is light
 
-`src/contentScript/bright-mode.js` runs on all URLs at `document_start` to invert dark pages when the user prefers light.
+`src/contentScript/bright-mode.js` MUST run on all URLs at `document_start` to invert dark pages when the user prefers light.
 
 #### Scenario: Apply styles when the whitelist and OS state allow it
 

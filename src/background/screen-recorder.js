@@ -31,6 +31,20 @@ let offscreenDocumentExists = false;
 // Timeout ID for scheduled video deletion
 let videoDeletionTimeout = null;
 
+/**
+ * Determine whether the current browser exposes the APIs this implementation
+ * requires for extension-managed screen recording.
+ * @returns {boolean}
+ */
+export function isScreenRecordingSupported() {
+  return Boolean(
+    chrome.offscreen?.createDocument &&
+      chrome.offscreen?.closeDocument &&
+      chrome.runtime?.getContexts &&
+      chrome.storage?.session,
+  );
+}
+
 // ============================================================================
 // BADGE MANAGEMENT
 // ============================================================================
@@ -162,6 +176,13 @@ async function closeOffscreenDocument() {
 export async function startScreenRecording(sourceTabId) {
   console.log('[screen-recorder] startScreenRecording called, sourceTabId:', sourceTabId);
   console.log('[screen-recorder] Current state:', JSON.stringify(recordingState));
+
+  if (!isScreenRecordingSupported()) {
+    return {
+      success: false,
+      error: 'Screen recording is not supported in this browser build.',
+    };
+  }
   
   if (recordingState.isRecording) {
     console.log('[screen-recorder] Recording already in progress, aborting');
@@ -292,7 +313,7 @@ export function isRecording() {
  * Handle screen recording toggle.
  * If not recording, starts recording. If recording, stops and opens preview.
  * @param {number} [tabId] - Optional tab ID
- * @returns {Promise<void>}
+ * @returns {Promise<{success: boolean, error?: string, blobUrl?: string}>}
  */
 export async function handleScreenRecordingToggle(tabId) {
   console.log('[screen-recorder] handleScreenRecordingToggle called, tabId:', tabId);
@@ -313,6 +334,7 @@ export async function handleScreenRecordingToggle(tabId) {
     } else {
       console.error('[screen-recorder] Failed to stop recording:', result.error);
     }
+    return result;
   } else {
     console.log('[screen-recorder] Not recording, will start recording...');
     // Start recording
@@ -322,6 +344,7 @@ export async function handleScreenRecordingToggle(tabId) {
     if (!result.success) {
       console.error('[screen-recorder] Failed to start recording:', result.error);
     }
+    return result;
   }
 }
 

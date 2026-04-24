@@ -36,7 +36,7 @@ The extension MUST support keyboard shortcuts for clipboard operations as define
 - **WHEN** the user presses a configured clipboard shortcut
 - **THEN** the corresponding clipboard operation MUST execute
 - **AND** the operation MUST target the currently active tab or highlighted tabs
-- **AND** the appropriate badge and notification MUST be displayed
+- **AND** the appropriate badge MUST be displayed
 
 #### Scenario: Available keyboard shortcuts
 
@@ -59,7 +59,6 @@ The extension MUST support copying tab titles only.
 - **THEN** the tab's title MUST be transformed using matching title transform rules
 - **AND** the transformed title MUST be copied to the clipboard
 - **AND** a success badge MUST be displayed
-- **AND** a success notification MUST be shown (if notifications are enabled)
 
 #### Scenario: Copy multiple tab titles
 
@@ -149,7 +148,7 @@ The extension MUST support copying a screenshot of the current tab to the clipbo
 
 - **GIVEN** multiple tabs are highlighted
 - **WHEN** the user attempts to copy a screenshot via keyboard shortcut
-- **THEN** an error notification MUST be shown stating "Screenshot only works with single tab"
+- **THEN** a failure status MUST be set stating "Screenshot only works with single tab"
 - **AND** a failure badge MUST be displayed
 - **AND** the clipboard MUST NOT be modified
 
@@ -264,40 +263,6 @@ The extension MUST provide visual feedback for clipboard operations.
 - **AND** the badge MUST have a white background (#ffffff)
 - **AND** the badge MUST auto-dismiss after 2000ms
 
-### Requirement: Notifications
-
-The extension MUST show notifications for clipboard operations based on user preferences.
-
-#### Scenario: Show success notification
-
-- **GIVEN** notifications are enabled for clipboard operations
-- **AND** the clipboard operation succeeds
-- **WHEN** the operation completes
-- **THEN** a notification MUST be shown with:
-  - Title: "Nenya"
-  - Message: "Copied {N} tab(s) to clipboard" or "Screenshot copied to clipboard"
-  - Icon: Extension icon (48x48)
-- **AND** the notification MUST respect the user's notification preferences
-
-#### Scenario: Show failure notification
-
-- **GIVEN** a clipboard operation fails
-- **WHEN** the operation completes
-- **THEN** a notification MUST be shown with:
-  - Title: "Nenya"
-  - Message: "Failed to copy to clipboard"
-  - Icon: Extension icon (48x48)
-- **AND** failure notifications MUST always be shown regardless of user preferences
-
-#### Scenario: Check notification preferences
-
-- **GIVEN** a successful clipboard operation
-- **WHEN** determining whether to show a notification
-- **THEN** the notification MUST be shown only if:
-  - Global notifications are enabled (`prefs.enabled`)
-  - Clipboard notifications are enabled (`prefs.clipboard.enabled`)
-  - Copy success notifications are enabled (`prefs.clipboard.copySuccess`)
-
 ### Requirement: Context Menu Visibility
 
 The extension MUST dynamically update context menu visibility based on tab selection state.
@@ -320,7 +285,6 @@ The extension MUST handle errors gracefully during clipboard operations.
 - **WHEN** attempting to copy content
 - **THEN** the error MUST be logged to the console
 - **AND** a failure badge MUST be displayed
-- **AND** an error notification MUST be shown
 - **AND** the extension MUST not crash or hang
 
 #### Scenario: Handle tab access errors
@@ -329,7 +293,7 @@ The extension MUST handle errors gracefully during clipboard operations.
 - **WHEN** attempting to perform a clipboard operation
 - **THEN** the operation MUST fail gracefully
 - **AND** the error MUST be logged with context
-- **AND** the user MUST be notified of the failure
+- **AND** failure feedback MUST be shown to the user
 
 #### Scenario: Handle screenshot capture errors
 
@@ -429,8 +393,8 @@ The extension MUST automatically download screenshots to the file system when au
 - **WHEN** attempting to save a screenshot
 - **THEN** the error MUST be logged to the console
 - **AND** the clipboard copy operation MUST still succeed
-- **AND** no error notification MUST be shown to the user
-- **AND** the success badge/notification MUST still be shown
+- **AND** no error status MUST be shown to the user
+- **AND** the success badge MUST still be shown
 
 ### Requirement: Storage Change Synchronization
 
@@ -524,5 +488,5 @@ This feature does not use any persistent storage. All operations are stateless.
 
 ### Dependencies
 
-- `src/background/mirror.js` - For badge animations and notification preferences
+- `src/background/mirror.js` - For badge animations
 - `src/shared/urlProcessor.js` - For URL processing before copy

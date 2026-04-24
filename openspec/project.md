@@ -27,12 +27,12 @@ Vanilla JavaScript Chrome extension (Manifest V3).
 
 ### Architecture Patterns
 The project follows a typical browser extension architecture, separating concerns into distinct directories within `src/`:
--   **`background/`**: Contains scripts that run in the background, handling persistent tasks, event listeners, and API communications, such as `auto-reload.js`, `clipboard.js`, `mirror.js`, `options-backup.js`, `projects.js`, and `tab-snapshots.js`.
+-   **`background/`**: Contains scripts that run in the background, handling persistent tasks, event listeners, and API communications, such as `auto-reload.js`, `clipboard.js`, `mirror.js`, `notion.js`, `options-backup.js`, `screen-recorder.js`, and `tab-snapshots.js`.
 -   **`contentScript/`**: Houses scripts injected into web pages to interact with their DOM and content, including `auto-google-login.js`, `block-elements.js`, `darkMode.js`, `epicker.js`, `llmPageInjector.js`, and `video-controller.js`.
 -   **`libs/`**: Stores third-party JavaScript and CSS libraries, such as `ace.js`, `daisyui@5.css`, `darkreader.js`, `dayjs.min.js`, `readability.min.js`, and `tailwindcss@4.js`. These are typically browser-ready, standalone versions.
 -   **`options/`**: Manages the extension's settings and configuration UI, with files like `autoGoogleLogin.js`, `bookmarks.js`, `customCode.js`, `darkMode.js`, `index.html`, and `options.js`.
--   **`popup/`**: Contains the HTML and JavaScript for the extension's browser action popup, including `chat.html`, `index.html`, `popup.js`, and `projects.js`.
--   **`shared/`**: Provides common utilities, helper functions, and shared constants used across different parts of the extension, such as `bookmarkFolders.js`, `icons.js`, `llmProviders.js`, and `urlProcessor.js`.
+-   **`popup/`**: Contains the HTML and JavaScript for the extension's browser action popup, including `chat.html`, `emoji.html`, `index.html`, `mirror.js`, `popup.js`, and `shared.js`.
+-   **`shared/`**: Provides common utilities, helper functions, and shared constants used across different parts of the extension, such as `contextMenus.js`, `customSearchEngines.js`, `icons.js`, `llmProviders.js`, and `tokenRefresh.js`.
 ### Preferred Frameworks & Libraries
 #### What to do when a framework/library is needed?
 - When a JavaScript library is required, download the CDN (browser-ready) version and place it in `src/libs`.

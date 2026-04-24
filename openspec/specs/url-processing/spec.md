@@ -1,6 +1,9 @@
-## URL Processing Specification
+# URL Processing Specification
 
+## Purpose
 `src/options/urlProcessRules.js`, `src/options/index.html`, `src/shared/urlProcessor.js`, `src/background/clipboard.js`, `src/background/index.js`, `src/background/mirror.js`, `src/background/projects.js`, `src/background/options-backup.js`, `src/background/automerge-options-sync.js`, and `src/options/importExport.js` implement the URL Processing capability: users define deterministic rule sets that match URL patterns, apply ordered processors during specific workflows (clipboard copies, Raindrop saves, and tab openings), and ensure those rules remain portable through backup, export, and Automerge sync flows.
+
+## Requirements
 
 ### Requirement: The options UI SHALL normalize and reflect sync-stored URL process rules
 
@@ -58,19 +61,19 @@
 #### Scenario: Copy tab data after applying rules
 - **GIVEN** a clipboard context-menu action runs,
 - **WHEN** `getTabData()` in `src/background/clipboard.js` iterates selected tabs,
-- **THEN** it MUST skip non-HTTP(S) URLs, call `processUrl(tab.url, 'copy-to-clipboard')` for each valid tab, and feed the processed URLs into every formatter (Title, Title+URL, Markdown, etc.) so copied text reflects all matching rule transformations before badges/notifications are shown.
+- **THEN** it MUST skip non-HTTP(S) URLs, call `processUrl(tab.url, 'copy-to-clipboard')` for each valid tab, and feed the processed URLs into every formatter (Title, Title+URL, Markdown, etc.) so copied text reflects all matching rule transformations before badges/status feedback are shown.
 
 ### Requirement: Save-to-Raindrop flows SHALL process URLs before persistence
 
 #### Scenario: Context menu saves
 - **GIVEN** the user triggers “Save to Raindrop Unsorted” for a page or link,
 - **WHEN** `src/background/index.js` handles the context-menu click,
-- **THEN** it MUST convert split-page URLs, normalize them via `normalizeHttpUrl()`, run `processUrl(normalizedUrl, 'save-to-raindrop')`, and pass the processed URL to `saveUrlsToUnsorted()` so Raindrop and bookmark dedupe operate on the rewritten string.
+- **THEN** it MUST convert split-page URLs, normalize them via `normalizeHttpUrl()`, run `processUrl(normalizedUrl, 'save-to-raindrop')`, and pass the processed URL to `saveUrlsToUnsorted()` so Raindrop dedupe operates on the rewritten string.
 
 #### Scenario: Bulk saves and project exports
-- **GIVEN** code paths such as `saveUrlsToUnsorted()` or `resolveProjectTabs()` prepare URLs for Raindrop/bookmark storage,
+- **GIVEN** code paths such as `saveUrlsToUnsorted()` or `resolveProjectTabs()` prepare URLs for Raindrop storage,
 - **WHEN** each entry is sanitized,
-- **THEN** they MUST call `processUrl(url, 'save-to-raindrop')` prior to deduplication, split-page conversion, and Raindrop API calls so every bookmark/project entry honors the user’s processors.
+- **THEN** they MUST call `processUrl(url, 'save-to-raindrop')` prior to deduplication, split-page conversion, and Raindrop API calls so every saved item honors the user’s processors.
 
 ### Requirement: Tab navigation processing SHALL honor legacy open-in-new-tab rules
 
@@ -88,5 +91,3 @@
 - **GIVEN** Automerge sync is active,
 - **WHEN** `automerge-options-sync` constructs or updates the CRDT document,
 - **THEN** the document MUST include a `urlProcessRules` array seeded by `createEmptyAutomergeDoc()`, copy storage changes into the doc via `applyStorageChangesToDoc()`, and push doc updates back into `chrome.storage.sync` via `applyDocToStorage()` so Raindrop-hosted state stays consistent with the user’s rule definitions.
-
-

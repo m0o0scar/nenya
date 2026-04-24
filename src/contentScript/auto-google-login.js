@@ -236,14 +236,14 @@
   }
 
   /**
-   * Send notification via background script
+   * Log auto-login status locally.
    * @param {string} title
    * @param {string} message
    * @param {string} [targetUrl]
    * @returns {Promise<void>}
    */
-  async function sendNotification(title, message, targetUrl) {
-    return;
+  async function reportAutoLoginStatus(title, message, targetUrl) {
+    console.info('[auto-google-login]', title, message, targetUrl || '');
   }
 
   /**
@@ -289,7 +289,7 @@
           );
         }
         window.location.href = href;
-        await sendNotification(
+        await reportAutoLoginStatus(
           'Auto Google Login',
           `Redirecting to Google login for ${email}`,
           href,
@@ -331,7 +331,7 @@
         // Try to find and interact with the OAuth popup
         // Note: We can't directly access popup windows from content scripts,
         // so we'll monitor the current page for redirects to Google OAuth
-        await sendNotification(
+        await reportAutoLoginStatus(
           'Auto Google Login',
           `Google login popup opened. Please select account: ${email}`,
           window.location.href,
@@ -342,7 +342,7 @@
       }
     } catch (error) {
       console.error('[auto-google-login] Failed to click button:', error);
-      await sendNotification(
+      await reportAutoLoginStatus(
         'Auto Google Login Error',
         `Failed to initiate login: ${error.message}`,
         window.location.href,
@@ -637,7 +637,7 @@
     }
 
     if (!clicked) {
-      await sendNotification(
+      await reportAutoLoginStatus(
         'Auto Google Login',
         'Please manually click Continue to complete login',
         window.location.href,
@@ -973,7 +973,7 @@
     const email =
       typeof ruleOrEmail === 'string' ? ruleOrEmail : ruleOrEmail.email || '';
     if (!email) {
-      await sendNotification(
+      await reportAutoLoginStatus(
         'Auto Google Login',
         'Please select your Google account to continue',
         window.location.href,
@@ -1053,7 +1053,7 @@
     accountSelected = results[0] || results[1];
 
     if (!accountSelected) {
-      await sendNotification(
+      await reportAutoLoginStatus(
         'Auto Google Login',
         `Please manually select account: ${email}`,
         window.location.href,

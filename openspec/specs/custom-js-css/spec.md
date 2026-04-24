@@ -1,6 +1,9 @@
-## Custom JS & CSS Specification
+# Custom JS & CSS Specification
 
+## Purpose
 `src/options/customCode.js`, `src/options/index.html`, `src/popup/popup.js`, `src/contentScript/custom-js-css.js`, `src/background/index.js`, `src/options/importExport.js`, and `src/background/automerge-options-sync.js` collectively implement the “Custom JS & CSS” capability: users create URL-patterned rules that inject CSS and JavaScript into matching pages, manage those rules from the Options UI or popup shortcuts, and keep them portable through the Raindrop backup plus Automerge sync flows.
+
+## Requirements
 
 ### Requirement: The options UI SHALL load and sanitize locally stored custom code rules
 
@@ -78,5 +81,4 @@
 #### Scenario: Keep Automerge sync aware of local-only rules
 - **GIVEN** Automerge sync is preparing the CRDT document for Raindrop,
 - **THEN** `ensureLocalStorageInDoc()` MUST read `chrome.storage.local.customCodeRules`, detect divergence from the document’s `doc.customCodeRules`, and copy the JSON data into the Automerge change so remote merges, backups, and other browsers receive the latest rules even though they originate in local storage.
-
 

@@ -1,10 +1,6 @@
 /* global chrome */
 
 import {
-  getBookmarkFolderPath,
-  ensureBookmarkFolderPath,
-} from '../shared/bookmarkFolders.js';
-import {
   getWhitelistPatterns,
   setPatterns,
   isValidUrlPattern,
@@ -13,59 +9,12 @@ import { loadLLMPrompts } from './llmPrompts.js';
 import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 
 /**
- * @typedef {Object} RootFolderSettings
- * @property {string} parentFolderId
- * @property {string} rootFolderName
- */
-
-/**
- * @typedef {Object} RootFolderBackupSettings
- * @property {string} rootFolderName
- * @property {string} parentFolderPath
- * @property {string} [parentFolderId]
- */
-
-/**
- * @typedef {RootFolderBackupSettings} RootFolderImportSettings
- */
-
-/**
  * @typedef {Object} AutoReloadRuleSettings
  * @property {string} id
  * @property {string} pattern
  * @property {number} intervalSeconds
  * @property {string} [createdAt]
  * @property {string} [updatedAt]
- */
-
-/**
- * @typedef {Object} NotificationBookmarkSettings
- * @property {boolean} enabled
- * @property {boolean} pullFinished
- * @property {boolean} unsortedSaved
- */
-
-/**
- * @typedef {Object} NotificationProjectSettings
- * @property {boolean} enabled
- * @property {boolean} saveProject
- * @property {boolean} addTabs
- * @property {boolean} replaceItems
- * @property {boolean} deleteProject
- */
-
-/**
- * @typedef {Object} NotificationClipboardSettings
- * @property {boolean} enabled
- * @property {boolean} copySuccess
- */
-
-/**
- * @typedef {Object} NotificationPreferences
- * @property {boolean} enabled
- * @property {NotificationBookmarkSettings} bookmark
- * @property {NotificationProjectSettings} project
- * @property {NotificationClipboardSettings} clipboard
  */
 
 /**
@@ -198,7 +147,6 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 /**
  * @typedef {Object} ExportPayload
  * @property {string} provider
- * @property {RootFolderBackupSettings} mirrorRootFolderSettings
  * @property {AutoReloadRuleSettings[]} autoReloadRules
  * @property {BrightModeSettings} brightModeSettings
  * @property {BlockElementRuleSettings[]} blockElementRules
@@ -219,7 +167,6 @@ import { loadRules as loadAutoGoogleLoginRules } from './autoGoogleLogin.js';
 
 const PROVIDER_ID = 'raindrop';
 const EXPORT_VERSION = 14;
-const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
 const BLOCK_ELEMENT_RULES_KEY = 'blockElementRules';
@@ -232,7 +179,6 @@ const PINNED_SEARCH_RESULTS_KEY = 'pinnedSearchResults';
 const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
 const NOTION_INTEGRATION_SECRET_KEY = 'notionIntegrationSecret';
 const MIN_RULE_INTERVAL_SECONDS = 5;
-const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
 
 const importButton = /** @type {HTMLButtonElement | null} */ (
   document.getElementById('optionsFloatingImportButton')
@@ -303,33 +249,6 @@ function normalizePinnedSearchResults(value) {
       typeof item.type === 'string'
     );
   });
-}
-
-/**
- * Deep clone helper for preferences.
- * @param {NotificationPreferences} value
- * @returns {NotificationPreferences}
- */
-function clonePreferences(value) {
-  return {
-    enabled: Boolean(value?.enabled),
-    bookmark: {
-      enabled: Boolean(value?.bookmark?.enabled),
-      pullFinished: Boolean(value?.bookmark?.pullFinished),
-      unsortedSaved: Boolean(value?.bookmark?.unsortedSaved),
-    },
-    project: {
-      enabled: Boolean(value?.project?.enabled),
-      saveProject: Boolean(value?.project?.saveProject),
-      addTabs: Boolean(value?.project?.addTabs),
-      replaceItems: Boolean(value?.project?.replaceItems),
-      deleteProject: Boolean(value?.project?.deleteProject),
-    },
-    clipboard: {
-      enabled: Boolean(value?.clipboard?.enabled),
-      copySuccess: Boolean(value?.clipboard?.copySuccess),
-    },
-  };
 }
 
 /**
@@ -1267,94 +1186,11 @@ function normalizeNotionIntegrationSecret(value) {
 }
 
 /**
- * Normalize possibly partial preferences.
- * @param {unknown} value
- * @returns {NotificationPreferences}
- */
-function normalizePreferences(value) {
-  const fallback = clonePreferences({
-    enabled: true,
-    bookmark: { enabled: true, pullFinished: true, unsortedSaved: true },
-    project: {
-      enabled: true,
-      saveProject: true,
-      addTabs: true,
-      replaceItems: true,
-      deleteProject: true,
-    },
-    clipboard: {
-      enabled: true,
-      copySuccess: true,
-    },
-  });
-  if (!value || typeof value !== 'object') {
-    return fallback;
-  }
-  const raw =
-    /** @type {{ enabled?: unknown, bookmark?: Partial<NotificationBookmarkSettings>, project?: Partial<NotificationProjectSettings>, clipboard?: Partial<NotificationClipboardSettings> }} */ (
-      value
-    );
-  const bookmark = raw.bookmark ?? {};
-  const project = raw.project ?? {};
-  const clipboard = raw.clipboard ?? {};
-  return {
-    enabled: typeof raw.enabled === 'boolean' ? raw.enabled : fallback.enabled,
-    bookmark: {
-      enabled:
-        typeof bookmark.enabled === 'boolean'
-          ? bookmark.enabled
-          : fallback.bookmark.enabled,
-      pullFinished:
-        typeof bookmark.pullFinished === 'boolean'
-          ? bookmark.pullFinished
-          : fallback.bookmark.pullFinished,
-      unsortedSaved:
-        typeof bookmark.unsortedSaved === 'boolean'
-          ? bookmark.unsortedSaved
-          : fallback.bookmark.unsortedSaved,
-    },
-    project: {
-      enabled:
-        typeof project.enabled === 'boolean'
-          ? project.enabled
-          : fallback.project.enabled,
-      saveProject:
-        typeof project.saveProject === 'boolean'
-          ? project.saveProject
-          : fallback.project.saveProject,
-      addTabs:
-        typeof project.addTabs === 'boolean'
-          ? project.addTabs
-          : fallback.project.addTabs,
-      replaceItems:
-        typeof project.replaceItems === 'boolean'
-          ? project.replaceItems
-          : fallback.project.replaceItems,
-      deleteProject:
-        typeof project.deleteProject === 'boolean'
-          ? project.deleteProject
-          : fallback.project.deleteProject,
-    },
-    clipboard: {
-      enabled:
-        typeof clipboard.enabled === 'boolean'
-          ? clipboard.enabled
-          : fallback.clipboard.enabled,
-      copySuccess:
-        typeof clipboard.copySuccess === 'boolean'
-          ? clipboard.copySuccess
-          : fallback.clipboard.copySuccess,
-    },
-  };
-}
-
-/**
  * Read current settings used by Options backup.
- * @returns {Promise<{ rootFolder: RootFolderBackupSettings, autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
+ * @returns {Promise<{ autoReloadRules: AutoReloadRuleSettings[], brightModeSettings: BrightModeSettings, blockElementRules: BlockElementRuleSettings[], customCodeRules: CustomCodeRuleSettings[], runCodeInPageRules: RunCodeInPageRules[], llmPrompts: LLMPromptSettings[], autoGoogleLoginRules: AutoGoogleLoginRuleSettings[], pinnedShortcuts: string[], pinnedSearchResults: any[], notionIntegrationSecret: string }>}
  */
 async function readCurrentOptions() {
   const [
-    rootResp,
     reloadResp,
     whitelistPatterns,
     blockElementResp,
@@ -1367,7 +1203,6 @@ async function readCurrentOptions() {
     customSearchEnginesResp,
     notionIntegrationSecretResp,
   ] = await Promise.all([
-    chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY),
     chrome.storage.local.get(AUTO_RELOAD_RULES_KEY),
     getWhitelistPatterns(),
     chrome.storage.local.get(BLOCK_ELEMENT_RULES_KEY),
@@ -1380,40 +1215,6 @@ async function readCurrentOptions() {
     chrome.storage.local.get(CUSTOM_SEARCH_ENGINES_KEY),
     chrome.storage.local.get(NOTION_INTEGRATION_SECRET_KEY),
   ]);
-
-  /** @type {Record<string, RootFolderSettings> | undefined} */
-  const rootMap = /** @type {*} */ (rootResp?.[ROOT_FOLDER_SETTINGS_KEY]);
-  const rootCandidate = rootMap?.[PROVIDER_ID];
-  const parentFolderId =
-    typeof rootCandidate?.parentFolderId === 'string' &&
-    rootCandidate.parentFolderId
-      ? rootCandidate.parentFolderId
-      : '1';
-  const rootFolderName =
-    typeof rootCandidate?.rootFolderName === 'string' &&
-    rootCandidate.rootFolderName
-      ? rootCandidate.rootFolderName
-      : 'Raindrop';
-
-  let parentFolderPath = '';
-  try {
-    parentFolderPath = await getBookmarkFolderPath(parentFolderId);
-  } catch (error) {
-    console.warn(
-      '[importExport] Failed to resolve parent folder path for export:',
-      error,
-    );
-  }
-  if (!parentFolderPath) {
-    parentFolderPath = DEFAULT_PARENT_PATH;
-  }
-
-  /** @type {RootFolderBackupSettings} */
-  const rootFolder = {
-    parentFolderId,
-    parentFolderPath,
-    rootFolderName,
-  };
 
   const autoReloadRules = normalizeAutoReloadRules(
     reloadResp?.[AUTO_RELOAD_RULES_KEY],
@@ -1456,7 +1257,6 @@ async function readCurrentOptions() {
   );
 
   return {
-    rootFolder,
     autoReloadRules,
     brightModeSettings,
     blockElementRules,
@@ -1499,7 +1299,6 @@ function downloadJson(data, filename) {
 async function handleExportClick() {
   try {
     const {
-      rootFolder,
       autoReloadRules,
       brightModeSettings,
       blockElementRules,
@@ -1517,7 +1316,6 @@ async function handleExportClick() {
       version: EXPORT_VERSION,
       data: {
         provider: PROVIDER_ID,
-        mirrorRootFolderSettings: rootFolder,
         autoReloadRules,
         brightModeSettings,
         blockElementRules,
@@ -1549,7 +1347,6 @@ async function handleExportClick() {
 
 /**
  * Apply imported settings to storage.
- * @param {RootFolderImportSettings} rootFolder
  * @param {AutoReloadRuleSettings[]} autoReloadRules
  * @param {BrightModeSettings} brightModeSettings
  * @param {BlockElementRuleSettings[]} blockElementRules
@@ -1564,7 +1361,6 @@ async function handleExportClick() {
  * @returns {Promise<void>}
  */
 async function applyImportedOptions(
-  rootFolder,
   autoReloadRules,
   brightModeSettings,
   blockElementRules,
@@ -1577,47 +1373,6 @@ async function applyImportedOptions(
   customSearchEngines,
   notionIntegrationSecret,
 ) {
-  let parentFolderId = '';
-  const desiredPath =
-    typeof rootFolder?.parentFolderPath === 'string'
-      ? rootFolder.parentFolderPath.trim()
-      : '';
-
-  if (desiredPath) {
-    try {
-      const ensuredId = await ensureBookmarkFolderPath(desiredPath);
-      if (ensuredId) {
-        parentFolderId = ensuredId;
-      }
-    } catch (error) {
-      console.warn(
-        '[importExport] Failed to ensure parent folder path during import:',
-        error,
-      );
-    }
-  }
-
-  if (!parentFolderId) {
-    parentFolderId =
-      typeof rootFolder?.parentFolderId === 'string' &&
-      rootFolder.parentFolderId
-        ? rootFolder.parentFolderId
-        : '';
-  }
-
-  if (!parentFolderId) {
-    parentFolderId = '1';
-  }
-
-  // Sanitize
-  const sanitizedRoot = {
-    parentFolderId,
-    rootFolderName:
-      typeof rootFolder?.rootFolderName === 'string' &&
-      rootFolder.rootFolderName
-        ? rootFolder.rootFolderName
-        : 'Raindrop',
-  };
   const sanitizedRules = normalizeAutoReloadRules(autoReloadRules);
   const sanitizedBlockElementRules = normalizeBlockElementRules(
     blockElementRules || [],
@@ -1665,16 +1420,9 @@ async function applyImportedOptions(
     sanitizedWhitelist = [];
   }
 
-  // Read existing map to preserve other providers if any
-  const existing = await chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY);
-  /** @type {Record<string, RootFolderSettings>} */
-  const map = /** @type {*} */ (existing?.[ROOT_FOLDER_SETTINGS_KEY]) || {};
-  map[PROVIDER_ID] = sanitizedRoot;
-
   // Persist all keys (custom code rules go to local storage due to size)
   await Promise.all([
     chrome.storage.local.set({
-      [ROOT_FOLDER_SETTINGS_KEY]: map,
       [AUTO_RELOAD_RULES_KEY]: sanitizedRules,
       [BRIGHT_MODE_WHITELIST_KEY]: sanitizedWhitelist,
       [BLOCK_ELEMENT_RULES_KEY]: sanitizedBlockElementRules,
@@ -1714,9 +1462,6 @@ async function handleFileChosen() {
       throw new Error('Unsupported provider in file.');
     }
 
-    const root = /** @type {RootFolderImportSettings} */ (
-      data.mirrorRootFolderSettings
-    );
     const autoReloadRules = /** @type {AutoReloadRuleSettings[]} */ (
       data.autoReloadRules
     );
@@ -1763,7 +1508,6 @@ async function handleFileChosen() {
     brightModeSettings = brightModeSettings || { whitelist: [] };
 
     await applyImportedOptions(
-      root,
       autoReloadRules,
       brightModeSettings,
       blockElementRules,

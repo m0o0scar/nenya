@@ -42,6 +42,5 @@ The encrypt-and-save flow SHALL prompt for a password, branch on user input, and
 
 - **GIVEN** the encrypt-and-save flow runs,
 - **WHEN** the encryption request fails or returns no decrypt URL,
-- **THEN** it SHALL surface a user-visible error (notification for background triggers or popup status),
+- **THEN** it SHALL surface a user-visible error through popup/background status,
 - **AND** it SHALL NOT attempt to save to Raindrop Unsorted.
-

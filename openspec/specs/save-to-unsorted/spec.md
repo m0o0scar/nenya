@@ -1,5 +1,5 @@
 ## Purpose
-Provide a quick way to save web pages and links to the Raindrop Unsorted collection from multiple surfaces (popup, shortcuts, context menus), with automatic URL normalization, local bookmark mirroring, and user-configurable notifications.
+Provide a quick way to save web pages and links to the Raindrop Unsorted collection from multiple surfaces (popup, shortcuts, context menus), with automatic URL normalization and clear caller-visible status.
 ## Requirements
 ### Requirement: Users MUST be able to trigger Save to Unsorted from common surfaces
 The extension MUST expose a single Save to Unsorted behavior through the popup, pinned shortcut buttons, and the `bookmarks-save-to-unsorted` keyboard command.
@@ -30,8 +30,8 @@ Right-click context menus MUST invoke the same Save to Unsorted pipeline for bot
 - **THEN** the extension MUST process the link URL with the same normalization, split conversion, and URL processing steps,
 - **AND** use the selected text (falling back to the tab title) as the entry title before sending it to `saveUrlsToUnsorted`.
 
-### Requirement: Save pipeline MUST normalize URLs, honor processing rules, and mirror Raindrop Unsorted locally
-Saving MUST sanitize inputs, apply user-configured URL processors, call the Raindrop API, and keep the local Unsorted bookmark folder synchronized.
+### Requirement: Save pipeline MUST normalize URLs, honor processing rules, and call Raindrop directly
+Saving MUST sanitize inputs, apply user-configured URL processors, and call the Raindrop API without creating or updating local bookmark entries.
 
 #### Scenario: Process entries before calling Raindrop
 - **GIVEN** `saveUrlsToUnsorted` receives entries,
@@ -43,35 +43,16 @@ Saving MUST sanitize inputs, apply user-configured URL processors, call the Rain
 - **WHEN** no valid Raindrop tokens exist or they are expired,
 - **THEN** it MUST reject the save (returning `ok: false` with an explanatory error) and avoid calling the Raindrop API.
 
-#### Scenario: Mirror saved Raindrops under the Unsorted bookmark folder
+#### Scenario: Save sanitized entries to Raindrop Unsorted
 - **GIVEN** there are sanitized entries,
-- **THEN** the extension MUST ensure the configured Raindrop root folder and its `Unsorted` child exist in the browser bookmarks,
-- **AND** for each entry it MUST call `POST /raindrop` with `collectionId: -1`,
-- **AND** if the processed URL already exists in the local Unsorted folder it MUST update the bookmark title when the Raindrop response title changes and count it as `updated` (otherwise count as `skipped`),
-- **AND** if the URL is new it MUST create a bookmark beneath the Unsorted folder and count it as `created`,
+- **THEN** for each entry it MUST call `POST /raindrop` with `collectionId: -1`,
+- **AND** API responses MUST be counted as created, updated, or skipped based on the Raindrop response and duplicate handling,
 - **AND** failures MUST increment `failed` and include `url: error` entries in the response `errors` array.
 
 #### Scenario: Return save summary to popup callers
 - **GIVEN** the popup invoked `mirror:saveToUnsorted`,
 - **WHEN** a response arrives,
 - **THEN** it MUST include the summary counts (`created`, `updated`, `skipped`, `failed`, `ok`, `error`) so the popup can echo the result in its status message.
-
-### Requirement: Save outcomes MUST notify the user according to notification preferences
-Users MUST get clear feedback (or suppression) that respects the Notifications settings in `src/options/notifications.js`.
-
-#### Scenario: Success notification
-- **GIVEN** a save succeeded and bookmark notifications / Unsorted notifications are enabled,
-- **THEN** the background MUST raise an `'unsorted-success'` notification via `pushNotification`,
-- **AND** the body MUST mention how many URLs were saved and summarize duplicate skips, linking to `https://app.raindrop.io/my/-1`.
-
-#### Scenario: Failure notification
-- **GIVEN** a save failed to persist at least one URL and bookmark notifications for Unsorted saves are enabled,
-- **THEN** the background MUST raise an `'unsorted-failure'` notification with the sanitized error message.
-
-#### Scenario: Respect disabled notifications
-- **GIVEN** any of global notifications, bookmark notifications, or the specific Unsorted notification toggle is disabled,
-- **WHEN** a save completes,
-- **THEN** no notification MUST be shown even though the save summary is still returned to popup callers.
 
 ### Requirement: Users MUST be able to save clipboard URLs via keyboard command
 The extension MUST provide a keyboard command that reads the current clipboard content and saves it to Raindrop Unsorted if it contains a valid URL.
@@ -82,12 +63,12 @@ The extension MUST provide a keyboard command that reads the current clipboard c
 - **THEN** the background MUST read the clipboard text via the scripting API
 - **AND** validate the text is a valid HTTP/HTTPS URL
 - **AND** invoke `saveUrlsToUnsorted` with the URL and a default title derived from the URL
-- **AND** show a notification according to user preferences
+- **AND** return the save summary to the command handler for badge/status handling.
 
 #### Scenario: Keyboard command handles invalid clipboard content
 - **GIVEN** the clipboard contains non-URL text or is empty
 - **WHEN** the user executes the `bookmarks-save-clipboard-to-unsorted` command
-- **THEN** the extension MUST show an error notification "Clipboard does not contain a valid URL"
+- **THEN** the extension MUST set failure status for "Clipboard does not contain a valid URL"
 - **AND** not attempt to save anything to Raindrop
 
 ### Requirement: Context menu MUST allow saving clipboard URL from any page
@@ -103,10 +84,10 @@ A context menu item MUST be available that saves the current clipboard URL to Ra
 - **GIVEN** the user is not authenticated with Raindrop
 - **WHEN** the context menu clipboard save is triggered
 - **THEN** the extension MUST return an error "Not authenticated with Raindrop" without attempting the save
-- **AND** show an error notification according to user preferences
+- **AND** set failure status for the initiating surface when available.
 
 ### Requirement: Clipboard URL save MUST use the existing save pipeline
-Saving a clipboard URL MUST follow the same normalization, URL processing, and mirroring flow as other save-to-unsorted operations.
+Saving a clipboard URL MUST follow the same normalization and URL processing flow as other save-to-unsorted operations.
 
 #### Scenario: Clipboard URL normalization and processing
 - **GIVEN** a URL is read from the clipboard
@@ -115,15 +96,8 @@ Saving a clipboard URL MUST follow the same normalization, URL processing, and m
 - **AND** split page URLs MUST be converted to the canonical `https://nenya.local/split` format
 - **AND** the processed URL MUST be passed to `saveUrlsToUnsorted` as a single-entry array
 
-#### Scenario: Clipboard URL mirrored to local bookmarks
-- **GIVEN** the Raindrop API successfully creates the raindrop
-- **WHEN** the mirroring step executes
-- **THEN** the URL MUST be added to the local Unsorted bookmark folder or updated if it already exists
-- **AND** the save summary MUST reflect the operation (created, updated, or skipped)
-
-#### Scenario: Clipboard save notifications respect preferences
-- **GIVEN** clipboard URL save completes successfully or fails
-- **WHEN** notification preferences allow bookmark notifications for Unsorted saves
-- **THEN** a success or failure notification MUST be shown
-- **AND** if any notification toggle is disabled, no notification MUST appear even though the save summary is returned
-
+#### Scenario: Clipboard URL save returns a summary
+- **GIVEN** the Raindrop API successfully creates or updates the raindrop
+- **WHEN** the save operation completes
+- **THEN** the save summary MUST reflect the operation (created, updated, skipped, or failed)
+- **AND** no local bookmark entry MUST be created or updated.

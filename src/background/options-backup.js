@@ -4,13 +4,8 @@ import {
   loadValidProviderTokens,
   raindropRequest,
   fetchRaindropItems,
-  pushNotification,
 } from './mirror.js';
 import { debounce } from '../shared/debounce.js';
-import {
-  getBookmarkFolderPath,
-  ensureBookmarkFolderPath,
-} from '../shared/bookmarkFolders.js';
 import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
 
 const PROVIDER_ID = 'raindrop';
@@ -18,11 +13,6 @@ const BACKUP_COLLECTION_TITLE = 'nenya / backup';
 const BACKUP_FILE_NAME = 'options_backup.txt';
 
 const STATE_STORAGE_KEY = 'optionsBackupState';
-const DEFAULT_PARENT_FOLDER_ID = '1';
-const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
-const DEFAULT_ROOT_FOLDER_NAME = 'Raindrop';
-
-const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
 const AUTO_RELOAD_RULES_KEY = 'autoReloadRules';
 const DARK_MODE_RULES_KEY = 'darkModeRules';
 const BRIGHT_MODE_WHITELIST_KEY = 'brightModeWhitelist';
@@ -37,7 +27,6 @@ const CUSTOM_SEARCH_ENGINES_KEY = 'customSearchEngines';
 const NOTION_INTEGRATION_SECRET_KEY = 'notionIntegrationSecret';
 
 const OPTION_KEYS = [
-  ROOT_FOLDER_SETTINGS_KEY,
   AUTO_RELOAD_RULES_KEY,
   DARK_MODE_RULES_KEY,
   BRIGHT_MODE_WHITELIST_KEY,
@@ -65,13 +54,6 @@ let isRestoring = false;
  */
 
 /**
- * @typedef {Object} RootFolderBackupSettings
- * @property {string} parentFolderId
- * @property {string} parentFolderPath
- * @property {string} rootFolderName
- */
-
-/**
  * @typedef {Object} StoredProviderTokens
  * @property {string} accessToken
  * @property {string} refreshToken
@@ -82,7 +64,6 @@ let isRestoring = false;
  * @typedef {Object} OptionsBackupPayload
  * @property {number} version
  * @property {number} savedAt
- * @property {RootFolderBackupSettings} rootFolder
  * @property {any[]} autoReloadRules
  * @property {any[]} darkModeRules
  * @property {any[]} brightModeWhitelist
@@ -190,41 +171,11 @@ async function updateState(updater) {
  */
 async function buildBackupPayload() {
   const stored = await chrome.storage.local.get(OPTION_KEYS);
-  const rootMap = stored?.[ROOT_FOLDER_SETTINGS_KEY] || {};
-  const providerRoot = rootMap?.[PROVIDER_ID] || {};
-  const parentFolderId =
-    typeof providerRoot.parentFolderId === 'string' &&
-    providerRoot.parentFolderId.trim()
-      ? providerRoot.parentFolderId.trim()
-      : DEFAULT_PARENT_FOLDER_ID;
-  const rootFolderName =
-    typeof providerRoot.rootFolderName === 'string' &&
-    providerRoot.rootFolderName.trim()
-      ? providerRoot.rootFolderName.trim()
-      : DEFAULT_ROOT_FOLDER_NAME;
-
-  let parentFolderPath = '';
-  try {
-    parentFolderPath = await getBookmarkFolderPath(parentFolderId);
-  } catch (error) {
-    console.warn(
-      '[options-backup] Failed to resolve parent folder path:',
-      error,
-    );
-  }
-  if (!parentFolderPath) {
-    parentFolderPath = DEFAULT_PARENT_PATH;
-  }
 
   /** @type {OptionsBackupPayload} */
   const payload = {
     version: 1,
     savedAt: Date.now(),
-    rootFolder: {
-      parentFolderId,
-      parentFolderPath,
-      rootFolderName,
-    },
     autoReloadRules: stored?.[AUTO_RELOAD_RULES_KEY] || [],
     darkModeRules: stored?.[DARK_MODE_RULES_KEY] || [],
     brightModeWhitelist: stored?.[BRIGHT_MODE_WHITELIST_KEY] || [],
@@ -255,55 +206,8 @@ async function buildBackupPayload() {
  * @returns {Promise<void>}
  */
 async function applyBackupPayload(payload) {
-  const rootFolder = payload?.rootFolder || {
-    parentFolderId: DEFAULT_PARENT_FOLDER_ID,
-    parentFolderPath: DEFAULT_PARENT_PATH,
-    rootFolderName: DEFAULT_ROOT_FOLDER_NAME,
-  };
-
-  let parentFolderId = '';
-  const desiredPath =
-    typeof rootFolder.parentFolderPath === 'string'
-      ? rootFolder.parentFolderPath.trim()
-      : '';
-  if (desiredPath) {
-    try {
-      const ensured = await ensureBookmarkFolderPath(desiredPath);
-      if (ensured) {
-        parentFolderId = ensured;
-      }
-    } catch (error) {
-      console.warn(
-        '[options-backup] Failed to ensure parent folder path during restore:',
-        error,
-      );
-    }
-  }
-  if (!parentFolderId) {
-    const providedId =
-      typeof rootFolder.parentFolderId === 'string'
-        ? rootFolder.parentFolderId.trim()
-        : '';
-    parentFolderId = providedId || DEFAULT_PARENT_FOLDER_ID;
-  }
-
-  const rootFolderName =
-    typeof rootFolder.rootFolderName === 'string' &&
-    rootFolder.rootFolderName.trim()
-      ? rootFolder.rootFolderName.trim()
-      : DEFAULT_ROOT_FOLDER_NAME;
-
-  const existing = await chrome.storage.local.get(ROOT_FOLDER_SETTINGS_KEY);
-  const map =
-    existing?.[ROOT_FOLDER_SETTINGS_KEY] &&
-    typeof existing[ROOT_FOLDER_SETTINGS_KEY] === 'object'
-      ? existing[ROOT_FOLDER_SETTINGS_KEY]
-      : {};
-  map[PROVIDER_ID] = { parentFolderId, rootFolderName };
-
   /** @type {Record<string, any>} */
   const updates = {
-    [ROOT_FOLDER_SETTINGS_KEY]: map,
     [AUTO_RELOAD_RULES_KEY]: payload.autoReloadRules || [],
     [DARK_MODE_RULES_KEY]: payload.darkModeRules || [],
     [BRIGHT_MODE_WHITELIST_KEY]: payload.brightModeWhitelist || [],
@@ -873,12 +777,6 @@ export async function resetOptionsToDefaults() {
   };
 
   await chrome.storage.local.set({
-    [ROOT_FOLDER_SETTINGS_KEY]: {
-      [PROVIDER_ID]: {
-        parentFolderId: DEFAULT_PARENT_FOLDER_ID,
-        rootFolderName: DEFAULT_ROOT_FOLDER_NAME,
-      },
-    },
     [AUTO_RELOAD_RULES_KEY]: [],
     [DARK_MODE_RULES_KEY]: [],
     [BRIGHT_MODE_WHITELIST_KEY]: [],
@@ -1046,15 +944,7 @@ export async function handleOptionsBackupLifecycle(trigger) {
   await ensureInitialized();
   if (trigger === 'login') {
     const status = await getBackupStatus();
-    if (!status.loggedIn) {
-      void pushNotification(
-        'options-backup',
-        'Options backup',
-        'Connect Raindrop to enable manual backup and restore.',
-        'nenya://options',
-      );
-    } else {
-      // If logged in, force a restore to ensure settings are synced
+    if (status.loggedIn) {
       void runManualRestore().catch((error) => {
         console.warn('[options-backup] Restore after login failed:', error);
       });

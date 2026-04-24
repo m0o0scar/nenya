@@ -1,8 +1,13 @@
-## Send Context to LLM Specification
+# Send Context to LLM Specification
+
+## Purpose
+Document the chat popup workflow for sending page context to configured LLM providers, managing prompts, and downloading extracted content.
+
+## Requirements
 
 ### Requirement: The chat popup SHALL surface eligible context tabs and provider choices
 
-`src/popup/chat.js` renders `chat.html` and is responsible for discovering the tabs to send plus whichever LLM provider is active.
+`src/popup/chat.js` MUST render `chat.html` and discover the tabs to send plus whichever LLM provider is active.
 
 #### Scenario: Determine target tabs and visualize eligibility
 - **GIVEN** the chat page loads or the user returns focus to the popup,
@@ -61,7 +66,7 @@ The background page SHALL continue to collect page content through the shared ex
 
 ### Requirement: The LLM page injector SHALL attach files and prompts, then optionally auto-send
 
-`src/contentScript/llmPageInjector.js` runs inside each provider tab opened by the background.
+`src/contentScript/llmPageInjector.js` MUST run inside each provider tab opened by the background.
 
 #### Scenario: Deliver attachments and prompt text to provider editors
 - **GIVEN** the injector receives `inject-llm-data`,
@@ -69,7 +74,7 @@ The background page SHALL continue to collect page content through the shared ex
 
 ### Requirement: The options page SHALL allow managing saved prompts in sync storage
 
-`src/options/llmPrompts.js` renders the Options → LLM Prompts section backed by `chrome.storage.sync.llmPrompts`.
+`src/options/llmPrompts.js` MUST render the Options → LLM Prompts section backed by `chrome.storage.sync.llmPrompts`.
 
 #### Scenario: Create or edit a named prompt with timestamps
 - **GIVEN** the operator submits `#llmPromptForm`,
@@ -83,7 +88,7 @@ The background page SHALL continue to collect page content through the shared ex
 
 ### Requirement: Saved prompts SHALL participate in the options backup & restore system
 
-`src/background/options-backup.js` integrates prompts with the global import/export flows.
+`src/background/options-backup.js` MUST integrate prompts with the global import/export flows.
 
 #### Scenario: Normalize prompt payloads during backup and restore
 - **GIVEN** `collectLLMPrompts()` runs as part of backup,

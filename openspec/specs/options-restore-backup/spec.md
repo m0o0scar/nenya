@@ -18,7 +18,7 @@ Each payload MUST be versioned JSON that contains metadata plus a sanitized copy
 
 #### Scenario: Category inventory and sanitation
 
-- **GIVEN** backups run, **THEN** the system MUST capture the following categories using their build/parse/apply helpers: root folder + provider linkage (`mirrorRootFolderSettings`), notification preferences, auto reload rules (identifiers generated when missing, minimum 5 s interval, sanitized URL patterns), dark mode rules, bright mode whitelist, highlight text rules (type limited to `whole-phrase|comma-separated|regex` with valid colors/patterns), block element rules (URLPattern validation and selector arrays), custom code rules (stored from `chrome.storage.local`, invalid patterns still persisted but noted), LLM prompts, URL process rules, auto Google login rules, pinned shortcuts (limited to six whitelisted shortcut ids), screenshot settings (auto-save boolean flag), **and title transform rules (URL patterns and transform operations)**.
+- **GIVEN** backups run, **THEN** the system MUST capture the following categories using their build/parse/apply helpers: auto reload rules (identifiers generated when missing, minimum 5 s interval, sanitized URL patterns), dark mode rules, bright mode whitelist, highlight text rules (type limited to `whole-phrase|comma-separated|regex` with valid colors/patterns), block element rules (URLPattern validation and selector arrays), custom code rules (stored from `chrome.storage.local`, invalid patterns still persisted but noted), LLM prompts, URL process rules, auto Google login rules, pinned shortcuts (limited to six whitelisted shortcut ids), screenshot settings (auto-save boolean flag), **and title transform rules (URL patterns and transform operations)**.
 - **AND** every `apply*` function MUST normalize incoming payloads, write them back through `chrome.storage` with `suppressBackup` to avoid echo loops, and run any needed follow-up (e.g., re-evaluating auto reload rules).
 
 ### Requirement: Screenshot Settings Category Registration
@@ -70,7 +70,7 @@ The JSON import/export functionality MUST include screenshot settings.
 
 ### Requirement: Options data MUST be persisted in local storage only
 
-All option categories SHALL be stored in `chrome.storage.local` instead of `chrome.storage.sync`, including root folder settings, notification preferences, auto reload rules, dark mode rules, bright mode whitelist/settings, highlight text rules, video enhancement rules, block element rules, custom code rules, LLM prompts, URL process rules, auto Google login rules, screenshot settings, **title transform rules**, and pinned shortcuts.
+All option categories SHALL be stored in `chrome.storage.local` instead of `chrome.storage.sync`, including auto reload rules, dark mode rules, bright mode whitelist/settings, highlight text rules, video enhancement rules, block element rules, custom code rules, LLM prompts, URL process rules, auto Google login rules, screenshot settings, **title transform rules**, and pinned shortcuts.
 
 #### Scenario: Option writes use local storage
 
@@ -124,7 +124,7 @@ Manual backups SHALL serialize all configurable options into a plain JSON payloa
 #### Scenario: Backup includes normalized categories without Automerge metadata
 
 - **WHEN** a manual backup builds its payload
-- **THEN** it SHALL include normalized values for `mirrorRootFolderSettings`, `notificationPreferences`, `autoReloadRules`, `darkModeRules`, `brightModeWhitelist`/`brightModeSettings`, `highlightTextRules`, `videoEnhancementRules`, `blockElementRules`, `customCodeRules`, `llmPrompts`, `urlProcessRules`, `autoGoogleLoginRules`, `screenshotSettings`, `titleTransformRules`, `pinnedShortcuts`, **and `customSearchEngines`**
+- **THEN** it SHALL include normalized values for `autoReloadRules`, `darkModeRules`, `brightModeWhitelist`/`brightModeSettings`, `highlightTextRules`, `videoEnhancementRules`, `blockElementRules`, `customCodeRules`, `llmPrompts`, `urlProcessRules`, `autoGoogleLoginRules`, `screenshotSettings`, `titleTransformRules`, `pinnedShortcuts`, **and `customSearchEngines`**
 - **AND** the payload SHALL omit Automerge metadata and SHALL store only plain JSON fields
 - **AND** restore SHALL overwrite the corresponding local keys, applying defaults when fields are missing.
 
@@ -164,4 +164,3 @@ The JSON import/export functionality MUST include title transform rules.
 - **THEN** the import MUST NOT modify existing title transform rules
 - **AND** existing rules MUST be preserved unchanged
 - **AND** no error or warning MUST be shown
-

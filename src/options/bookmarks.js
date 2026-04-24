@@ -37,7 +37,6 @@ import { getValidTokens, areTokensExpired } from '../shared/tokenRefresh.js';
  * @property {string} id
  * @property {string} name
  * @property {string} oauthProviderId
- * @property {string} defaultRootFolderName
  * @property {string} [description]
  */
 
@@ -58,14 +57,6 @@ import { getValidTokens, areTokensExpired } from '../shared/tokenRefresh.js';
 /** @typedef {Record<string, StoredProviderTokens>} StoredTokenMap */
 
 /**
- * @typedef {Object} RootFolderSettings
- * @property {string} parentFolderId
- * @property {string} rootFolderName
- */
-
-/** @typedef {Record<string, RootFolderSettings>} RootFolderSettingsMap */
-
-/**
  * @typedef {Object} BookmarkFolderOption
  * @property {string} id
  * @property {string} path
@@ -78,16 +69,11 @@ const PROVIDERS = [
     id: 'raindrop',
     name: 'Raindrop.io',
     oauthProviderId: 'raindrop',
-    defaultRootFolderName: 'Raindrop',
-    description: 'Save bookmarks to your Raindrop.io Unsorted collection.',
+    description: 'Save links to your Raindrop.io Unsorted collection.',
   },
 ];
 
 const STORAGE_KEY = 'cloudAuthTokens';
-const ROOT_FOLDER_SETTINGS_KEY = 'mirrorRootFolderSettings';
-const DEFAULT_PARENT_FOLDER_ID = '1';
-const DEFAULT_PARENT_PATH = '/Bookmarks Bar';
-const UNTITLED_FOLDER_LABEL = 'Untitled folder';
 
 const providerSelect = /** @type {HTMLSelectElement} */ (
   document.getElementById('providerSelect')

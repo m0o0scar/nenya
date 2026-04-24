@@ -7,6 +7,18 @@
 
 import { LLM_PROVIDER_META } from './llmProviders.js';
 
+/**
+ * Screen recording relies on Chrome's offscreen document APIs.
+ * @returns {boolean}
+ */
+function isScreenRecordingSupported() {
+  return Boolean(
+    chrome.offscreen?.createDocument &&
+      chrome.runtime?.getContexts &&
+      chrome.storage?.session,
+  );
+}
+
 // ============================================================================
 // CONTEXT MENU ID CONSTANTS
 // ============================================================================
@@ -308,12 +320,14 @@ async function createRootMenus() {
     contexts: contexts,
   });
 
-  await createMenuItem({
-    id: NENYA_MENU_IDS.SCREEN_RECORDING,
-    parentId: NENYA_MENU_IDS.TOOLS_PARENT,
-    title: '⏺️ Screen recording',
-    contexts: contexts,
-  });
+  if (isScreenRecordingSupported()) {
+    await createMenuItem({
+      id: NENYA_MENU_IDS.SCREEN_RECORDING,
+      parentId: NENYA_MENU_IDS.TOOLS_PARENT,
+      title: '⏺️ Screen recording',
+      contexts: contexts,
+    });
+  }
 
   await createMenuItem({
     id: NENYA_MENU_IDS.PIP,

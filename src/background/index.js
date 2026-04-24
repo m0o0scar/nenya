@@ -1,7 +1,6 @@
 import {
   saveUrlsToUnsorted,
   normalizeHttpUrl,
-  pushNotification,
   handleTokenValidationMessage,
   handleRaindropSearch,
   handleOpenAllItemsInCollection,
@@ -120,7 +119,6 @@ async function cleanupLegacySessionState() {
 
 /**
  * Create a tab immediately to the right of the active tab in the last focused window.
- * If the active tab is in a group, the new tab is moved into that same group.
  * @param {{url?: string, pinned?: boolean, active?: boolean}} tabCreateProperties
  * @returns {Promise<chrome.tabs.Tab>}
  */
@@ -132,7 +130,6 @@ async function createTabNextToActive(tabCreateProperties) {
   const activeTab = tabs[0] || null;
 
   const createProperties = { ...tabCreateProperties };
-  let activeGroupId = -1;
 
   if (activeTab && typeof activeTab.windowId === 'number') {
     createProperties.windowId = activeTab.windowId;
@@ -140,27 +137,8 @@ async function createTabNextToActive(tabCreateProperties) {
   if (activeTab && typeof activeTab.index === 'number') {
     createProperties.index = activeTab.index + 1;
   }
-  if (
-    activeTab &&
-    typeof activeTab.groupId === 'number' &&
-    activeTab.groupId >= 0
-  ) {
-    activeGroupId = activeTab.groupId;
-  }
 
-  const newTab = await chrome.tabs.create(createProperties);
-  if (activeGroupId >= 0 && typeof newTab?.id === 'number') {
-    try {
-      await chrome.tabs.group({
-        groupId: activeGroupId,
-        tabIds: newTab.id,
-      });
-    } catch (error) {
-      console.warn('[tabs] Failed to place tab in active group:', error);
-    }
-  }
-
-  return newTab;
+  return chrome.tabs.create(createProperties);
 }
 
 // ============================================================================
@@ -231,7 +209,6 @@ chrome.commands.onCommand.addListener((command) => {
           rawUrl: url,
           title,
           tabId,
-          notifyOnError: true,
         });
         if (!result.ok && result.error) {
           console.warn('[commands] Encrypt & Save failed:', result.error);
@@ -392,7 +369,10 @@ chrome.commands.onCommand.addListener((command) => {
       try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const tabId = tabs[0]?.id;
-        await handleScreenRecordingToggle(tabId);
+        const result = await handleScreenRecordingToggle(tabId);
+        if (!result.success) {
+          console.warn('[commands] Screen recording failed:', result.error);
+        }
       } catch (error) {
         console.warn('[commands] Screen recording failed:', error);
       }
@@ -920,7 +900,6 @@ async function handleSaveClipboardUrlToUnsorted(clipboardText) {
   try {
     if (!clipboardText || !clipboardText.trim()) {
       const error = 'Clipboard is empty';
-      void pushNotification('clipboard-save', 'Clipboard save failed', error);
       return { ok: false, error };
     }
 
@@ -930,7 +909,6 @@ async function handleSaveClipboardUrlToUnsorted(clipboardText) {
     const normalizedUrl = normalizeHttpUrl(text);
     if (!normalizedUrl) {
       const error = 'Clipboard does not contain a valid URL';
-      void pushNotification('clipboard-save', 'Clipboard save failed', error);
       return { ok: false, error };
     }
 
@@ -952,56 +930,38 @@ async function handleSaveClipboardUrlToUnsorted(clipboardText) {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    void pushNotification('clipboard-save', 'Clipboard save failed', message);
     return { ok: false, error: message };
   }
 }
 
 /**
  * Handle encrypt-and-save flow shared by commands, context menus, and popup.
- * @param {{ rawUrl: string, title?: string, selectionText?: string, tabId?: number | null, notifyOnError?: boolean }} options
+ * @param {{ rawUrl: string, title?: string, selectionText?: string, tabId?: number | null }} options
  * @returns {Promise<{ ok: boolean, mode?: 'plain' | 'encrypted', error?: string, saveResult?: any }>}
  */
 async function handleEncryptAndSave(options) {
   const rawUrl = typeof options.rawUrl === 'string' ? options.rawUrl : '';
   const tabId = typeof options.tabId === 'number' ? options.tabId : null;
-  const notifyOnError = Boolean(options.notifyOnError);
 
   if (!rawUrl) {
     const error = 'No URL available to save.';
-    if (notifyOnError) {
-      void pushNotification('encrypt-unsorted', 'Encrypt & save failed', error);
-    }
     return { ok: false, error };
   }
 
   const normalizedUrl = normalizeHttpUrl(rawUrl);
   if (!normalizedUrl) {
     const error = 'This URL cannot be saved.';
-    if (notifyOnError) {
-      void pushNotification('encrypt-unsorted', 'Encrypt & save failed', error);
-    }
     return { ok: false, error };
   }
 
   const finalUrl = normalizedUrl;
   if (!finalUrl) {
     const error = 'This URL cannot be saved.';
-    if (notifyOnError) {
-      void pushNotification('encrypt-unsorted', 'Encrypt & save failed', error);
-    }
     return { ok: false, error };
   }
 
   const passwordResult = await promptForEncryptionPassword(tabId);
   if (passwordResult.error) {
-    if (notifyOnError) {
-      void pushNotification(
-        'encrypt-unsorted',
-        'Encrypt & save failed',
-        passwordResult.error,
-      );
-    }
     return { ok: false, error: passwordResult.error };
   }
 
@@ -1029,13 +989,6 @@ async function handleEncryptAndSave(options) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : 'Encryption failed.';
-    if (notifyOnError) {
-      void pushNotification(
-        'encrypt-unsorted',
-        'Encrypt & save failed',
-        message,
-      );
-    }
     return { ok: false, mode: 'encrypted', error: message };
   }
 
@@ -2564,8 +2517,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const tabId = tabs[0]?.id;
-        await handleScreenRecordingToggle(tabId);
-        sendResponse({ success: true });
+        const result = await handleScreenRecordingToggle(tabId);
+        sendResponse(result);
       } catch (error) {
         console.error('[background] Screen recording toggle failed:', error);
         sendResponse({ success: false, error: error.message });
@@ -2580,8 +2533,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const tabId = tabs[0]?.id;
-        await handleScreenRecordingToggle(tabId);
-        sendResponse({ success: true });
+        const result = await handleScreenRecordingToggle(tabId);
+        sendResponse(result);
       } catch (error) {
         console.error('[background] Screen recording start failed:', error);
         sendResponse({ success: false, error: error.message });
@@ -2663,7 +2616,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       title,
       selectionText,
       tabId,
-      notifyOnError: false,
     })
       .then((result) => {
         sendResponse(result);
@@ -3260,11 +3212,7 @@ async function handleSaveToUnsortedRequest() {
     });
     const activeTab = tabs && tabs[0];
     if (!activeTab) {
-      pushNotification(
-        'save-unsorted-request',
-        'Save to Unsorted',
-        'No active tab found.',
-      );
+      console.warn('[background] No active tab found for Save to Unsorted');
       return;
     }
 
@@ -3281,11 +3229,6 @@ async function handleSaveToUnsortedRequest() {
     });
   } catch (error) {
     console.warn('[background] Save to Unsorted request failed:', error);
-    pushNotification(
-      'save-unsorted-request',
-      'Save to Unsorted',
-      'An unexpected error occurred.',
-    );
   }
 }
 
@@ -3421,7 +3364,6 @@ if (chrome.contextMenus) {
         title,
         selectionText,
         tabId,
-        notifyOnError: true,
       }).catch((error) => {
         console.error('[contextMenu] Encrypt & save failed:', error);
       });
@@ -3646,7 +3588,6 @@ async function handleCreateProjectFromContextMenu(tab) {
         id: t.id,
         windowId: t.windowId || -1,
         index: t.index || 0,
-        groupId: t.groupId || -1,
         pinned: Boolean(t.pinned),
         url: t.url || '',
         title: t.title || '',
@@ -3689,7 +3630,6 @@ async function handleAddToProjectFromContextMenu(projectId, tab) {
         id: t.id,
         windowId: t.windowId || -1,
         index: t.index || 0,
-        groupId: t.groupId || -1,
         pinned: Boolean(t.pinned),
         url: t.url || '',
         title: t.title || '',
@@ -3731,7 +3671,6 @@ async function handleReplaceProjectFromContextMenu(projectId, tab) {
         id: t.id,
         windowId: t.windowId || -1,
         index: t.index || 0,
-        groupId: t.groupId || -1,
         pinned: Boolean(t.pinned),
         url: t.url || '',
         title: t.title || '',

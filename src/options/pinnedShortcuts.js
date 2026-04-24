@@ -75,6 +75,27 @@ const AVAILABLE_SHORTCUTS = [
 const STORAGE_KEY = 'pinnedShortcuts';
 const MAX_SHORTCUTS = 7;
 
+/**
+ * Screen recording relies on Chrome's offscreen document APIs.
+ * @returns {boolean}
+ */
+function isScreenRecordingSupported() {
+  return Boolean(
+    chrome.offscreen?.createDocument &&
+      chrome.runtime?.getContexts &&
+      chrome.storage?.session,
+  );
+}
+
+/**
+ * Determine whether a shortcut can be configured in the current browser.
+ * @param {string} shortcutId
+ * @returns {boolean}
+ */
+function isShortcutSupported(shortcutId) {
+  return shortcutId !== 'screenRecording' || isScreenRecordingSupported();
+}
+
 /** @type {string[]} Default pinned shortcuts */
 const DEFAULT_PINNED_SHORTCUTS = [
   'getMarkdown', // Chat with llm
@@ -120,7 +141,9 @@ function normalizeShortcuts(value) {
 
   const sanitized = value.filter(
     (id) =>
-      typeof id === 'string' && AVAILABLE_SHORTCUTS.some((s) => s.id === id),
+      typeof id === 'string' &&
+      isShortcutSupported(id) &&
+      AVAILABLE_SHORTCUTS.some((s) => s.id === id),
   );
 
   // Filter out openOptions - it's always shown separately
@@ -347,7 +370,7 @@ function render() {
 
   // Render available shortcuts (not pinned)
   const availableShortcuts = AVAILABLE_SHORTCUTS.filter(
-    (s) => !pinnedShortcuts.includes(s.id),
+    (s) => isShortcutSupported(s.id) && !pinnedShortcuts.includes(s.id),
   );
   availableList.innerHTML = '';
   if (availableShortcuts.length === 0) {

@@ -20,11 +20,27 @@ const IS_HOME_SURFACE = CURRENT_SURFACE === 'home';
 const HOME_DISABLED_SHORTCUT_IDS = new Set(['getMarkdown', 'emojiPicker']);
 
 /**
+ * Screen recording relies on Chrome's offscreen document APIs.
+ * @returns {boolean}
+ */
+function isScreenRecordingSupported() {
+  return Boolean(
+    chrome.offscreen?.createDocument &&
+      chrome.runtime?.getContexts &&
+      chrome.storage?.session,
+  );
+}
+
+/**
  * Determine whether a shortcut should be available for the current surface.
  * @param {string} shortcutId
  * @returns {boolean}
  */
 function isShortcutSupportedOnCurrentSurface(shortcutId) {
+  if (shortcutId === 'screenRecording') {
+    return isScreenRecordingSupported();
+  }
+
   if (!IS_HOME_SURFACE) {
     return true;
   }
@@ -932,7 +948,6 @@ function escapeHtml(text) {
 
 /**
  * Create a tab immediately to the right of the active tab.
- * If the active tab is in a group, the new tab is moved into that same group.
  * @param {string} url
  * @param {chrome.tabs.Tab | null} [activeTab]
  * @returns {Promise<chrome.tabs.Tab>}
@@ -948,7 +963,6 @@ async function createTabNextToActive(url, activeTab = null) {
   }
 
   const createProperties = { url };
-  let activeGroupId = -1;
 
   if (baseTab && typeof baseTab.windowId === 'number') {
     createProperties.windowId = baseTab.windowId;
@@ -956,27 +970,8 @@ async function createTabNextToActive(url, activeTab = null) {
   if (baseTab && typeof baseTab.index === 'number') {
     createProperties.index = baseTab.index + 1;
   }
-  if (
-    baseTab &&
-    typeof baseTab.groupId === 'number' &&
-    baseTab.groupId >= 0
-  ) {
-    activeGroupId = baseTab.groupId;
-  }
 
-  const newTab = await chrome.tabs.create(createProperties);
-  if (activeGroupId >= 0 && typeof newTab?.id === 'number') {
-    try {
-      await chrome.tabs.group({
-        groupId: activeGroupId,
-        tabIds: newTab.id,
-      });
-    } catch (error) {
-      console.warn('[popup] Failed to place tab in active group:', error);
-    }
-  }
-
-  return newTab;
+  return chrome.tabs.create(createProperties);
 }
 
 /**
@@ -2279,51 +2274,6 @@ async function initializeBookmarksSearch(
   }
 
   /**
-   * Counts direct children bookmarks (not folders) in a folder.
-   * @param {chrome.bookmarks.BookmarkTreeNode} folder
-   * @returns {Promise<number>}
-   */
-  function countDirectChildrenBookmarks(folder) {
-    return new Promise((resolve) => {
-      if (!folder.id) {
-        resolve(0);
-        return;
-      }
-
-      // Get full folder details with children using getSubTree
-      chrome.bookmarks.getSubTree(folder.id, (subTree) => {
-        if (!subTree || subTree.length === 0) {
-          resolve(0);
-          return;
-        }
-
-        const folderNode = subTree[0];
-        if (!folderNode.children || folderNode.children.length === 0) {
-          resolve(0);
-          return;
-        }
-
-        // Count only direct children that are bookmarks (have URLs)
-        // Deduplicate by URL to ensure accurate count
-        const seenUrls = new Set();
-        const uniqueBookmarks = folderNode.children.filter((child) => {
-          if (!child.url) {
-            return false;
-          }
-          if (seenUrls.has(child.url)) {
-            return false;
-          }
-          seenUrls.add(child.url);
-          return true;
-        });
-
-        resolve(uniqueBookmarks.length);
-      });
-    });
-  }
-
-
-  /**
    * Truncates a URL to a maximum length, adding ellipsis if needed.
    * @param {string} url
    * @param {number} maxLength
@@ -2659,62 +2609,6 @@ async function initializeBookmarksSearch(
   }
 
 
-
-  /**
-   * Opens all direct children bookmarks of a folder in separate tabs.
-   * @param {chrome.bookmarks.BookmarkTreeNode} folder
-   * @returns {Promise<void>}
-   */
-  async function openFolderBookmarks(folder) {
-    return new Promise((resolve) => {
-      if (!folder.id) {
-        resolve();
-        return;
-      }
-
-      // Get full folder details with children
-      chrome.bookmarks.getSubTree(folder.id, (subTree) => {
-        if (!subTree || subTree.length === 0) {
-          resolve();
-          return;
-        }
-
-        const folderNode = subTree[0];
-        if (!folderNode.children || folderNode.children.length === 0) {
-          resolve();
-          return;
-        }
-
-        // Filter to only direct children that are bookmarks (have URLs)
-        const bookmarkChildren = folderNode.children.filter(
-          (child) => child.url,
-        );
-
-        // Deduplicate by URL to prevent opening the same bookmark multiple times
-        const seenUrls = new Set();
-        const uniqueBookmarks = bookmarkChildren.filter((bookmark) => {
-          if (!bookmark.url) {
-            return false;
-          }
-          if (seenUrls.has(bookmark.url)) {
-            return false;
-          }
-          seenUrls.add(bookmark.url);
-          return true;
-        });
-
-        // Open each bookmark in a separate tab
-        uniqueBookmarks.forEach((bookmark) => {
-          if (bookmark.url) {
-            chrome.tabs.create({ url: bookmark.url });
-          }
-        });
-
-        closeCurrentSurface();
-        resolve();
-      });
-    });
-  }
 
   /**
    * Deduplicate and sort search results.

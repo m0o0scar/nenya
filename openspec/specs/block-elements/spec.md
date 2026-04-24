@@ -1,6 +1,9 @@
-## Block Elements Specification
+# Block Elements Specification
 
+## Purpose
 `src/options/blockElements.js`, `src/popup/popup.js`, `src/contentScript/epicker*.{js,html}`, `src/contentScript/block-elements.js`, and supporting background/import code collectively implement the “Block Elements” feature: users capture CSS selectors per site, manage them from the options page, and the content script hides matching elements on every visit.
+
+## Requirements
 
 ### Requirement: The options UI SHALL load and sanitize block element rules stored in sync
 

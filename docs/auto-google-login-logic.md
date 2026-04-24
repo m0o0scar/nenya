@@ -167,13 +167,13 @@ Listens for changes to `autoGoogleLoginRules` in `chrome.storage.sync`:
 ## Error Handling
 
 - Catches and logs errors for storage operations
-- Sends notifications via background script for errors
+- Logs automation status and errors to the console
 - Falls back gracefully when elements aren't found
 - Cleans up observers and timers on errors
 
-## Notifications
+## Status Reporting
 
-Sends notifications via `chrome.runtime.sendMessage()` to background script:
+Logs auto-login status locally:
 
 - Login initiation
 - Account selection success/failure

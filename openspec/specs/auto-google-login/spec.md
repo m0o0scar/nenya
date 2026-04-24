@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Document the currently shipped experience for configuring URL-pattern rules that trigger an automated Google OAuth login, so future changes preserve the options workflow, rule storage guarantees, background notifications, and the multi-step automation that spans button detection, account selection, and OAuth confirmation.
+Document the currently shipped experience for configuring URL-pattern rules that trigger an automated Google OAuth login, so future changes preserve the options workflow, rule storage guarantees, local status reporting, and the multi-step automation that spans button detection, account selection, and OAuth confirmation.
 
 ## Requirements
 
@@ -42,7 +42,7 @@ Document the currently shipped experience for configuring URL-pattern rules that
 #### Scenario: Click the Google login entry point and monitor OAuth
 - **GIVEN** `checkAndAlert()` located a button and the tab stayed active,
 - **WHEN** `clickGoogleLoginButton()` runs,
-- **THEN** it MUST store `{ autoGoogleLoginTempEmail: rule.email || 'configured account', autoGoogleLoginInitiated: { initiated: true, timestamp: Date.now() } }` inside `chrome.storage.local` before the page leaves the origin, send a background notification summarizing the action, and set `loginInProgress = true`,
+- **THEN** it MUST store `{ autoGoogleLoginTempEmail: rule.email || 'configured account', autoGoogleLoginInitiated: { initiated: true, timestamp: Date.now() } }` inside `chrome.storage.local` before the page leaves the origin, log local status summarizing the action, and set `loginInProgress = true`,
 - **AND** if the element has an `href` without a popup target it MUST navigate `window.location.href` to that URL, otherwise it MUST call `button.click()` (plus synthetic events), wait briefly for a popup, and call `monitorGoogleOAuthFlow(rule)` to watch subsequent navigations,
 - **AND** `monitorGoogleOAuthFlow` MUST watch for URL changes every 500 ms (with a 30 s timeout), immediately react when the page is already on `accounts.google.com`, and defer to the account-selection or OAuth confirmation handlers described below.
 
@@ -53,7 +53,7 @@ Document the currently shipped experience for configuring URL-pattern rules that
 - **WHEN** `handleGoogleAccountSelection()` runs,
 - **THEN** it MUST read `autoGoogleLoginTempEmail` from `chrome.storage.local` (falling back to the rule’s `email`), and attempt to click the account using multiple strategies in order: `div[role="link"][data-identifier]`, any `[data-identifier]`, `[data-email]`, partial identifier/email matches, elements whose `aria-label` contains the email, and finally `li` nodes whose text contains an email pattern,
 - **AND** each candidate click MUST scroll into view and dispatch native, `MouseEvent`, and `PointerEvent` clicks to maximize compatibility,
-- **AND** the handler MUST combine a MutationObserver (watching `data-email`/`data-identifier`) with a polling loop (15 retries, first wait 2 s then 500 ms intervals), clear the initiation flag + stored email within 5–15 s after success, and if no account matched it MUST push a notification asking the user to select the account manually.
+- **AND** the handler MUST combine a MutationObserver (watching `data-email`/`data-identifier`) with a polling loop (15 retries, first wait 2 s then 500 ms intervals), clear the initiation flag + stored email within 5–15 s after success, and if no account matched it MUST log status asking the user to select the account manually.
 
 ### Requirement: OAuth confirmation pages MUST attempt to click the Continue button automatically
 
@@ -61,14 +61,9 @@ Document the currently shipped experience for configuring URL-pattern rules that
 - **GIVEN** navigation reaches the OAuth confirmation page within 10 s of `autoGoogleLoginInitiated` being set,
 - **WHEN** `handleOAuthConfirmation()` runs,
 - **THEN** it MUST search for an enabled, visible button whose text, nested span, `aria-label`, or `jsname="LgbsSe"` equals “Continue”, click it using `clickElement()`, and otherwise keep trying via a MutationObserver (10 s timeout observing `button` changes) and a polling loop (10 retries at 500 ms),
-- **AND** after a successful click it MUST clear the initiation flag within ~5 s so subsequent navigations do not keep auto-clicking, while failures trigger a notification instructing the user to press Continue manually.
+- **AND** after a successful click it MUST clear the initiation flag within ~5 s so subsequent navigations do not keep auto-clicking, while failures log status instructing the user to press Continue manually.
 
-### Requirement: Background service MUST support notifications and focus checks for auto Google login
-
-#### Scenario: Relay progress notifications
-- **GIVEN** the content script calls `chrome.runtime.sendMessage({ type: 'auto-google-login-notification', ... })`,
-- **WHEN** `src/background/index.js` receives it,
-- **THEN** it MUST call `pushNotification('auto-google-login', title || 'Auto Google Login', message, targetUrl)` whenever `message` is non-empty so users see status updates for redirects, popups, account selection failures, or errors, otherwise respond with an error without emitting a notification.
+### Requirement: Background service MUST support focus checks for auto Google login
 
 #### Scenario: Confirm the tab is the focused active tab before automation
 - **GIVEN** a content script needs to verify focus,
@@ -81,5 +76,4 @@ Document the currently shipped experience for configuring URL-pattern rules that
 - **GIVEN** any browser instance edits auto Google login rules,
 - **WHEN** `chrome.storage.onChanged` fires for `autoGoogleLoginRules`,
 - **THEN** the content script’s `setupStorageListener()` MUST reload the rules, reset `lastAlertedRuleId`, and invoke `debouncedCheck()` so newly added/disabled patterns take effect without requiring a page refresh.
-
 
