@@ -141,3 +141,5 @@ vite.config.ts.timestamp-*
 .DS_Store
 jules-scratch/
 jles-scratch/
+.artifacts/safari-src/
+.artifacts/safari-xcode/

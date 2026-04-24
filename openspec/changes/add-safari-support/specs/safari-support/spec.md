@@ -30,3 +30,16 @@ Documentation MUST make the initial Safari target understandable without changin
 - **GIVEN** a maintainer reads `docs/SAFARI.md`,
 - **THEN** it MUST describe which shared features are intended to work in Safari,
 - **AND** it MUST explicitly list removed/disabled features and explain that `manifest.safari.json` should be staged as `manifest.json` for conversion rather than replacing the Chrome manifest in the source tree.
+
+### Requirement: Safari packaging automation MUST stage and package the target
+Maintainers MUST be able to run one npm script to prepare the Safari source and invoke Apple's packaging tool.
+
+#### Scenario: npm script stages Safari source
+- **GIVEN** a maintainer runs `npm run safari`,
+- **THEN** the script MUST copy the required extension resources into a staging directory,
+- **AND** it MUST write `manifest.safari.json` as the staged `manifest.json` without modifying the Chrome manifest in the repo root.
+
+#### Scenario: npm script invokes Apple's available packaging tool
+- **GIVEN** the staged Safari source is ready,
+- **THEN** the script MUST invoke `safari-web-extension-packager` when available and fall back to `safari-web-extension-converter` when needed,
+- **AND** it MUST pass non-interactive packaging options for project location, app name, bundle identifier, Swift, macOS-only packaging, copied resources, forced overwrite, and no automatic Xcode open.

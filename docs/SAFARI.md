@@ -21,9 +21,17 @@ This repo keeps the Chrome extension source as the primary zero-build source tre
 
 ## Conversion Workflow
 
-1. Stage a Safari source copy where `manifest.safari.json` is named `manifest.json`.
-2. Run Apple's Safari Web Extension converter against the staged directory.
-3. Build and run the generated Xcode project.
-4. Verify OAuth callback behavior, content script injection on representative sites, popup search, Save to Unsorted, screenshots, backup/restore, and options import/export.
+If Xcode has not been initialized on the machine, run `xcodebuild -runFirstLaunch` once before packaging.
+
+1. Run `npm run safari`.
+2. Build and run the generated Xcode project under `.artifacts/safari-xcode`.
+3. Verify OAuth callback behavior, content script injection on representative sites, popup search, Save to Unsorted, screenshots, backup/restore, and options import/export.
+
+The script stages a Safari source copy under `.artifacts/safari-src`, replaces `manifest.json` with `manifest.safari.json` inside that staged copy, and invokes Apple's Safari Web Extension packager. You can override defaults with environment variables:
+
+- `SAFARI_STAGE_DIR`: staged extension source directory.
+- `SAFARI_PROJECT_DIR`: generated Xcode project directory.
+- `SAFARI_APP_NAME`: generated app/project name.
+- `SAFARI_BUNDLE_IDENTIFIER`: generated containing app bundle identifier. The embedded extension target uses `<SAFARI_BUNDLE_IDENTIFIER>.Extension` so Xcode accepts the embedded binary relationship.
 
 The Chrome manifest remains `manifest.json`. Do not replace it in the main source tree unless intentionally packaging the Safari target from a staging directory.
