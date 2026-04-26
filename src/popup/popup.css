@@ -2,6 +2,7 @@
 
 :root {
   --popup-width: 420px;
+  --save-to-unsorted-popup-height: 560px;
 }
 
 /* Popup width constraint - shared across all popup pages */
@@ -9,6 +10,10 @@ body {
   width: var(--popup-width);
   max-width: var(--popup-width);
   min-height: 300px;
+}
+
+body.save-to-unsorted-dialog-open {
+  min-height: var(--save-to-unsorted-popup-height);
 }
 
 .nenya-popup-body {
@@ -82,6 +87,10 @@ body {
   border-radius: var(--nenya-radius-lg);
   border: 1px solid var(--nenya-border-soft);
   box-shadow: var(--nenya-shadow-soft);
+}
+
+#saveToUnsortedModal .modal-box {
+  overflow-y: visible;
 }
 
 #projectsErrorContainer.flex {

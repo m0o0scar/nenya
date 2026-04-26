@@ -304,6 +304,7 @@ export async function showSaveToUnsortedDialog(tab) {
   ));
   const cancelButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveToUnsortedCancelButton'));
   const confirmButton = /** @type {HTMLButtonElement | null} */ (document.getElementById('saveToUnsortedConfirmButton'));
+  const popupBody = document.body;
 
   if (
     !modal ||
@@ -403,6 +404,7 @@ export async function showSaveToUnsortedDialog(tab) {
   modal.addEventListener(
     'close',
     () => {
+      popupBody.classList.remove('save-to-unsorted-dialog-open');
       confirmButton.removeEventListener('click', handleConfirm);
       cancelButton.removeEventListener('click', handleCancel);
       window.removeEventListener('keydown', handleWindowKeyDown, true);
@@ -417,6 +419,7 @@ export async function showSaveToUnsortedDialog(tab) {
     { once: true },
   );
 
+  popupBody.classList.add('save-to-unsorted-dialog-open');
   modal.showModal();
   // Focus input after modal is shown with a small delay to override browser default focus
   setTimeout(() => {
