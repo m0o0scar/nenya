@@ -7,6 +7,7 @@ import { OPTIONS_BACKUP_MESSAGES } from '../shared/optionsBackupMessages.js';
  * @typedef {Object} BackupState
  * @property {number | undefined} lastBackupAt
  * @property {number | undefined} lastRestoreAt
+ * @property {number | undefined} lastSyncAt
  * @property {string | undefined} lastError
  * @property {number | undefined} lastErrorAt
  */
@@ -154,7 +155,7 @@ async function refreshStatus() {
       return;
     }
 
-    const backupText = formatTimestamp(state.lastBackupAt);
+    const backupText = formatTimestamp(state.lastSyncAt || state.lastBackupAt);
     const restoreText = formatTimestamp(state.lastRestoreAt);
     if (!loggedIn) {
       setStatus('Connect your Raindrop account to back up or restore options.');
@@ -162,13 +163,13 @@ async function refreshStatus() {
       setStatus(
         'Last error: ' +
           state.lastError +
-          '\nBackup ' +
+          '\nSync ' +
           backupText +
           '\nRestore ' +
           restoreText,
       );
     } else {
-      setStatus('Backup ' + backupText + '\nRestore ' + restoreText);
+      setStatus('Sync ' + backupText + '\nRestore ' + restoreText);
     }
 
     updateButtonStates(false);
@@ -236,14 +237,14 @@ function initializeBackupControls() {
   backupButton.addEventListener('click', () => {
     void runAction(
       OPTIONS_BACKUP_MESSAGES.BACKUP_NOW,
-      'Options backup saved to Raindrop.',
+      'Options synced to Raindrop.',
     );
   });
 
   restoreButton.addEventListener('click', () => {
     void runAction(
       OPTIONS_BACKUP_MESSAGES.RESTORE_NOW,
-      'Options restored from Raindrop backup.',
+      'Options restored from Raindrop. Local unsynced changes discarded.',
     );
   });
 

@@ -1,6 +1,6 @@
 # SYNC_AFTER_LOGIN Lifecycle
 
-This document describes the lifecycle of the `SYNC_AFTER_LOGIN` event, which ensures that extension options are restored from Raindrop upon a successful login, rather than overwriting cloud settings with local defaults.
+This document describes the lifecycle of the `SYNC_AFTER_LOGIN` event, which ensures that extension options are merged with Raindrop upon a successful login, rather than overwriting cloud settings with local defaults.
 
 ## Overview
 
@@ -8,8 +8,8 @@ When a user logs in to Raindrop via the extension options page, the following se
 
 1.  **OAuth Success:** The extension receives an external message indicating successful authentication.
 2.  **Trigger:** The options page processes this success and sends a runtime message to the background script.
-3.  **Handling:** The background script receives the message and triggers the restoration process.
-4.  **Action:** The extension fetches the latest options backup from Raindrop and applies it to local storage.
+3.  **Handling:** The background script receives the message and triggers the sync process.
+4.  **Action:** The extension fetches the latest Automerge options document from Raindrop, merges it with local state, and applies the merged result to local storage.
 
 ## Detailed Flow
 
@@ -58,7 +58,7 @@ export function handleOptionsBackupMessage(message, sendResponse) {
   switch (message.type) {
     // ...
     case OPTIONS_BACKUP_MESSAGES.SYNC_AFTER_LOGIN: {
-      void runManualRestore()
+      void syncOptionsWithRemote({ trigger: 'login' })
         .then((result) => sendResponse(result))
         // ... error handling
       return true;
@@ -71,13 +71,13 @@ export function handleOptionsBackupMessage(message, sendResponse) {
 ### 4. Execution (Backend)
 
 *   **File:** `src/background/options-backup.js`
-*   **Function:** `runManualRestore()`
+*   **Function:** `syncOptionsWithRemote({ trigger: 'login' })`
 
 This function performs the actual work:
 1.  Loads valid tokens.
-2.  Finds the backup collection in Raindrop.
-3.  Downloads and reassembles the backup chunks.
-4.  Applies the backup payload to `chrome.storage.local`.
+2.  Finds or creates the options sync collection in Raindrop.
+3.  Downloads and validates the Automerge chunks.
+4.  Merges remote and local documents, then applies the merged options to `chrome.storage.local`.
 
 ## Diagram
 
@@ -93,9 +93,9 @@ sequenceDiagram
     OptionsPage->>OptionsPage: Store Tokens
     OptionsPage->>Background: Send SYNC_AFTER_LOGIN message
     Background->>Background: handleOptionsBackupMessage
-    Background->>Raindrop: Fetch Backup Collection
-    Raindrop-->>Background: Return Backup Data
-    Background->>Background: runManualRestore()
+    Background->>Raindrop: Fetch Options Sync Document
+    Raindrop-->>Background: Return Automerge Chunks
+    Background->>Background: syncOptionsWithRemote({ trigger: 'login' })
     Background-->>OptionsPage: Success Response
     OptionsPage->>User: Toast "Connected to Raindrop"
 ```

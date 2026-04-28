@@ -1075,7 +1075,7 @@ function handleLifecycleEvent(trigger) {
   void initializeOptionsBackupService();
   void runStartupSync();
   chrome.alarms.create('options-backup-check', {
-    periodInMinutes: 1,
+    periodInMinutes: 5,
   });
 }
 
