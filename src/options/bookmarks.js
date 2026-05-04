@@ -475,7 +475,16 @@ async function processOAuthSuccess(message) {
 
   await refreshBackupStatus();
 
-  await refreshBackupStatus();
+  try {
+    await sendRuntimeMessage({
+      type: 'mirror:ensureSessionsCollection',
+    });
+  } catch (error) {
+    console.warn(
+      '[bookmarks] Failed to initialize synced browser sessions after login:',
+      error instanceof Error ? error.message : error,
+    );
+  }
 }
 
 /**
